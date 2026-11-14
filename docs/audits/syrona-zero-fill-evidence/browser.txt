@@ -1,0 +1,28 @@
+PASS Real authenticated browser login
+PASS Section Planning Dashboard
+PASS Section Annual Plans
+PASS Section Stationery & Consumables
+PASS Section Branding & Uniform Projections
+PASS Section Planning Periods
+PASS Section CSV / Excel Import & History
+PASS Section Reports
+PASS Section Audit History
+PASS Negative price rejected in browser without committing
+PASS Draft item created with twelve quantities
+PASS Filtered edit loads all twelve months
+PASS Filtered update preserves unselected months
+PASS Inline price edit preserves all months under a month filter and refreshes totals
+PASS Draft item soft removal
+PASS Uniform authoritative opening balance and half-contribution calculation
+PASS Draft uniform soft removal
+PASS Branded report generation
+PASS Authorized PDF and Excel downloads
+PASS Production-bundled .xls worker and editable source mapping preview
+PASS Confirmation stays disabled until explicit review
+PASS Explicit preview-confirm import through browser
+PASS CSV duplicate names and missing/dash inputs preview as two distinct zero-filled source rows
+PASS CSV zero-fill duplicate import explicitly confirmed through browser
+PASS Mobile layout has no document-level horizontal overflow
+PASS No browser runtime errors
+PASS Only expected unauthenticated-session and negative-input HTTP errors
+CHECKS 27 ERRORS [] HTTP FAILURES [{"phase":"login","status":401,"path":"/api/auth/session"},{"phase":"item CRUD","status":400,"path":"/api/budget-planning/plans/1/items"}]

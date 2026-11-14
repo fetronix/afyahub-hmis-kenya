@@ -1,0 +1,228 @@
+{
+  "syntheticOnly": true,
+  "notActualIncident": true,
+  "warning": "Fixture setup explicitly cancelled both source batches; these are NOT the actual affected records.",
+  "result": [
+    [
+      {
+        "id": 1,
+        "tenant_id": 1,
+        "facility_id": 1,
+        "filename": "Syrona_Branding.csv",
+        "status": "CANCELLED",
+        "sha256": "75f810a0265ad0e6a08d9efc1e43a6705591ae81ae0aa6c109466a605881797e",
+        "byte_size": 2425,
+        "retained_source_bytes": 2425,
+        "retained_source_hash_matches": true,
+        "uploaded_by": 1,
+        "uploaded_at": "2026-11-14T11:21:36.629Z",
+        "validation": null,
+        "result": null
+      },
+      {
+        "id": 2,
+        "tenant_id": 1,
+        "facility_id": 1,
+        "filename": "Syrona_Stationery.csv",
+        "status": "UPLOADED",
+        "sha256": "244f9ba9bdd8f5a28793610cabfa8d931ecc76eff52b0fa553b11702e3f198e1",
+        "byte_size": 39236,
+        "retained_source_bytes": 39236,
+        "retained_source_hash_matches": true,
+        "uploaded_by": 1,
+        "uploaded_at": "2026-11-14T11:21:36.887Z",
+        "validation": null,
+        "result": null
+      }
+    ],
+    [
+      {
+        "id": 17,
+        "import_id": 1,
+        "plan_id": null,
+        "action": "UPLOAD_WORKBOOK",
+        "actor_id": 1,
+        "actor_username": "planning_browser_9b34e7fb",
+        "entity": "plan",
+        "entity_id": null,
+        "event_at": "2026-11-14T11:21:36.629Z",
+        "previous_values": null,
+        "updated_values": {
+          "id": 1,
+          "sha256": "75f810a0265ad0e6a08d9efc1e43a6705591ae81ae0aa6c109466a605881797e",
+          "sheets": [
+            {
+              "name": "CSV",
+              "rows": 36
+            }
+          ],
+          "status": "UPLOADED",
+          "filename": "Syrona_Branding.csv",
+          "byte_size": 2425
+        }
+      },
+      {
+        "id": 18,
+        "import_id": 1,
+        "plan_id": null,
+        "action": "CANCEL_IMPORT",
+        "actor_id": 1,
+        "actor_username": "planning_browser_9b34e7fb",
+        "entity": "plan",
+        "entity_id": null,
+        "event_at": "2026-11-14T11:21:36.634Z",
+        "previous_values": null,
+        "updated_values": null
+      },
+      {
+        "id": 19,
+        "import_id": 2,
+        "plan_id": null,
+        "action": "UPLOAD_WORKBOOK",
+        "actor_id": 1,
+        "actor_username": "planning_browser_9b34e7fb",
+        "entity": "plan",
+        "entity_id": null,
+        "event_at": "2026-11-14T11:21:36.887Z",
+        "previous_values": null,
+        "updated_values": {
+          "id": 2,
+          "sha256": "244f9ba9bdd8f5a28793610cabfa8d931ecc76eff52b0fa553b11702e3f198e1",
+          "sheets": [
+            {
+              "name": "CSV",
+              "rows": 296
+            }
+          ],
+          "status": "UPLOADED",
+          "filename": "Syrona_Stationery.csv",
+          "byte_size": 39236
+        }
+      },
+      {
+        "id": 20,
+        "import_id": 2,
+        "plan_id": null,
+        "action": "CANCEL_IMPORT",
+        "actor_id": 1,
+        "actor_username": "planning_browser_9b34e7fb",
+        "entity": "plan",
+        "entity_id": null,
+        "event_at": "2026-11-14T11:21:36.892Z",
+        "previous_values": null,
+        "updated_values": null
+      },
+      {
+        "id": 21,
+        "import_id": 2,
+        "plan_id": null,
+        "action": "RETRY_IMPORT_REVIEW",
+        "actor_id": 1,
+        "actor_username": "planning_browser_9b34e7fb",
+        "entity": "import",
+        "entity_id": 2,
+        "event_at": "2026-11-14T11:21:52.608Z",
+        "previous_values": {
+          "status": "CANCELLED",
+          "validation": null
+        },
+        "updated_values": {
+          "sha256": "244f9ba9bdd8f5a28793610cabfa8d931ecc76eff52b0fa553b11702e3f198e1",
+          "status": "UPLOADED",
+          "validation": null,
+          "confirmRetry": true
+        }
+      }
+    ],
+    [
+      {
+        "id": 17,
+        "user_id": "1",
+        "resource": "budget_planning",
+        "resource_id": "1",
+        "action": "UPLOAD_WORKBOOK",
+        "event_at": "2026-11-14T11:21:36.629Z",
+        "details": "Facility-scoped planning change; full previous/updated values retained in planning_events.",
+        "ip_address": null,
+        "user_agent": null,
+        "request_id": null
+      },
+      {
+        "id": 18,
+        "user_id": "1",
+        "resource": "budget_planning",
+        "resource_id": "1",
+        "action": "CANCEL_IMPORT",
+        "event_at": "2026-11-14T11:21:36.634Z",
+        "details": "Facility-scoped planning change; full previous/updated values retained in planning_events.",
+        "ip_address": null,
+        "user_agent": null,
+        "request_id": null
+      },
+      {
+        "id": 19,
+        "user_id": "1",
+        "resource": "budget_planning",
+        "resource_id": "2",
+        "action": "UPLOAD_WORKBOOK",
+        "event_at": "2026-11-14T11:21:36.887Z",
+        "details": "Facility-scoped planning change; full previous/updated values retained in planning_events.",
+        "ip_address": null,
+        "user_agent": null,
+        "request_id": null
+      },
+      {
+        "id": 20,
+        "user_id": "1",
+        "resource": "budget_planning",
+        "resource_id": "2",
+        "action": "CANCEL_IMPORT",
+        "event_at": "2026-11-14T11:21:36.892Z",
+        "details": "Facility-scoped planning change; full previous/updated values retained in planning_events.",
+        "ip_address": null,
+        "user_agent": null,
+        "request_id": null
+      },
+      {
+        "id": 21,
+        "user_id": "1",
+        "resource": "budget_planning",
+        "resource_id": "2",
+        "action": "RETRY_IMPORT_REVIEW",
+        "event_at": "2026-11-14T11:21:52.608Z",
+        "details": "Facility-scoped planning change; full previous/updated values retained in planning_events.",
+        "ip_address": null,
+        "user_agent": null,
+        "request_id": null
+      }
+    ],
+    [
+      {
+        "id": 1,
+        "name": "2026 Facility Procurement Projections",
+        "financial_year": 2026,
+        "plan_type": "MIXED",
+        "status": "DRAFT",
+        "currency": "KES",
+        "version": 15,
+        "inflation_bp": 500,
+        "source_import_id": null,
+        "created_at": "2026-11-14T11:21:34.615Z",
+        "updated_at": "2026-11-14T11:21:34.774Z"
+      },
+      {
+        "id": 2,
+        "name": "Syrona Medical Center Annual Plan — SYNTHETIC INCIDENT REPRODUCTION",
+        "financial_year": 2026,
+        "plan_type": "ANNUAL",
+        "status": "DRAFT",
+        "currency": "KES",
+        "version": 1,
+        "inflation_bp": 500,
+        "source_import_id": null,
+        "created_at": "2026-11-14T11:21:36.383Z",
+        "updated_at": "2026-11-14T11:21:36.383Z"
+      }
+    ]
+  ]
+}

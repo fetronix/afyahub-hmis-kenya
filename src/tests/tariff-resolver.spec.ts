@@ -20,6 +20,7 @@ import { codesForFamily } from '../billing/tariff-matching.ts';
 import { toCents } from '../billing/billing.service.ts';
 
 import { describe, expect, it } from 'vitest';
+import { queriesSource } from './support/schema-source.ts';
 
 const TODAY = '2026-10-22';
 
@@ -684,25 +685,19 @@ describe('Service → tariff resolution — the laboratory billing reconstructio
     );
   });
 
-  it('9. THE ORDER CARRIES ITS CATALOGUE ID', async () => {
-    const queries = readFileSync(resolve(process.cwd(), 'src/db/queries.ts'), 'utf8');
+  it('9. EXPLICIT LABORATORY IDENTITIES ARE REQUIRED FOR BILLING', async () => {
+    const queries = queriesSource();
+    const laboratory = readFileSync(resolve(process.cwd(), 'src/db/queries/laboratory.ts'), 'utf8');
 
     expect(
-      queries.includes('resolveCatalogueTestByName'),
-      'free-text investigations are resolved against the catalogue',
-    ).toBe(true);
+      laboratory.includes('testId: resolution.test.id'),
+      'a free-text name is not silently attached to an order',
+    ).toBe(false);
     expect(
-      queries.includes("'AMBIGUOUS'"),
-      'an ambiguous catalogue name is reported, not guessed',
+      laboratory.includes("catalogueMatch: clinicalException ? ('REVIEW_REQUIRED' as const)"),
+      'unreviewed investigation or specimen requires review',
     ).toBe(true);
-    expect(
-      queries.includes('testId: resolution.test.id'),
-      'a resolved name attaches the catalogue id to the order',
-    ).toBe(true);
-    expect(
-      queries.includes('unresolved') && queries.includes('ambiguous'),
-      'what could not be resolved is reported back to the caller',
-    ).toBe(true);
+    expect(queries.includes('unresolved'), 'unmatched orders remain visible to callers').toBe(true);
 
     const charges = readFileSync(resolve(process.cwd(), 'src/billing/service-charges.ts'), 'utf8');
 
@@ -876,26 +871,20 @@ describe('Service → tariff resolution — the laboratory billing reconstructio
       'there is exactly one place that writes an invoice line',
     ).toBe(true);
 
-    const app = readFileSync(resolve(process.cwd(), 'src/app.ts'), 'utf8');
-
-    expect(
-      app.includes("'/api/service-tariff-links'"),
-      'links are configured through the existing tariff configuration surface',
-    ).toBe(true);
-    expect(
-      app.includes("'/api/billing/lab-service-diagnostics'"),
-      'and the laboratory diagnostics are served from the billing module',
-    ).toBe(true);
-    expect(
-      app.includes("requirePermission('tariffs.manage')"),
-      'link changes require the tariff-management permission',
-    ).toBe(true);
-    /* The guard moved to src/routes/shared/tariffs.ts. */
-    expect(
-      readFileSync(resolve(process.cwd(), 'src/routes/shared/tariffs.ts'), 'utf8').includes(
-        'requireFacilityAdminTariffRole',
-      ),
-      'and the facility-admin guard',
-    ).toBe(true);
+    const mounts = readFileSync(resolve(process.cwd(), 'src/routes/index.ts'), 'utf8');
+    const services = readFileSync(
+      resolve(process.cwd(), 'src/routes/facility-services.routes.ts'),
+      'utf8',
+    );
+    const direct = readFileSync(
+      resolve(process.cwd(), 'src/billing/facility-charge-resolver.ts'),
+      'utf8',
+    );
+    expect(mounts).toContain('domains.use(facilityServicesRoutes)');
+    expect(services).toContain("'/api/facility-services'");
+    expect(services).toContain("requirePermission('tariffs.manage')");
+    expect(services).toContain('requireFacilityAdminTariffRole');
+    expect(direct).toContain('facilityServiceId');
+    expect(mounts).not.toContain('domains.use(masterTariffRoutes)');
   });
 });

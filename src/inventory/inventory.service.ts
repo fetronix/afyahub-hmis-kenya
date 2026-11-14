@@ -14,30 +14,40 @@
  *               draw first-expiry-first-out and is refused when the
  *               usable stock cannot cover the request.
  *   Untracked — the item has no batch rows, as is the case for every
- *               item created before this change. Dispensing keeps the
- *               old behaviour of decrementing current_stock so existing
- *               facilities are not blocked, and the response says so.
+ *               item created before this change. Dispensing uses the
+ *               plain-count behaviour only when the recorded stock is
+ *               sufficient; expiry cannot be verified and is disclosed.
  *
  * Scoping: inventory_batches has no facility column, so every query
  * reaches the facility through inventory_items.facility_id. Neither
  * table is ever read without that join.
  */
 
+import { createHash } from 'node:crypto';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 
 import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
 import { getFacilityByIdScoped, requirePatientInTenant } from '../db/queries.ts';
+import { loadPatientInScope } from '../db/queries/shared.ts';
 import { resolveFacilityScope } from '../auth/scope.service.ts';
+import { hasAllPermissions } from '../auth/authorization.service.ts';
+import {
+  allocationsValueCents,
+  postStockIssue,
+  transactionSqlClient,
+} from './inventory-accounting.service.ts';
 import type { AuthorizationContext } from '../auth/authorization.types.ts';
+import { formatCents, parseMoneyToCents } from '../billing/settlement.ts';
+import { calendarDateInZone, validTimezone } from '../dashboard/timezone.ts';
 
 import {
   daysUntilExpiry,
   expiryStatus,
   parseIsoDate,
+  parseReceiptCostCents,
   planFefo,
   stockValueCents,
-  todayKey,
   type BatchExpiryStatus,
 } from './inventory-contracts.ts';
 
@@ -47,12 +57,30 @@ import {
 
 export type InventoryErrorCode =
   | 'INVALID_INPUT'
+  | 'FORBIDDEN'
   | 'ITEM_NOT_FOUND'
   | 'FACILITY_NOT_FOUND'
+  | 'FACILITY_TIMEZONE_REQUIRED'
+  | 'INVENTORY_PRICE_CONFLICT'
   | 'BATCH_NOT_FOUND'
+  | 'BATCH_EXPIRY_EVIDENCE_REQUIRED'
+  | 'BATCH_EXPIRY_MISMATCH'
+  | 'BATCH_COST_MISMATCH'
+  | 'BATCH_COST_EVIDENCE_REQUIRED'
   | 'INSUFFICIENT_STOCK'
+  | 'STOCK_RECONCILIATION_REQUIRED'
   | 'EXPIRED_BATCH'
-  | 'PATIENT_NOT_FOUND';
+  | 'PATIENT_NOT_FOUND'
+  | 'PRESCRIPTION_NOT_FOUND'
+  | 'PRESCRIPTION_ALREADY_DISPENSED'
+  | 'PRESCRIPTION_QUANTITY_REVIEW'
+  | 'PRESCRIPTION_QUANTITY_EXCEEDED'
+  | 'PRESCRIPTION_PRODUCT_REVIEW'
+  | 'IDEMPOTENCY_KEY_REQUIRED'
+  | 'IDEMPOTENCY_CONFLICT'
+  | 'IDEMPOTENCY_CANCELLED'
+  | 'RECEIPT_REVIEW_REQUIRED'
+  | 'DISPENSATION_REVIEW_REQUIRED';
 
 export class InventoryDomainError extends Error {
   public readonly code: InventoryErrorCode;
@@ -87,7 +115,7 @@ export interface InventoryBatchRow {
   batchNumber: string;
   expiryDate: string;
   quantityRemaining: number;
-  costPerUnit: string;
+  costPerUnit: string | null;
   daysToExpiry: number | null;
   status: BatchExpiryStatus;
 }
@@ -100,8 +128,8 @@ export interface ExpirySummary {
   expiredUnits: number;
   expiringBatches: number;
   expiringUnits: number;
-  expiredValueCents: number;
-  expiringValueCents: number;
+  expiredValueCents: number | null;
+  expiringValueCents: number | null;
   /** Distinct items with anything expired or expiring. */
   affectedItems: number;
   items: Array<{
@@ -118,7 +146,8 @@ export interface ReceiveBatchInput {
   batchNumber?: unknown;
   expiryDate?: unknown;
   quantity?: unknown;
-  costPerUnit?: unknown;
+  costPerUnit: unknown;
+  idempotencyKey: unknown;
 }
 
 interface FacilityContext {
@@ -145,6 +174,29 @@ async function resolveFacility(
   return { facilityId: facility.id, tenantId: facility.tenantId };
 }
 
+async function facilityTimezone(
+  facilityId: number,
+  tenantId: number,
+  executor: Pick<typeof db, 'select'> = db,
+  lock = false,
+): Promise<string> {
+  const query = executor
+    .select({ timezone: schema.facilities.timezone, tenantTimezone: schema.tenants.timezone })
+    .from(schema.facilities)
+    .innerJoin(schema.tenants, eq(schema.facilities.tenantId, schema.tenants.id))
+    .where(and(eq(schema.facilities.id, facilityId), eq(schema.facilities.tenantId, tenantId)))
+    .limit(1);
+  const [facilityZone] = lock ? await query.for('share') : await query;
+  const timezone = facilityZone?.timezone ?? facilityZone?.tenantTimezone;
+  if (!validTimezone(timezone))
+    throw new InventoryDomainError(
+      'FACILITY_TIMEZONE_REQUIRED',
+      'Configure the facility timezone before checking medicine expiry.',
+      409,
+    );
+  return timezone;
+}
+
 function parsePositiveInt(value: unknown, label: string, max: number): number {
   const parsed =
     typeof value === 'number'
@@ -168,20 +220,315 @@ function parsePositiveInt(value: unknown, label: string, max: number): number {
 }
 
 function parseCost(value: unknown): string {
-  if (value === undefined || value === null || value === '') return '0';
-
-  const parsed = typeof value === 'number' ? value : Number(String(value));
-
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new InventoryDomainError('INVALID_INPUT', 'Cost per unit must be zero or more.');
+  const cents = parseReceiptCostCents(value);
+  if (cents === null) {
+    throw new InventoryDomainError(
+      'INVALID_INPUT',
+      'Enter an explicit nonnegative unit cost with at most two decimal places.',
+    );
   }
+  return formatCents(cents);
+}
 
-  return parsed.toFixed(2);
+/** An audited, optimistic price change; prior dispensing snapshots are never changed. */
+export async function updateInventorySellingPriceScoped(
+  context: AuthorizationContext,
+  itemId: number,
+  input: {
+    facilityId?: number;
+    sellingPrice?: unknown;
+    expectedPriceRevision?: unknown;
+    reason?: unknown;
+  },
+) {
+  if (!hasAllPermissions(context, ['inventory.manage', 'billing.update']))
+    throw new InventoryDomainError(
+      'FORBIDDEN',
+      'Inventory and facility finance permissions are required.',
+      403,
+    );
+  const { facilityId, tenantId } = await resolveFacility(context, input.facilityId);
+  const id = parsePositiveInt(itemId, 'Stock item ID', 2_147_483_647);
+  const cents =
+    typeof input.sellingPrice === 'string' ? parseMoneyToCents(input.sellingPrice) : null;
+  const reason = typeof input.reason === 'string' ? input.reason.trim() : '';
+  const expectedRevision = input.expectedPriceRevision;
+  if (cents === null || cents <= 0 || cents > 9_999_999_999)
+    throw new InventoryDomainError(
+      'INVALID_INPUT',
+      'Enter a positive selling price with at most two decimals.',
+    );
+  if (
+    typeof expectedRevision !== 'number' ||
+    !Number.isSafeInteger(expectedRevision) ||
+    expectedRevision < 1 ||
+    reason.length < 3 ||
+    reason.length > 500 ||
+    /\p{Cc}/u.test(reason)
+  )
+    throw new InventoryDomainError(
+      'INVALID_INPUT',
+      'A current inventory revision and a reason are required.',
+    );
+  return db.transaction(async (tx) => {
+    const [item] = await tx
+      .select()
+      .from(schema.inventoryItems)
+      .where(
+        and(eq(schema.inventoryItems.id, id), eq(schema.inventoryItems.facilityId, facilityId)),
+      )
+      .limit(1)
+      .for('update');
+    if (!item)
+      throw new InventoryDomainError('ITEM_NOT_FOUND', 'Facility stock item not found.', 404);
+    if (item.priceRevision !== expectedRevision)
+      throw new InventoryDomainError(
+        'INVENTORY_PRICE_CONFLICT',
+        'The selling price changed since it was loaded. Reload the item before changing its price.',
+        409,
+      );
+    const price = formatCents(cents);
+    if (item.sellingPrice === price) return item;
+    if (item.priceRevision >= 2_147_483_647)
+      throw new InventoryDomainError(
+        'INVENTORY_PRICE_CONFLICT',
+        'The price revision requires review.',
+        409,
+      );
+    const [updated] = await tx
+      .update(schema.inventoryItems)
+      .set({ sellingPrice: price, priceRevision: item.priceRevision + 1, updatedAt: new Date() })
+      .where(eq(schema.inventoryItems.id, id))
+      .returning();
+    await tx.insert(schema.auditLogs).values({
+      tenantId,
+      facilityId,
+      userId: String(context.userId),
+      action: 'UPDATE',
+      resource: 'InventorySellingPrice',
+      resourceId: String(id),
+      details: `Selling price changed from ${item.sellingPrice ?? 'unrecorded'} to ${price}. Reason: ${reason}`,
+    });
+    return updated;
+  });
+}
+
+/* ============================================================
+   STOCK LEDGER
+   ============================================================ */
+
+/**
+ * Append one row to the stock ledger.
+ *
+ * Receiving and dispensing already change `current_stock` inside their own
+ * transaction. This writes the matching movement in that same transaction, so
+ * a committed stock change can never exist without an explanation. The ledger
+ * is append-only: corrections are new movements, never edits.
+ */
+async function appendStockMovement(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  entry: {
+    tenantId: number;
+    facilityId: number;
+    itemId: number;
+    batchId: number | null;
+    movementType: 'RECEIPT' | 'DISPENSE';
+    quantityDelta: number;
+    stockAfter: number;
+    referenceType: string;
+    referenceId: string;
+    notes?: string | null;
+    movementDate: string;
+    actorUserId: number;
+  },
+) {
+  const [actor] = await tx
+    .select({ fullName: schema.users.fullName, username: schema.users.username })
+    .from(schema.users)
+    .where(eq(schema.users.id, entry.actorUserId))
+    .limit(1);
+  const [movement] = await tx
+    .insert(schema.inventoryMovements)
+    .values({
+      tenantId: entry.tenantId,
+      facilityId: entry.facilityId,
+      itemId: entry.itemId,
+      batchId: entry.batchId,
+      movementType: entry.movementType,
+      quantityDelta: entry.quantityDelta,
+      stockAfter: entry.stockAfter,
+      reasonCode: null,
+      referenceType: entry.referenceType,
+      referenceId: entry.referenceId,
+      notes: entry.notes ?? null,
+      actorUserId: entry.actorUserId,
+      actorName: actor?.fullName || actor?.username || `User ${entry.actorUserId}`,
+      movementDate: entry.movementDate,
+    })
+    .returning({ id: schema.inventoryMovements.id });
+
+  return movement.id;
 }
 
 /* ============================================================
    RECEIVE STOCK INTO A BATCH
    ============================================================ */
+
+function requireReceiptPermission(context: AuthorizationContext): void {
+  // A platform identity is not a facility stock or financial operator.
+  if (context.isSuperAdmin || !hasAllPermissions(context, ['inventory.manage']))
+    throw new InventoryDomainError(
+      'FORBIDDEN',
+      'A facility or tenant inventory-management permission is required.',
+      403,
+    );
+}
+
+function receiptKey(value: unknown): string {
+  const key = typeof value === 'string' ? value.trim() : '';
+  if (!/^[A-Za-z0-9._:-]{8,128}$/.test(key))
+    throw new InventoryDomainError(
+      'IDEMPOTENCY_KEY_REQUIRED',
+      'A unique receipt retry identity is required and must be reused for retries.',
+      400,
+    );
+  return key;
+}
+
+type ReceiptRequest = typeof schema.inventoryReceiptRequests.$inferSelect;
+
+function checkedReceiptSnapshot(request: ReceiptRequest): schema.InventoryReceiptSnapshot {
+  const snapshot = request.responseSnapshot;
+  if (
+    request.state !== 'RECORDED' ||
+    !snapshot ||
+    typeof snapshot !== 'object' ||
+    !snapshot.batch ||
+    typeof snapshot.batch !== 'object' ||
+    !snapshot.item ||
+    typeof snapshot.item !== 'object' ||
+    !Number.isSafeInteger(request.itemId) ||
+    Number(request.itemId) <= 0 ||
+    !Number.isSafeInteger(request.batchId) ||
+    Number(request.batchId) <= 0 ||
+    !Number.isSafeInteger(request.receivedQuantity) ||
+    Number(request.receivedQuantity) <= 0 ||
+    typeof request.costPerUnit !== 'string' ||
+    parseReceiptCostCents(request.costPerUnit) === null ||
+    typeof snapshot.batch.batchNumber !== 'string' ||
+    !snapshot.batch.batchNumber.trim() ||
+    typeof snapshot.batch.expiryDate !== 'string' ||
+    !parseIsoDate(snapshot.batch.expiryDate) ||
+    snapshot.batch.id !== request.batchId ||
+    snapshot.batch.itemId !== request.itemId ||
+    snapshot.batch.costPerUnit !== request.costPerUnit ||
+    snapshot.item.id !== request.itemId ||
+    snapshot.item.facilityId !== request.facilityId ||
+    snapshot.received !== request.receivedQuantity ||
+    !Number.isSafeInteger(snapshot.batch.quantityRemaining) ||
+    snapshot.batch.quantityRemaining < snapshot.received ||
+    snapshot.expiryMismatch !== null
+  )
+    throw new InventoryDomainError(
+      'RECEIPT_REVIEW_REQUIRED',
+      'The recorded receipt evidence is inconsistent and needs review.',
+      409,
+    );
+  return snapshot;
+}
+
+function receiptStatus(request: ReceiptRequest) {
+  if (request.state === 'CANCELLED') return { status: 'CANCELLED' as const, receiptId: request.id };
+  const snapshot = checkedReceiptSnapshot(request);
+  return {
+    status: 'RECORDED' as const,
+    receiptId: request.id,
+    itemId: request.itemId,
+    batchId: request.batchId,
+    batchNumber: snapshot.batch.batchNumber,
+    quantity: request.receivedQuantity,
+    costPerUnit: request.costPerUnit,
+    recordedAt: request.createdAt.toISOString(),
+  };
+}
+
+/** A NOT_FOUND result is not proof that a delayed request cannot still arrive. */
+export async function getReceiptRequestStatusScoped(
+  context: AuthorizationContext,
+  input: { facilityId?: number; idempotencyKey: unknown },
+) {
+  requireReceiptPermission(context);
+  const { facilityId, tenantId } = await resolveFacility(context, input.facilityId);
+  const key = receiptKey(input.idempotencyKey);
+  return db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`inventory-receipt:${facilityId}:${key}`}, 0))`,
+    );
+    const [request] = await tx
+      .select()
+      .from(schema.inventoryReceiptRequests)
+      .where(
+        and(
+          eq(schema.inventoryReceiptRequests.tenantId, tenantId),
+          eq(schema.inventoryReceiptRequests.facilityId, facilityId),
+          eq(schema.inventoryReceiptRequests.idempotencyKey, key),
+        ),
+      )
+      .limit(1);
+    return request ? receiptStatus(request) : { status: 'NOT_FOUND' as const };
+  });
+}
+
+/** Fence a possibly delayed request; this does not reverse any recorded stock. */
+export async function cancelReceiptRetryScoped(
+  context: AuthorizationContext,
+  input: { facilityId?: number; idempotencyKey: unknown; reason: unknown },
+) {
+  requireReceiptPermission(context);
+  const { facilityId, tenantId } = await resolveFacility(context, input.facilityId);
+  const key = receiptKey(input.idempotencyKey);
+  const reason = typeof input.reason === 'string' ? input.reason.trim() : '';
+  if (reason.length < 3 || reason.length > 500 || /\p{Cc}/u.test(reason))
+    throw new InventoryDomainError('INVALID_INPUT', 'Enter a reason of 3–500 characters.');
+  return db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`inventory-receipt:${facilityId}:${key}`}, 0))`,
+    );
+    const [prior] = await tx
+      .select()
+      .from(schema.inventoryReceiptRequests)
+      .where(
+        and(
+          eq(schema.inventoryReceiptRequests.tenantId, tenantId),
+          eq(schema.inventoryReceiptRequests.facilityId, facilityId),
+          eq(schema.inventoryReceiptRequests.idempotencyKey, key),
+        ),
+      )
+      .limit(1);
+    if (prior) return receiptStatus(prior);
+    const [cancelled] = await tx
+      .insert(schema.inventoryReceiptRequests)
+      .values({
+        tenantId,
+        facilityId,
+        idempotencyKey: key,
+        state: 'CANCELLED',
+        cancellationReason: reason,
+        actorUserId: context.userId,
+      })
+      .returning();
+    await tx.insert(schema.auditLogs).values({
+      tenantId,
+      facilityId,
+      userId: String(context.userId),
+      resource: 'InventoryReceiptRetry',
+      resourceId: String(cancelled.id),
+      action: 'CANCEL',
+      details: JSON.stringify({ reason }),
+    });
+    return receiptStatus(cancelled);
+  });
+}
 
 export async function receiveBatchScoped(
   context: AuthorizationContext,
@@ -189,14 +536,15 @@ export async function receiveBatchScoped(
   input: ReceiveBatchInput,
   requestedFacilityId?: number | null,
 ) {
-  const { facilityId } = await resolveFacility(context, requestedFacilityId);
+  requireReceiptPermission(context);
+  const { facilityId, tenantId } = await resolveFacility(context, requestedFacilityId);
 
   const batchNumber = typeof input.batchNumber === 'string' ? input.batchNumber.trim() : '';
 
-  if (batchNumber.length === 0 || batchNumber.length > 64) {
+  if (batchNumber.length === 0 || batchNumber.length > 64 || /\p{Cc}/u.test(batchNumber)) {
     throw new InventoryDomainError(
       'INVALID_INPUT',
-      'Batch number is required and must be 64 characters or fewer.',
+      'Batch number is required, must be 64 characters or fewer, and cannot contain control characters.',
     );
   }
 
@@ -211,20 +559,23 @@ export async function receiveBatchScoped(
     );
   }
 
-  /*
-   * Receiving stock that has already expired is always a mistake, and
-   * accepting it would quietly poison every FEFO calculation afterwards.
-   */
-  if (expiryRaw < todayKey()) {
-    throw new InventoryDomainError(
-      'EXPIRED_BATCH',
-      `Batch ${batchNumber} expired on ${expiryRaw} and cannot be received.`,
-      400,
-    );
-  }
-
   const quantity = parsePositiveInt(input.quantity, 'Quantity', 1_000_000);
   const costPerUnit = parseCost(input.costPerUnit);
+  const key = receiptKey(input.idempotencyKey);
+  const requestHash = createHash('sha256')
+    .update(
+      JSON.stringify({
+        version: 1,
+        tenantId,
+        facilityId,
+        itemId,
+        batchNumber,
+        expiryDate: expiryRaw,
+        quantity,
+        costPerUnit,
+      }),
+    )
+    .digest('hex');
 
   const [item] = await db
     .select()
@@ -239,12 +590,119 @@ export async function receiveBatchScoped(
   }
 
   return db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`inventory-receipt:${facilityId}:${key}`}, 0))`,
+    );
+    const [prior] = await tx
+      .select()
+      .from(schema.inventoryReceiptRequests)
+      .where(
+        and(
+          eq(schema.inventoryReceiptRequests.tenantId, tenantId),
+          eq(schema.inventoryReceiptRequests.facilityId, facilityId),
+          eq(schema.inventoryReceiptRequests.idempotencyKey, key),
+        ),
+      )
+      .limit(1);
+    if (prior) {
+      if (prior.state === 'CANCELLED')
+        throw new InventoryDomainError(
+          'IDEMPOTENCY_CANCELLED',
+          'This receipt retry identity has been closed.',
+          409,
+        );
+      if (prior.requestHash !== requestHash)
+        throw new InventoryDomainError(
+          'IDEMPOTENCY_CONFLICT',
+          'This receipt retry identity was used for different receipt details.',
+          409,
+        );
+      const snapshot = checkedReceiptSnapshot(prior);
+      return { ...snapshot, receiptId: prior.id, replayed: true };
+    }
+    const timezone = await facilityTimezone(facilityId, tenantId, tx, true);
     /*
-     * Re-receiving the same batch number tops the lot up rather than
-     * violating inventory_batches_item_batch_idx. The expiry already on
-     * the row wins: a different date for the same batch number is a
-     * data-entry problem, not a reason to extend shelf life.
+     * Re-receiving the same batch number tops the lot up only when its
+     * expiry agrees. A mismatch needs physical review, not a silent change.
      */
+    // All stock operations acquire the item lock before a batch lock.
+    // Updating first prevents a receive/dispense lock-order deadlock.
+    const [updatedItem] = await tx
+      .update(schema.inventoryItems)
+      .set({
+        currentStock: sql`${schema.inventoryItems.currentStock} + ${quantity}`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.inventoryItems.id, item.id),
+          eq(schema.inventoryItems.facilityId, facilityId),
+          sql`${schema.inventoryItems.currentStock} >= 0`,
+          sql`${schema.inventoryItems.currentStock} <= ${2_147_483_647 - quantity}`,
+        ),
+      )
+      .returning();
+    if (!updatedItem) {
+      throw new InventoryDomainError(
+        'STOCK_RECONCILIATION_REQUIRED',
+        'Recorded stock is missing or invalid; review it before receiving a batch.',
+        409,
+      );
+    }
+    // Re-check after the item lock in case the local date changed while waiting.
+    if (expiryRaw < calendarDateInZone(timezone))
+      throw new InventoryDomainError(
+        'EXPIRED_BATCH',
+        'The batch has expired and cannot be received.',
+        409,
+      );
+    const [existing] = await tx
+      .select({
+        expiryDate: schema.inventoryBatches.expiryDate,
+        costPerUnit: schema.inventoryBatches.costPerUnit,
+        quantityRemaining: schema.inventoryBatches.quantityRemaining,
+      })
+      .from(schema.inventoryBatches)
+      .where(
+        and(
+          eq(schema.inventoryBatches.itemId, item.id),
+          eq(schema.inventoryBatches.batchNumber, batchNumber),
+        ),
+      )
+      .limit(1)
+      .for('update');
+    if (existing && existing.expiryDate !== expiryRaw)
+      throw new InventoryDomainError(
+        'BATCH_EXPIRY_MISMATCH',
+        'This batch number already has a different expiry date. Review the physical lot before receiving it.',
+        409,
+      );
+    if (existing) {
+      if (
+        !Number.isSafeInteger(existing.quantityRemaining) ||
+        existing.quantityRemaining < 0 ||
+        existing.quantityRemaining > 2_147_483_647 - quantity
+      )
+        throw new InventoryDomainError(
+          'STOCK_RECONCILIATION_REQUIRED',
+          'The lot quantity is invalid or cannot accept this receipt; review the stock.',
+          409,
+        );
+      const previousCost = parseReceiptCostCents(existing.costPerUnit);
+      if (previousCost === null)
+        throw new InventoryDomainError(
+          'BATCH_COST_EVIDENCE_REQUIRED',
+          'The existing lot has no valid unit cost. Review its evidence before receiving more stock.',
+          409,
+        );
+      if (previousCost !== parseReceiptCostCents(costPerUnit))
+        throw new InventoryDomainError(
+          'BATCH_COST_MISMATCH',
+          'This lot already has a different unit cost. Review the receipt rather than changing earlier stock value.',
+          409,
+        );
+    }
+
     const [batch] = await tx
       .insert(schema.inventoryBatches)
       .values({
@@ -258,29 +716,77 @@ export async function receiveBatchScoped(
         target: [schema.inventoryBatches.itemId, schema.inventoryBatches.batchNumber],
         set: {
           quantityRemaining: sql`${schema.inventoryBatches.quantityRemaining} + ${quantity}`,
-          costPerUnit,
         },
+        // A writer outside this service could have inserted the lot after the
+        // earlier check. Never update it unless its evidence still agrees.
+        setWhere: and(
+          eq(schema.inventoryBatches.expiryDate, expiryRaw),
+          eq(schema.inventoryBatches.costPerUnit, costPerUnit),
+          sql`${schema.inventoryBatches.quantityRemaining} >= 0`,
+          sql`${schema.inventoryBatches.quantityRemaining} <= ${2_147_483_647 - quantity}`,
+        ),
       })
       .returning();
-
-    const [updatedItem] = await tx
-      .update(schema.inventoryItems)
-      .set({
-        currentStock: sql`COALESCE(${schema.inventoryItems.currentStock}, 0) + ${quantity}`,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.inventoryItems.id, item.id))
-      .returning();
-
-    return {
-      batch: {
-        ...batch,
-        expiryDate: batch?.expiryDate ?? expiryRaw,
-      },
-      item: updatedItem,
+    if (!batch)
+      throw new InventoryDomainError(
+        'STOCK_RECONCILIATION_REQUIRED',
+        'The lot could not be recorded; review the stock before trying again.',
+        409,
+      );
+    const snapshot: schema.InventoryReceiptSnapshot = {
+      batch: { ...batch, expiryDate: batch.expiryDate ?? expiryRaw },
+      item: { ...updatedItem },
       received: quantity,
-      expiryMismatch: batch && batch.expiryDate !== expiryRaw ? batch.expiryDate : null,
+      expiryMismatch: null,
     };
+    const [request] = await tx
+      .insert(schema.inventoryReceiptRequests)
+      .values({
+        tenantId,
+        facilityId,
+        idempotencyKey: key,
+        state: 'RECORDED',
+        requestHash,
+        itemId: item.id,
+        batchId: batch.id,
+        receivedQuantity: quantity,
+        costPerUnit,
+        responseSnapshot: snapshot,
+        actorUserId: context.userId,
+      })
+      .returning();
+    await tx.insert(schema.auditLogs).values({
+      tenantId,
+      facilityId,
+      userId: String(context.userId),
+      resource: 'InventoryBatchReceipt',
+      resourceId: String(request.id),
+      action: 'CREATE',
+      details: JSON.stringify({
+        itemId: item.id,
+        batchId: batch.id,
+        batchNumber,
+        expiryDate: expiryRaw,
+        quantity,
+        costPerUnit,
+      }),
+    });
+    await appendStockMovement(tx, {
+      tenantId,
+      facilityId,
+      itemId: item.id,
+      batchId: batch.id,
+      movementType: 'RECEIPT',
+      quantityDelta: quantity,
+      stockAfter: updatedItem.currentStock ?? quantity,
+      referenceType: 'INVENTORY_RECEIPT',
+      referenceId: String(request.id),
+      notes: `Batch ${batchNumber} received.`,
+      movementDate: calendarDateInZone(timezone),
+      actorUserId: context.userId,
+    });
+
+    return { ...snapshot, receiptId: request.id, replayed: false };
   });
 }
 
@@ -297,7 +803,7 @@ export async function getBatchesScoped(
     horizonDays?: number;
   } = {},
 ): Promise<InventoryBatchRow[]> {
-  const { facilityId } = await resolveFacility(context, options.facilityId);
+  const { facilityId, tenantId } = await resolveFacility(context, options.facilityId);
 
   const conditions = [eq(schema.inventoryItems.facilityId, facilityId)];
 
@@ -322,12 +828,12 @@ export async function getBatchesScoped(
     .where(and(...conditions))
     .orderBy(asc(schema.inventoryBatches.expiryDate), asc(schema.inventoryBatches.id));
 
-  const today = todayKey();
+  const today = calendarDateInZone(await facilityTimezone(facilityId, tenantId));
   const horizon = options.horizonDays ?? 30;
 
   const decorated = rows.map((row) => ({
     ...row,
-    costPerUnit: String(row.costPerUnit ?? '0'),
+    costPerUnit: row.costPerUnit === null ? null : String(row.costPerUnit),
     daysToExpiry: daysUntilExpiry(row.expiryDate, today),
     status: expiryStatus(row.expiryDate, today, horizon),
   }));
@@ -380,22 +886,35 @@ export async function getExpirySummaryScoped(
   >();
 
   for (const batch of batches) {
+    if (!Number.isSafeInteger(batch.quantityRemaining) || batch.quantityRemaining < 0)
+      throw new InventoryDomainError(
+        'STOCK_RECONCILIATION_REQUIRED',
+        'A batch has an invalid remaining quantity; review the stock before using this summary.',
+        409,
+      );
     if (batch.status === 'OK') continue;
 
     const expired = batch.status === 'Expired';
+    const value = stockValueCents([
+      { quantityRemaining: batch.quantityRemaining, costPerUnit: batch.costPerUnit },
+    ]);
 
     if (expired) {
       summary.expiredBatches += 1;
       summary.expiredUnits += batch.quantityRemaining;
-      summary.expiredValueCents += stockValueCents([
-        { quantityRemaining: batch.quantityRemaining, costPerUnit: batch.costPerUnit },
-      ]);
+      const total =
+        summary.expiredValueCents === null || value === null
+          ? null
+          : summary.expiredValueCents + value;
+      summary.expiredValueCents = total !== null && Number.isSafeInteger(total) ? total : null;
     } else {
       summary.expiringBatches += 1;
       summary.expiringUnits += batch.quantityRemaining;
-      summary.expiringValueCents += stockValueCents([
-        { quantityRemaining: batch.quantityRemaining, costPerUnit: batch.costPerUnit },
-      ]);
+      const total =
+        summary.expiringValueCents === null || value === null
+          ? null
+          : summary.expiringValueCents + value;
+      summary.expiringValueCents = total !== null && Number.isSafeInteger(total) ? total : null;
     }
 
     const entry = byItem.get(batch.itemId) ?? {
@@ -445,6 +964,7 @@ export interface DispenseInput {
   batchNumber?: unknown;
   facilityId?: unknown;
   tenantId?: unknown;
+  idempotencyKey?: unknown;
 }
 
 export interface DispenseResult {
@@ -457,6 +977,68 @@ export interface DispenseResult {
     quantity: number;
   }>;
   stockAfter: number | null;
+  replayed: boolean;
+  prescriptionComplete: boolean;
+  billingContext: { drugName: string; encounterId: number | null };
+}
+
+/** Read a prior request without starting a new dispensing action. */
+export async function getDispenseRequestStatusScoped(
+  context: AuthorizationContext,
+  input: { facilityId?: number; idempotencyKey: unknown },
+): Promise<
+  | { status: 'NOT_FOUND' }
+  | { status: 'RECORDED'; prescriptionId: number | null; quantity: number; dispensationId: number }
+> {
+  const { tenantId, facilityId } = await resolveFacility(context, input.facilityId);
+  const key = typeof input.idempotencyKey === 'string' ? input.idempotencyKey.trim() : '';
+  if (!/^[A-Za-z0-9._:-]{8,128}$/.test(key)) {
+    throw new InventoryDomainError(
+      'IDEMPOTENCY_KEY_REQUIRED',
+      'A valid retry identity is required.',
+      400,
+    );
+  }
+  return db.transaction(async (tx) => {
+    // Wait for a same-key transaction already in progress. NOT_FOUND does
+    // not authorize inventing a new key: a delayed request might still arrive.
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`pharmacy:${facilityId}:${key}`}, 0))`,
+    );
+    const [found] = await tx
+      .select({
+        request: schema.pharmacyDispenseRequests,
+        dispensation: schema.pharmacyDispensations,
+      })
+      .from(schema.pharmacyDispenseRequests)
+      .innerJoin(
+        schema.pharmacyDispensations,
+        eq(schema.pharmacyDispensations.id, schema.pharmacyDispenseRequests.dispensationId),
+      )
+      .where(
+        and(
+          eq(schema.pharmacyDispenseRequests.tenantId, tenantId),
+          eq(schema.pharmacyDispenseRequests.facilityId, facilityId),
+          eq(schema.pharmacyDispenseRequests.idempotencyKey, key),
+        ),
+      )
+      .limit(1);
+    if (!found) return { status: 'NOT_FOUND' as const };
+    const dispense = found.dispensation;
+    if (dispense.tenantId !== tenantId || dispense.facilityId !== facilityId) {
+      throw new InventoryDomainError(
+        'DISPENSATION_REVIEW_REQUIRED',
+        'The recorded dispensing requires review.',
+        409,
+      );
+    }
+    return {
+      status: 'RECORDED' as const,
+      prescriptionId: dispense.prescriptionId,
+      quantity: dispense.quantityDispensed,
+      dispensationId: dispense.id,
+    };
+  });
 }
 
 /**
@@ -488,37 +1070,271 @@ export async function dispenseFefoScoped(
     throw new InventoryDomainError('PATIENT_NOT_FOUND', 'Patient not found.', 404);
   }
 
-  const itemId =
-    typeof input.itemId === 'number' && Number.isSafeInteger(input.itemId) ? input.itemId : null;
+  // A successful dispensing must identify the stock item actually handed out.
+  const itemId = parsePositiveInt(input.itemId, 'Stock item ID', 2_147_483_647);
 
   const prescriptionId =
-    typeof input.prescriptionId === 'number' && Number.isSafeInteger(input.prescriptionId)
-      ? input.prescriptionId
-      : null;
+    input.prescriptionId === undefined || input.prescriptionId === null
+      ? null
+      : parsePositiveInt(input.prescriptionId, 'Prescription ID', 2_147_483_647);
+
+  // A prescription supplies an encounter that is checked inside the
+  // transaction below. An unlinked dispense must independently establish
+  // that the patient is registered at, or has been seen at, this facility;
+  // membership in the same tenant alone does not grant facility access.
+  if (prescriptionId === null) {
+    await loadPatientInScope({ ...context, tenantId, facilityId }, patientId);
+  }
 
   const notes = typeof input.notes === 'string' ? input.notes.slice(0, 2000) : null;
-
-  const today = todayKey();
-
+  const batchNumber =
+    typeof input.batchNumber === 'string' && input.batchNumber.trim()
+      ? input.batchNumber.trim().slice(0, 120)
+      : null;
+  const key = typeof input.idempotencyKey === 'string' ? input.idempotencyKey.trim() : '';
+  if (!/^[A-Za-z0-9._:-]{8,128}$/.test(key)) {
+    throw new InventoryDomainError(
+      'IDEMPOTENCY_KEY_REQUIRED',
+      'Supply a unique idempotency key for each dispensing action and reuse it for retries.',
+      400,
+    );
+  }
+  const requestHash = createHash('sha256')
+    .update(
+      JSON.stringify({
+        tenantId,
+        facilityId,
+        patientId,
+        prescriptionId,
+        itemId,
+        quantity,
+        notes,
+        batchNumber,
+      }),
+    )
+    .digest('hex');
   return db.transaction(async (tx) => {
+    // Same-key requests serialize even when they refer to different prescriptions.
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`pharmacy:${facilityId}:${key}`}, 0))`,
+    );
+    const [priorRequest] = await tx
+      .select({
+        request: schema.pharmacyDispenseRequests,
+        dispensation: schema.pharmacyDispensations,
+      })
+      .from(schema.pharmacyDispenseRequests)
+      .innerJoin(
+        schema.pharmacyDispensations,
+        eq(schema.pharmacyDispensations.id, schema.pharmacyDispenseRequests.dispensationId),
+      )
+      .where(
+        and(
+          eq(schema.pharmacyDispenseRequests.tenantId, tenantId),
+          eq(schema.pharmacyDispenseRequests.facilityId, facilityId),
+          eq(schema.pharmacyDispenseRequests.idempotencyKey, key),
+        ),
+      )
+      .limit(1);
+    if (priorRequest) {
+      if (priorRequest.request.requestHash !== requestHash) {
+        throw new InventoryDomainError(
+          'IDEMPOTENCY_CONFLICT',
+          'This idempotency key was used for a different dispensing request.',
+          409,
+        );
+      }
+      if (
+        priorRequest.dispensation.tenantId !== tenantId ||
+        priorRequest.dispensation.facilityId !== facilityId ||
+        priorRequest.dispensation.patientId !== patientId ||
+        priorRequest.dispensation.prescriptionId !== prescriptionId ||
+        priorRequest.dispensation.itemId !== itemId ||
+        priorRequest.dispensation.quantityDispensed !== quantity
+      ) {
+        throw new InventoryDomainError(
+          'DISPENSATION_REVIEW_REQUIRED',
+          'The recorded dispensing requires review before replay.',
+          409,
+        );
+      }
+      const priorAllocations = await tx
+        .select({
+          batchId: schema.pharmacyDispenseAllocations.batchId,
+          batchNumber: schema.pharmacyDispenseAllocations.batchNumber,
+          expiryDate: schema.pharmacyDispenseAllocations.expiryDate,
+          quantity: schema.pharmacyDispenseAllocations.quantity,
+        })
+        .from(schema.pharmacyDispenseAllocations)
+        .where(eq(schema.pharmacyDispenseAllocations.dispensationId, priorRequest.dispensation.id))
+        .orderBy(asc(schema.pharmacyDispenseAllocations.id));
+      const [priorItem] = await tx
+        .select({ name: schema.inventoryItems.name })
+        .from(schema.inventoryItems)
+        .where(
+          and(
+            eq(schema.inventoryItems.id, itemId),
+            eq(schema.inventoryItems.facilityId, facilityId),
+          ),
+        )
+        .limit(1);
+      const [priorPrescription] =
+        prescriptionId === null
+          ? []
+          : await tx
+              .select()
+              .from(schema.medications)
+              .where(
+                and(
+                  eq(schema.medications.id, prescriptionId),
+                  eq(schema.medications.patientId, patientId),
+                ),
+              )
+              .limit(1);
+      if (
+        !priorItem ||
+        (prescriptionId !== null && !priorPrescription) ||
+        !['FEFO', 'untracked'].includes(priorRequest.request.stockTracking)
+      ) {
+        throw new InventoryDomainError(
+          'DISPENSATION_REVIEW_REQUIRED',
+          'The recorded dispensing requires review before replay.',
+          409,
+        );
+      }
+      return {
+        dispensation: priorRequest.dispensation,
+        stockTracking: priorRequest.request.stockTracking as 'FEFO' | 'untracked',
+        allocations: priorAllocations,
+        stockAfter: priorRequest.request.stockAfter,
+        replayed: true,
+        prescriptionComplete: prescriptionId === null || priorPrescription?.status === 'Dispensed',
+        billingContext: {
+          drugName: priorPrescription?.drugName ?? priorItem.name,
+          encounterId: priorPrescription?.encounterId ?? null,
+        },
+      };
+    }
+    // Freeze the effective facility/tenant timezone while selecting stock.
+    // Replays above use their original snapshot even if configuration changed.
+    const timezone = await facilityTimezone(facilityId, tenantId, tx, true);
     /*
      * Declared here, assigned once inside the branch below, and read only
      * inside it. The previous `| null = null` initialiser was never read
      * on any path, which is what the linter reported.
      */
     let item: typeof schema.inventoryItems.$inferSelect;
-    /*
-     * The empty array is NOT dead: when the dispense has no tracked item
-     * the `if` below is skipped entirely and this value is what the
-     * result reports. TypeScript agrees (TS2454 without it); the
-     * lint rule cannot see the branch.
-     */
-
+    let prescription: typeof schema.medications.$inferSelect | null = null;
+    let remainingAfter: number | null = null;
+    if (prescriptionId !== null) {
+      const [foundPrescription] = await tx
+        .select()
+        .from(schema.medications)
+        .where(eq(schema.medications.id, prescriptionId))
+        .limit(1)
+        .for('update');
+      if (!foundPrescription || foundPrescription.patientId !== patientId) {
+        throw new InventoryDomainError(
+          'PRESCRIPTION_NOT_FOUND',
+          'Prescription not found in the authorized facility.',
+          404,
+        );
+      }
+      const [encounter] = await tx
+        .select({ id: schema.encounters.id })
+        .from(schema.encounters)
+        .where(
+          and(
+            eq(schema.encounters.id, foundPrescription.encounterId),
+            eq(schema.encounters.patientId, patientId),
+            eq(schema.encounters.tenantId, tenantId),
+            eq(schema.encounters.facilityId, facilityId),
+          ),
+        )
+        .limit(1);
+      if (!encounter) {
+        throw new InventoryDomainError(
+          'PRESCRIPTION_NOT_FOUND',
+          'Prescription not found in the authorized facility.',
+          404,
+        );
+      }
+      if (!['Prescribed', 'Partially Dispensed'].includes(foundPrescription.status ?? '')) {
+        throw new InventoryDomainError(
+          'PRESCRIPTION_ALREADY_DISPENSED',
+          'Prescription is not available for dispensing.',
+          409,
+        );
+      }
+      const prior = await tx
+        .select({
+          quantity: schema.pharmacyDispensations.quantityDispensed,
+          patientId: schema.pharmacyDispensations.patientId,
+          tenantId: schema.pharmacyDispensations.tenantId,
+          facilityId: schema.pharmacyDispensations.facilityId,
+          itemId: schema.pharmacyDispensations.itemId,
+        })
+        .from(schema.pharmacyDispensations)
+        .where(eq(schema.pharmacyDispensations.prescriptionId, prescriptionId));
+      const prescribed = foundPrescription.quantity;
+      if (
+        !Number.isSafeInteger(prescribed) ||
+        !prescribed ||
+        prescribed <= 0 ||
+        prior.some(
+          (row) =>
+            !Number.isSafeInteger(row.quantity) ||
+            row.quantity <= 0 ||
+            row.patientId !== patientId ||
+            row.tenantId !== tenantId ||
+            row.facilityId !== facilityId ||
+            !row.itemId,
+        )
+      ) {
+        throw new InventoryDomainError(
+          'PRESCRIPTION_QUANTITY_REVIEW',
+          'Prescription and previous dispensations require reconciliation.',
+          409,
+        );
+      }
+      const alreadyDispensed = prior.reduce((total, row) => total + row.quantity, 0);
+      if (
+        (foundPrescription.status === 'Prescribed' && alreadyDispensed !== 0) ||
+        (foundPrescription.status === 'Partially Dispensed' &&
+          (alreadyDispensed <= 0 || alreadyDispensed >= prescribed))
+      ) {
+        throw new InventoryDomainError(
+          'PRESCRIPTION_QUANTITY_REVIEW',
+          'Prescription status and dispensing history require reconciliation.',
+          409,
+        );
+      }
+      if (prior.some((row) => row.itemId !== itemId)) {
+        throw new InventoryDomainError(
+          'PRESCRIPTION_PRODUCT_REVIEW',
+          'A different product requires an authorized substitution workflow.',
+          409,
+        );
+      }
+      if (quantity > prescribed - alreadyDispensed) {
+        throw new InventoryDomainError(
+          'PRESCRIPTION_QUANTITY_EXCEEDED',
+          'Quantity exceeds the remaining prescribed amount.',
+          409,
+        );
+      }
+      remainingAfter = prescribed - alreadyDispensed - quantity;
+      prescription = foundPrescription;
+    }
     let allocations: DispenseResult['allocations'] = [];
+    /* Lot id -> unit cost in cents, captured while the lots are still in hand. */
+    const lotCostCents = new Map<number, number>();
     let stockTracking: 'FEFO' | 'untracked' = 'untracked';
     let stockAfter: number | null = null;
+    let occurredAt: Date;
+    let dispensingDate: string;
 
-    if (itemId !== null) {
+    {
       const [found] = await tx
         .select()
         .from(schema.inventoryItems)
@@ -528,13 +1344,25 @@ export async function dispenseFefoScoped(
             eq(schema.inventoryItems.facilityId, facilityId),
           ),
         )
-        .limit(1);
+        .limit(1)
+        .for('update');
 
-      if (!found) {
-        throw new InventoryDomainError('ITEM_NOT_FOUND', 'Stock item not found.', 404);
+      if (!found || found.isActive !== true) {
+        throw new InventoryDomainError('ITEM_NOT_FOUND', 'Active stock item not found.', 404);
       }
 
+      // Compute the local day after acquiring the stock lock, rather than
+      // using the server's timezone or a pre-lock date near midnight.
+      occurredAt = new Date();
+      dispensingDate = calendarDateInZone(timezone, occurredAt);
       item = found;
+      if (item.currentStock === null || item.currentStock < quantity) {
+        throw new InventoryDomainError(
+          'INSUFFICIENT_STOCK',
+          'Recorded stock is insufficient or requires reconciliation.',
+          409,
+        );
+      }
 
       const lots = await tx
         .select({
@@ -542,15 +1370,24 @@ export async function dispenseFefoScoped(
           batchNumber: schema.inventoryBatches.batchNumber,
           expiryDate: schema.inventoryBatches.expiryDate,
           quantityRemaining: schema.inventoryBatches.quantityRemaining,
+          /* The cost the lot was received at, so the issue can be valued. */
+          costPerUnit: schema.inventoryBatches.costPerUnit,
         })
         .from(schema.inventoryBatches)
         .where(eq(schema.inventoryBatches.itemId, item.id))
         .for('update');
 
-      if (lots.length > 0) {
+      if (lots.length === 0) {
+        throw new InventoryDomainError(
+          'BATCH_EXPIRY_EVIDENCE_REQUIRED',
+          'Stock has no recorded batch and expiry. Reconcile the physical stock before dispensing; receiving new stock is not a conversion of existing stock.',
+          409,
+        );
+      }
+      {
         stockTracking = 'FEFO';
 
-        const plan = planFefo(lots, quantity, today);
+        const plan = planFefo(lots, quantity, dispensingDate);
 
         if (plan.shortfall > 0) {
           const detail = {
@@ -571,6 +1408,14 @@ export async function dispenseFefoScoped(
         }
 
         allocations = plan.allocations;
+        for (const allocation of plan.allocations) {
+          const lot = lots.find((candidate) => candidate.id === allocation.batchId);
+          const parsed = lot?.costPerUnit === null ? 0 : Number(lot?.costPerUnit ?? 0);
+          lotCostCents.set(
+            allocation.batchId,
+            Number.isFinite(parsed) ? Math.round(parsed * 100) : 0,
+          );
+        }
 
         for (const allocation of plan.allocations) {
           await tx
@@ -609,10 +1454,18 @@ export async function dispenseFefoScoped(
         batchNumber:
           allocations.length > 0
             ? allocations.map((allocation) => allocation.batchNumber).join(', ')
-            : typeof input.batchNumber === 'string' && input.batchNumber.trim()
-              ? input.batchNumber.trim().slice(0, 120)
-              : null,
+            : batchNumber,
         quantityDispensed: quantity,
+        // A zero/invalid value is not an audited free service. Preserve it
+        // as unknown so a later price edit cannot silently reprice this event.
+        sellingPriceSnapshot:
+          (parseMoneyToCents(item.sellingPrice) ?? 0) > 0 ? item.sellingPrice : null,
+        itemCodeSnapshot: item.itemCode,
+        itemNameSnapshot: item.name,
+        itemUnitSnapshot: item.unit,
+        dispensingDateSnapshot: dispensingDate!,
+        dispensingTimezoneSnapshot: timezone,
+        dispensedAt: occurredAt!,
         dispensedBy,
         notes,
       })
@@ -621,7 +1474,7 @@ export async function dispenseFefoScoped(
     if (prescriptionId !== null) {
       await tx
         .update(schema.medications)
-        .set({ status: 'Dispensed' })
+        .set({ status: remainingAfter === 0 ? 'Dispensed' : 'Partially Dispensed' })
         .where(
           and(
             eq(schema.medications.id, prescriptionId),
@@ -630,7 +1483,138 @@ export async function dispenseFefoScoped(
         );
     }
 
-    return { dispensation, stockTracking, allocations, stockAfter };
+    if (allocations.length) {
+      await tx.insert(schema.pharmacyDispenseAllocations).values(
+        allocations.map((allocation) => ({
+          dispensationId: dispensation.id,
+          batchId: allocation.batchId,
+          batchNumber: allocation.batchNumber,
+          expiryDate: allocation.expiryDate,
+          quantity: allocation.quantity,
+        })),
+      );
+    }
+    await tx.insert(schema.pharmacyDispenseRequests).values({
+      tenantId,
+      facilityId,
+      idempotencyKey: key,
+      requestHash,
+      dispensationId: dispensation.id,
+      stockTracking,
+      stockAfter,
+    });
+    if (stockAfter !== null) {
+      const movementId = await appendStockMovement(tx, {
+        tenantId,
+        facilityId,
+        itemId: item.id,
+        batchId: null,
+        movementType: 'DISPENSE',
+        quantityDelta: -quantity,
+        stockAfter,
+        referenceType: 'PHARMACY_DISPENSATION',
+        referenceId: String(dispensation.id),
+        notes: allocations.length
+          ? `FEFO from ${allocations.map((a) => a.batchNumber).join(', ')}.`
+          : null,
+        movementDate: dispensingDate!,
+        actorUserId: context.userId,
+      });
+
+      /*
+       * Cost the draw from the lots FEFO actually took, in the order it took
+       * them. Nothing is posted for a facility on the expense basis; a lot
+       * with no recorded cost contributes no value rather than a guess.
+       */
+      const accountingScope = {
+        tenantId,
+        facilityId,
+        actorUserId: context.userId,
+      };
+      /*
+       * The lots this draw consumed are already preserved, per lot, in
+       * `pharmacy_dispense_allocations`; this only needs their cost. Posting
+       * runs on this transaction's own connection, so a dispensation and its
+       * journal commit or roll back together.
+       */
+      const lotAllocations = allocations.map((allocation) => ({
+        batchId: allocation.batchId,
+        quantity: allocation.quantity,
+        unitCostCents: lotCostCents.get(allocation.batchId) ?? 0,
+      }));
+      await postStockIssue(transactionSqlClient(tx), accountingScope, {
+        movementId,
+        entryDate: dispensingDate!,
+        description: `Dispensed ${item.name}`,
+        costCents: allocationsValueCents(lotAllocations),
+        kind: 'CONSUMPTION',
+      });
+    }
+
+    await tx.insert(schema.auditLogs).values({
+      tenantId,
+      facilityId,
+      userId: String(context.userId),
+      action: 'CREATE',
+      resource: 'PharmacyDispensation',
+      resourceId: String(dispensation.id),
+      details: `Dispensation recorded; stock tracking: ${stockTracking}.`,
+    });
+
+    // The clinical/stock transaction also records the durable billing work.
+    // A process crash after commit cannot make the charge disappear: the
+    // existing charge-attempt worklist can retry this source. This is not a
+    // price and does not claim that billing has completed.
+    const drugName = prescription?.drugName ?? item.name;
+    const [billingWork] = await tx
+      .insert(schema.billingChargeAttempts)
+      .values({
+        tenantId,
+        facilityId,
+        patientId,
+        encounterId: prescription?.encounterId ?? null,
+        sourceType: 'PHARMACY',
+        sourceId: dispensation.id,
+        itemType: 'Pharmacy',
+        description: drugName,
+        codes: [],
+        serviceKeys: [],
+        family: 'PHARMACY',
+        serviceName: drugName,
+        serviceRefType: 'PHARMACY',
+        serviceRefId: item.id,
+        serviceRefCode: item.itemCode,
+        quantity,
+        fallbackUnitPrice: null,
+        reason: 'BILLING_PENDING',
+        detail: 'Dispensing recorded; automatic billing has not completed.',
+        codesTried: [],
+        status: 'PENDING',
+        attempts: 0,
+      })
+      .returning({ id: schema.billingChargeAttempts.id });
+    if (!billingWork) throw new Error('PHARMACY_BILLING_WORK_NOT_RECORDED');
+    await tx.insert(schema.auditLogs).values({
+      tenantId,
+      facilityId,
+      userId: String(context.userId),
+      action: 'CREATE',
+      resource: 'BillingChargeAttempt',
+      resourceId: String(billingWork.id),
+      details: 'Billing work recorded with pharmacy dispensation; no price or payment is implied.',
+    });
+    return {
+      dispensation,
+      stockTracking,
+      allocations,
+      stockAfter,
+      replayed: false,
+      prescriptionComplete: prescriptionId === null || remainingAfter === 0,
+      billingContext: {
+        drugName: prescription?.drugName ?? item.name,
+        encounterId: prescription?.encounterId ?? null,
+      },
+    };
   });
 }
 
@@ -645,7 +1629,7 @@ export async function getItemBatchStockScoped(
 ) {
   if (itemIds.length === 0) return [];
 
-  const { facilityId } = await resolveFacility(context, requestedFacilityId);
+  const { facilityId, tenantId } = await resolveFacility(context, requestedFacilityId);
 
   const where = and(
     eq(schema.inventoryItems.facilityId, facilityId),
@@ -662,7 +1646,7 @@ export async function getItemBatchStockScoped(
     .innerJoin(schema.inventoryItems, eq(schema.inventoryBatches.itemId, schema.inventoryItems.id))
     .where(where);
 
-  const today = todayKey();
+  const today = calendarDateInZone(await facilityTimezone(facilityId, tenantId));
 
   const byItem = new Map<number, { usable: number; expired: number; batches: number }>();
 

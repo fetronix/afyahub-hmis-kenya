@@ -19,7 +19,9 @@ import {
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { appSource } from './support/schema-source.ts';
+import { api } from '../api/client.ts';
 
 function readRepoFile(relativePath: string): string {
   return readFileSync(resolve(process.cwd(), relativePath), 'utf8');
@@ -190,7 +192,7 @@ describe('Reporting — revenue, occupancy and length of stay', () => {
   });
 
   it('8. WIRING', async () => {
-    const app = readRepoFile('src/app.ts');
+    const app = appSource();
     const wiring = readRepoFile('src/routes/index.ts');
 
     /*
@@ -214,8 +216,12 @@ describe('Reporting — revenue, occupancy and length of stay', () => {
 
       const window = app.slice(index, index + 300);
       expect(
-        window.includes("requirePermission('reports.read')"),
-        `${route} requires reports.read`,
+        window.includes("requirePermission('reports.read',"),
+        `${route} requires reports.read and source-domain permissions`,
+      ).toBe(true);
+      expect(
+        window.includes('requireReportSourceModules'),
+        `${route} checks its enabled and hidden source modules`,
       ).toBe(true);
       expect(window.includes('requireAuthContext'), `${route} resolves the auth context`).toBe(
         true,
@@ -241,20 +247,41 @@ describe('Reporting — revenue, occupancy and length of stay', () => {
   });
 
   it('Ui Wiring', async () => {
-    const client = readRepoFile('src/api/client.ts');
+    const requestedUrls: string[] = [];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      requestedUrls.push(String(input));
+      return new Response(JSON.stringify({}), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
 
-    expect(client.includes('getOperationsReport'), 'client exposes the operations report').toBe(
-      true,
-    );
-    expect(client.includes('getOccupancyTrend'), 'client exposes the occupancy trend').toBe(true);
-    expect(
-      client.includes("params.set('from', range.from)"),
-      'client sends the revenue period start',
-    ).toBe(true);
+    try {
+      await api.getOperationsReport(10);
+      await api.getOccupancyTrend(10, 30);
+      await api.getRevenueReport(10, { from: '2026-10-01', to: '2026-10-28' });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+
+    expect(requestedUrls).toEqual([
+      '/api/reporting/operations?facilityId=10',
+      '/api/reporting/occupancy-trend?facilityId=10&days=30',
+      '/api/analytics/revenue?facilityId=10&from=2026-10-01&to=2026-10-28',
+    ]);
 
     const app = readRepoFile('src/App.tsx');
     expect(app.includes("case 'analytics':"), 'App routes the analytics module').toBe(true);
-    expect(app.includes('<ReportsModule />'), 'App mounts the reports module').toBe(true);
+    expect(app.includes('<ReportCentre />'), 'App mounts the reporting centre').toBe(true);
+    const centre = readRepoFile('src/components/modules/report-centre/ReportCentre.tsx');
+    expect(
+      centre.includes('<ReportsModule />'),
+      'the existing analytics overview remains available inside the centre',
+    ).toBe(true);
+    expect(
+      centre.includes('showOverview && canOverview'),
+      'legacy analytics requires source permissions before rendering',
+    ).toBe(true);
 
     const sidebar = readRepoFile('src/components/Sidebar.tsx');
     expect(sidebar.includes("id: 'analytics'"), 'sidebar lists Reports & Revenue').toBe(true);
@@ -264,10 +291,7 @@ describe('Reporting — revenue, occupancy and length of stay', () => {
     ).toBe(true);
 
     const header = readRepoFile('src/components/Header.tsx');
-    expect(
-      header.includes("'Reports, Revenue & Bed Utilisation'"),
-      'header titles the module',
-    ).toBe(true);
+    expect(header.includes("analytics: 'Reporting Centre'"), 'header titles the module').toBe(true);
 
     const module = readRepoFile('src/components/modules/ReportsModule.tsx');
 

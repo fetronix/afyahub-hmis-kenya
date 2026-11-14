@@ -1,0 +1,2127 @@
+/**
+ * JaliCare HMIS
+ * SHA eClaims Preparation, Validation, Submission, Status Tracking & Resubmission Service
+ *
+ * Pulls clinical & billing evidence from existing JaliCare OPD, IPD, Lab,
+ * Radiology, Pharmacy, Tariffs, and Invoices without mutating original
+ * accounting records. Enforces server-side state machine transitions and
+ * decimal-safe cents arithmetic throughout.
+ */
+
+import { randomUUID } from 'node:crypto';
+import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
+import { db } from '../../db/index.ts';
+import * as schema from '../../db/schema.ts';
+import {
+  lockMutableClaim,
+  reserveClaimDispatch,
+  releaseClaimDispatch,
+  markClaimDispatchUncertain,
+} from '../claims/claim-dispatch-guard.ts';
+import { openPatientIdentifiers } from '../../security/patient-identifiers.ts';
+import {
+  defaultShaGatewayAdapter,
+  type PayerGatewayAdapter,
+} from '../../integrations/sha/sha.adapter.ts';
+import {
+  ALLOWED_PRACTITIONER_REGULATORS,
+  buildShaFhirBundle,
+  evaluateShaInterventionCombinations,
+  isValidShaCatalogueCode,
+  validateShaFhirBundle,
+  type PractitionerRegulator,
+} from '../../integrations/sha/sha.fhir.ts';
+import { getFacilityPayerConfig } from './configuration.service.ts';
+import { assertClaimInvoiceStillValid, loadClaimInvoiceFacts } from '../core/claim-invoice-gate.ts';
+import {
+  assertEclaimTransition,
+  canTransitionEclaimStatus,
+  formatCents,
+  InsuranceDomainError,
+  isDateWithinWindow,
+  isConsistentShaDispatch,
+  loadScopedFacility,
+  loadTenantPatient,
+  multiplyMoneyCents,
+  recordInsuranceAuditEvent,
+  requireMoneyCents,
+  requireRecordedMoneyCents,
+  type EclaimStatus,
+  type InsuranceActorScope,
+} from './contracts.ts';
+
+const shaGuardError = (code: string, message: string, status: number) =>
+  new InsuranceDomainError(code, message, status);
+function shaGuardScope(
+  scope: InsuranceActorScope,
+  claim: { id: number; status: string; dispatchRevision: number },
+) {
+  return {
+    workflow: 'SHA' as const,
+    tenantId: scope.tenantId,
+    facilityId: scope.facilityId,
+    claimId: claim.id,
+    revision: claim.dispatchRevision,
+    status: claim.status,
+    actorUserId: scope.userId,
+    actorUserUid: scope.userUid,
+  };
+}
+
+export interface ClaimValidationIssue {
+  code: string;
+  severity: 'ERROR' | 'WARNING';
+  field?: string;
+  message: string;
+}
+
+export interface ClaimValidationContext {
+  hasPatientShaOrNationalId: boolean;
+  facilityRegistryCode: string | null;
+  requireVerifiedEligibility: boolean;
+  eligibilityOutcome: string | null;
+  isBeneficiaryAlive?: boolean | null;
+  eligibilityCheckedAt: Date | string | null;
+  eligibilityMaxAgeHours: number;
+  billableStart: string;
+  billableEnd: string;
+  subType: string;
+  hasAdmissionRecord: boolean;
+  hasDischargeDate: boolean;
+  diagnosesCount: number;
+  diagnoses?: Array<{ code: string; display?: string; system?: string; type?: string }>;
+  isPhcClaim: boolean;
+  totalClaimedCents: number;
+  hasDuplicateActiveInvoiceClaim: boolean;
+  items: Array<{
+    sequence: number;
+    description: string;
+    payerServiceCode: string | null;
+    servicedStart: string;
+    servicedEnd: string;
+    quantity: number;
+    claimedUnitCents: number;
+    claimedNetCents: number;
+    requiresPreauth: boolean;
+    preauthReference: string | null;
+    preauthApprovedAndValid: boolean;
+  }>;
+}
+
+/**
+ * Pure, deterministic pre-submission validation rule evaluator.
+ */
+export function evaluateClaimValidationRules(
+  ctx: ClaimValidationContext,
+  nowMs = Date.now(),
+): ClaimValidationIssue[] {
+  const issues: ClaimValidationIssue[] = [];
+
+  if (!ctx.hasPatientShaOrNationalId) {
+    issues.push({
+      code: 'MISSING_PATIENT_IDENTIFIER',
+      severity: 'ERROR',
+      field: 'patientId',
+      message:
+        'Patient must have a SHA Member Number, National ID, or Client Registry ID recorded.',
+    });
+  }
+
+  if (!ctx.facilityRegistryCode || ctx.facilityRegistryCode.trim().length < 3) {
+    issues.push({
+      code: 'MISSING_FACILITY_REGISTRY_CODE',
+      severity: 'ERROR',
+      field: 'facilityRegistryCode',
+      message: 'Facility Registry Code (FID / MFL code) is missing in SHA payer configuration.',
+    });
+  }
+
+  if (ctx.isBeneficiaryAlive === false) {
+    issues.push({
+      code: 'BENEFICIARY_DECEASED',
+      severity: 'ERROR',
+      field: 'eligibilityVerificationId',
+      message:
+        'Beneficiary is marked deceased in DHA Client Registry (isAlive=false); SHA claims cannot be submitted.',
+    });
+  }
+
+  if (ctx.requireVerifiedEligibility) {
+    if (!ctx.eligibilityOutcome) {
+      issues.push({
+        code: 'MISSING_ELIGIBILITY_VERIFICATION',
+        severity: 'ERROR',
+        field: 'eligibilityVerificationId',
+        message: 'Patient SHA eligibility has not been verified for this claim.',
+      });
+    } else if (ctx.eligibilityOutcome !== 'Eligible') {
+      issues.push({
+        code: 'PATIENT_NOT_CONFIRMED_ELIGIBLE',
+        severity: 'ERROR',
+        field: 'eligibilityVerificationId',
+        message: `Patient SHA eligibility outcome is "${ctx.eligibilityOutcome}"; only confirmed Eligible claims can be submitted.`,
+      });
+    } else if (ctx.eligibilityCheckedAt) {
+      const checkedMs = new Date(ctx.eligibilityCheckedAt).getTime();
+      const ageHours = (nowMs - checkedMs) / (1000 * 60 * 60);
+      if (Number.isFinite(ageHours) && ageHours > ctx.eligibilityMaxAgeHours) {
+        issues.push({
+          code: 'STALE_ELIGIBILITY_VERIFICATION',
+          severity: 'WARNING',
+          field: 'eligibilityVerificationId',
+          message: `Eligibility check is ${Math.round(ageHours)}h old (configured freshness window: ${ctx.eligibilityMaxAgeHours}h). Consider rechecking.`,
+        });
+      }
+    }
+  }
+
+  if (ctx.billableStart > ctx.billableEnd) {
+    issues.push({
+      code: 'INVALID_BILLABLE_PERIOD',
+      severity: 'ERROR',
+      field: 'billableStart',
+      message: `billableStart (${ctx.billableStart}) cannot be after billableEnd (${ctx.billableEnd}).`,
+    });
+  }
+
+  if (ctx.diagnosesCount === 0) {
+    issues.push({
+      code: 'MISSING_DIAGNOSIS',
+      severity: 'ERROR',
+      field: 'diagnosesSnapshot',
+      message:
+        'At least one coded clinical diagnosis (ICD-11 / ICD-10) is required for SHA claims.',
+    });
+  } else if (Array.isArray(ctx.diagnoses)) {
+    for (const diag of ctx.diagnoses) {
+      if (
+        !diag.code?.trim() ||
+        !diag.display?.trim() ||
+        !['ICD-10', 'ICD-11'].includes(diag.system ?? '') ||
+        !['principal', 'secondary'].includes(diag.type ?? '')
+      ) {
+        issues.push({
+          code: 'INCOMPLETE_DIAGNOSIS_CODING',
+          severity: 'ERROR',
+          field: 'diagnosesSnapshot',
+          message:
+            'Each diagnosis needs a recorded code, description, ICD-10 or ICD-11 system, and principal or secondary type.',
+        });
+      }
+      if (
+        diag.system?.toLowerCase().includes('snomed') ||
+        diag.code?.toLowerCase().includes('snomed')
+      ) {
+        issues.push({
+          code: 'PROHIBITED_SNOMED_CT',
+          severity: 'ERROR',
+          field: 'diagnosesSnapshot',
+          message:
+            'SNOMED CT diagnosis coding is prohibited by Kenya eClaims FHIR IG; use ICD-11 (or approved transitional ICD-10).',
+        });
+      }
+    }
+  }
+
+  if (ctx.subType === 'ip') {
+    if (!ctx.hasAdmissionRecord) {
+      issues.push({
+        code: 'MISSING_IPD_ADMISSION',
+        severity: 'ERROR',
+        field: 'subType',
+        message: 'Inpatient (IP) eClaims require a linked inpatient admission/episode record.',
+      });
+    } else if (!ctx.hasDischargeDate) {
+      issues.push({
+        code: 'MISSING_IPD_DISCHARGE_DATE',
+        severity: 'WARNING',
+        field: 'billableEnd',
+        message:
+          'Inpatient admission has no discharge date yet; interim claim submission may be queried.',
+      });
+    }
+  }
+
+  if (ctx.hasDuplicateActiveInvoiceClaim) {
+    issues.push({
+      code: 'DUPLICATE_INVOICE_CLAIM',
+      severity: 'ERROR',
+      field: 'invoiceId',
+      message: 'Another active SHA eClaim already exists for this JaliCare invoice.',
+    });
+  }
+
+  if (ctx.items.length === 0) {
+    issues.push({
+      code: 'EMPTY_CLAIM_ITEMS',
+      severity: 'ERROR',
+      field: 'items',
+      message: 'Claim package must contain at least one billable service or pharmacy line item.',
+    });
+  }
+
+  let summedCents = 0;
+  const mappedCodes: string[] = [];
+  for (const item of ctx.items) {
+    if (!item.payerServiceCode || item.payerServiceCode.trim().length === 0) {
+      issues.push({
+        code: 'UNMAPPED_SERVICE_CODE',
+        severity: 'ERROR',
+        field: `items[${item.sequence}]`,
+        message: `Line #${item.sequence} ("${item.description}") is not mapped to an SHA intervention code.`,
+      });
+    } else if (!isValidShaCatalogueCode(item.payerServiceCode)) {
+      issues.push({
+        code: 'INVALID_SHA_SERVICE_CODE',
+        severity: 'ERROR',
+        field: `items[${item.sequence}]`,
+        message: `Line #${item.sequence} code "${item.payerServiceCode}" is not a valid SHA / PMF intervention catalogue code (SNOMED CT codes are prohibited).`,
+      });
+    } else {
+      mappedCodes.push(item.payerServiceCode.trim().toUpperCase());
+    }
+
+    if (item.servicedStart < ctx.billableStart || item.servicedEnd > ctx.billableEnd) {
+      issues.push({
+        code: 'ITEM_DATE_OUTSIDE_BILLABLE_PERIOD',
+        severity: 'ERROR',
+        field: `items[${item.sequence}].servicedPeriod`,
+        message: `Line #${item.sequence} service dates (${item.servicedStart}..${item.servicedEnd}) fall outside claim billablePeriod (${ctx.billableStart}..${ctx.billableEnd}).`,
+      });
+    }
+
+    const expectedLineNet = item.claimedUnitCents * item.quantity;
+    if (!ctx.isPhcClaim && expectedLineNet !== item.claimedNetCents) {
+      issues.push({
+        code: 'LINE_TOTAL_MISMATCH',
+        severity: 'ERROR',
+        field: `items[${item.sequence}].claimedNetAmount`,
+        message: `Line #${item.sequence} net amount (${formatCents(item.claimedNetCents)}) does not equal unitPrice * quantity (${formatCents(expectedLineNet)}).`,
+      });
+    }
+    summedCents += item.claimedNetCents;
+
+    if (item.requiresPreauth && (!item.preauthReference || !item.preauthApprovedAndValid)) {
+      issues.push({
+        code: 'MISSING_OR_INVALID_PREAUTH',
+        severity: 'ERROR',
+        field: `items[${item.sequence}].preauthReference`,
+        message: `Line #${item.sequence} ("${item.description}") requires an active APPROVED SHA preauthorization within its validity window.`,
+      });
+    }
+  }
+
+  const combinationEval = evaluateShaInterventionCombinations(mappedCodes);
+  if (!combinationEval.valid) {
+    for (const conflict of combinationEval.violations) {
+      issues.push({
+        code: 'SHA_INTERVENTION_COMBINATION_CONFLICT',
+        severity: 'ERROR',
+        field: 'items',
+        message: conflict,
+      });
+    }
+  }
+
+  if (ctx.isPhcClaim && ctx.totalClaimedCents !== 0) {
+    issues.push({
+      code: 'PHC_NON_ZERO_TOTAL',
+      severity: 'ERROR',
+      field: 'totalClaimedAmount',
+      message: 'Primary Healthcare (PHC) claims must carry a total claimed amount of KES 0.00.',
+    });
+  } else if (!ctx.isPhcClaim && summedCents !== ctx.totalClaimedCents) {
+    issues.push({
+      code: 'CLAIM_TOTAL_MISMATCH',
+      severity: 'ERROR',
+      field: 'totalClaimedAmount',
+      message: `Claim header total (${formatCents(ctx.totalClaimedCents)}) does not match sum of line items (${formatCents(summedCents)}).`,
+    });
+  }
+
+  return issues;
+}
+
+async function nextEclaimNumber(): Promise<string> {
+  const res = await db.execute(sql`SELECT nextval('sha_eclaim_number_seq') AS seq`);
+  const rows = (res as unknown as { rows?: Array<{ seq: string | number }> }).rows ?? [];
+  const seq = Number(rows[0]?.seq ?? Date.now() % 1_000_000);
+  return `ECLM-SHA-${String(seq).padStart(6, '0')}`;
+}
+
+export interface PrepareShaClaimInput {
+  invoiceId: number;
+  encounterId?: number | null;
+  eligibilityVerificationId?: number | null;
+  preauthorizationId?: number | null;
+  authorizationId?: number | null;
+  consentToken?: string | null;
+  submissionProtocol?: 'FHIR_BUNDLE' | 'HIE_VIRTUAL_CLAIM';
+  hieVirtualClaimId?: string | null;
+  dischargeReason?: 'RECOVERED' | 'REFERRED' | 'ABSCONDED' | 'DECEASED' | 'OTHER' | null;
+  practitionerRegNumber?: string | null;
+  practitionerRegulator?: string | null;
+  payerCode?: string;
+  schemeCode?: string;
+  claimType?: 'institutional' | 'pharmacy' | 'professional';
+  subType?: 'op' | 'ip';
+  isPhcClaim?: boolean;
+  patientCopayAmount?: string | number;
+  diagnosesOverride?: Array<{ code: string; display: string; system?: string; type?: string }>;
+}
+
+export async function prepareShaClaim(scope: InsuranceActorScope, input: PrepareShaClaimInput) {
+  await loadScopedFacility(scope);
+  const payerCode = (input.payerCode ?? 'SHA').trim().toUpperCase();
+
+  // 1. Load JaliCare invoice & verify tenant/facility ownership (never mutate invoice!)
+  const [invoice] = await db
+    .select()
+    .from(schema.billingInvoices)
+    .where(
+      and(
+        eq(schema.billingInvoices.id, input.invoiceId),
+        eq(schema.billingInvoices.tenantId, scope.tenantId),
+        eq(schema.billingInvoices.facilityId, scope.facilityId),
+      ),
+    )
+    .limit(1);
+
+  if (!invoice) {
+    throw new InsuranceDomainError(
+      'INVOICE_NOT_FOUND',
+      'Selected JaliCare invoice does not exist in this facility.',
+      404,
+    );
+  }
+
+  /*
+   * A claim is a statement about a fixed set of lines and a fixed total. Read
+   * the frozen basis here, before anything else is built, so a draft or voided
+   * invoice cannot become a claim and the claim records exactly what was
+   * claimed. See ../core/claim-invoice-gate.ts.
+   */
+  const claimInvoice = await loadClaimInvoiceFacts({
+    tenantId: scope.tenantId,
+    facilityId: scope.facilityId,
+    invoice,
+    makeError: (code, message, status) => new InsuranceDomainError(code, message, status),
+  });
+
+  // Prevent duplicate active eClaim on the same invoice + payer
+  const existingClaims = await db
+    .select()
+    .from(schema.shaEclaims)
+    .where(
+      and(
+        eq(schema.shaEclaims.invoiceId, invoice.id),
+        eq(schema.shaEclaims.payerCode, payerCode),
+        ne(schema.shaEclaims.status, 'CANCELLED'),
+      ),
+    );
+
+  if (existingClaims.length > 0) {
+    throw new InsuranceDomainError(
+      'DUPLICATE_INVOICE_CLAIM',
+      `An active ${payerCode} eClaim (${existingClaims[0].claimNumber}, status ${existingClaims[0].status}) already exists for invoice ${invoice.invoiceNumber}.`,
+      409,
+    );
+  }
+
+  const patient = await loadTenantPatient(scope.tenantId, invoice.patientId, scope.facilityId);
+  const invoiceItems = await db
+    .select()
+    .from(schema.billingItems)
+    .where(eq(schema.billingItems.invoiceId, invoice.id))
+    .orderBy(asc(schema.billingItems.id));
+
+  if (invoiceItems.length === 0) {
+    throw new InsuranceDomainError(
+      'EMPTY_INVOICE',
+      `Invoice ${invoice.invoiceNumber} has no billable line items to assemble into an eClaim.`,
+      400,
+    );
+  }
+
+  // 2. Resolve clinical encounter, diagnoses, procedures, lab, radiology, pharmacy & IPD admission
+  const effectiveEncounterId = input.encounterId ?? invoice.encounterId ?? null;
+  let encounter: typeof schema.encounters.$inferSelect | null = null;
+  if (effectiveEncounterId) {
+    const [enc] = await db
+      .select()
+      .from(schema.encounters)
+      .where(
+        and(
+          eq(schema.encounters.id, effectiveEncounterId),
+          eq(schema.encounters.tenantId, scope.tenantId),
+          eq(schema.encounters.facilityId, scope.facilityId),
+          eq(schema.encounters.patientId, patient.id),
+        ),
+      )
+      .limit(1);
+    if (!enc || (invoice.encounterId && enc.id !== invoice.encounterId))
+      throw new InsuranceDomainError(
+        'ENCOUNTER_MISMATCH',
+        'Encounter must belong to the patient, facility and invoice.',
+        404,
+      );
+    encounter = enc;
+  }
+  if (!encounter)
+    throw new InsuranceDomainError(
+      'ENCOUNTER_REQUIRED',
+      'An invoice-linked clinical encounter is required for an SHA claim.',
+      400,
+    );
+
+  const [admission] = await db
+    .select()
+    .from(schema.admissions)
+    .where(
+      and(
+        eq(schema.admissions.tenantId, scope.tenantId),
+        eq(schema.admissions.facilityId, scope.facilityId),
+        eq(schema.admissions.patientId, patient.id),
+        eq(schema.admissions.encounterId, encounter.id),
+      ),
+    )
+    .orderBy(desc(schema.admissions.id))
+    .limit(1);
+
+  const subType: 'op' | 'ip' =
+    input.subType ??
+    (encounter?.encounterType === 'INPATIENT' ||
+    invoiceItems.some((i) => i.sourceType === 'ADMISSION' || i.sourceType === 'BED_DAY')
+      ? 'ip'
+      : 'op');
+
+  const claimType: 'institutional' | 'pharmacy' | 'professional' =
+    input.claimType ??
+    (invoiceItems.every((i) => i.sourceType === 'PHARMACY' || i.itemType === 'Pharmacy')
+      ? 'pharmacy'
+      : 'institutional');
+
+  // Gather diagnoses from encounter or explicit override
+  let diagnosesSnapshot: Array<{ code: string; display: string; system: string; type: string }> =
+    [];
+  if (input.diagnosesOverride && input.diagnosesOverride.length > 0) {
+    diagnosesSnapshot = input.diagnosesOverride.map((d) => ({
+      code: d.code.trim(),
+      display: d.display.trim(),
+      system: d.system?.trim() ?? '',
+      type: d.type?.trim() ?? '',
+    }));
+  } else if (encounter) {
+    const encDiags = await db
+      .select()
+      .from(schema.diagnoses)
+      .where(
+        and(
+          eq(schema.diagnoses.encounterId, encounter.id),
+          eq(schema.diagnoses.patientId, patient.id),
+        ),
+      );
+    diagnosesSnapshot = encDiags.map((d) => {
+      // Preserve recorded coding and type; unknown values remain incomplete.
+      const isIcd11 = d.codingSystem === 'ICD-11';
+      const isIcd10 = d.codingSystem === 'ICD-10';
+      const recordedType = d.diagnosisType?.trim().toLowerCase();
+      return {
+        code: (isIcd11 ? d.icd11Code : isIcd10 ? d.icd10Code : d.diagnosisCode) ?? '',
+        display: (isIcd11 ? d.icd11Title : isIcd10 ? d.icd10Description : d.diagnosisDisplay) ?? '',
+        system: d.codingSystem ?? '',
+        type:
+          recordedType === 'primary'
+            ? 'principal'
+            : recordedType === 'secondary'
+              ? 'secondary'
+              : (recordedType ?? ''),
+      };
+    });
+  }
+
+  // Gather supporting clinical summary (lab, radiology, pharmacy, procedures, IPD discharge)
+  const encounterLabOrders = encounter
+    ? await db
+        .select({
+          id: schema.labOrders.id,
+          testName: schema.labOrders.testName,
+          status: schema.labOrders.status,
+          clinicalNotes: schema.labOrders.clinicalNotes,
+          orderedAt: schema.labOrders.orderedAt,
+        })
+        .from(schema.labOrders)
+        .where(
+          and(
+            eq(schema.labOrders.encounterId, encounter.id),
+            eq(schema.labOrders.patientId, patient.id),
+            eq(schema.labOrders.tenantId, scope.tenantId),
+            eq(schema.labOrders.facilityId, scope.facilityId),
+          ),
+        )
+    : [];
+  const labCount = encounterLabOrders.length;
+  const radiologyCount = encounter
+    ? (
+        await db
+          .select({ id: schema.radiologyOrders.id })
+          .from(schema.radiologyOrders)
+          .where(
+            and(
+              eq(schema.radiologyOrders.encounterId, encounter.id),
+              eq(schema.radiologyOrders.patientId, patient.id),
+              eq(schema.radiologyOrders.tenantId, scope.tenantId),
+              eq(schema.radiologyOrders.facilityId, scope.facilityId),
+            ),
+          )
+      ).length
+    : 0;
+  const procedureCount = encounter
+    ? (
+        await db
+          .select({ id: schema.clinicalProcedures.id })
+          .from(schema.clinicalProcedures)
+          .where(
+            and(
+              eq(schema.clinicalProcedures.encounterId, encounter.id),
+              eq(schema.clinicalProcedures.patientId, patient.id),
+            ),
+          )
+      ).length
+    : 0;
+  const encounterMedications = encounter
+    ? await db
+        .select()
+        .from(schema.medications)
+        .where(
+          and(
+            eq(schema.medications.encounterId, encounter.id),
+            eq(schema.medications.patientId, patient.id),
+          ),
+        )
+    : [];
+
+  // Resolve latest eligibility check & optional preauthorization
+  let eligibilityId = input.eligibilityVerificationId ?? null;
+  if (!eligibilityId) {
+    const [latestElig] = await db
+      .select()
+      .from(schema.insuranceEligibilityVerifications)
+      .where(
+        and(
+          eq(schema.insuranceEligibilityVerifications.facilityId, scope.facilityId),
+          eq(schema.insuranceEligibilityVerifications.patientId, patient.id),
+          eq(schema.insuranceEligibilityVerifications.payerCode, payerCode),
+        ),
+      )
+      .orderBy(desc(schema.insuranceEligibilityVerifications.checkedAt))
+      .limit(1);
+    eligibilityId = latestElig?.id ?? null;
+  }
+
+  if (eligibilityId) {
+    const [verification] = await db
+      .select({ id: schema.insuranceEligibilityVerifications.id })
+      .from(schema.insuranceEligibilityVerifications)
+      .where(
+        and(
+          eq(schema.insuranceEligibilityVerifications.id, eligibilityId),
+          eq(schema.insuranceEligibilityVerifications.tenantId, scope.tenantId),
+          eq(schema.insuranceEligibilityVerifications.facilityId, scope.facilityId),
+          eq(schema.insuranceEligibilityVerifications.patientId, patient.id),
+          eq(schema.insuranceEligibilityVerifications.payerCode, payerCode),
+        ),
+      )
+      .limit(1);
+    if (!verification)
+      throw new InsuranceDomainError(
+        'ELIGIBILITY_NOT_FOUND',
+        'Eligibility record does not belong to this patient, payer, and facility.',
+        404,
+      );
+  }
+
+  let linkedPreauth: typeof schema.insurancePreauthorizations.$inferSelect | null = null;
+  if (input.preauthorizationId) {
+    const [pa] = await db
+      .select()
+      .from(schema.insurancePreauthorizations)
+      .where(
+        and(
+          eq(schema.insurancePreauthorizations.id, input.preauthorizationId),
+          eq(schema.insurancePreauthorizations.facilityId, scope.facilityId),
+          eq(schema.insurancePreauthorizations.patientId, patient.id),
+        ),
+      )
+      .limit(1);
+    if (
+      !pa ||
+      pa.payerCode !== payerCode ||
+      pa.tenantId !== scope.tenantId ||
+      (pa.invoiceId && pa.invoiceId !== invoice.id) ||
+      (pa.encounterId && pa.encounterId !== encounter.id)
+    )
+      throw new InsuranceDomainError(
+        'PREAUTH_NOT_FOUND',
+        'Preauthorization does not belong to this patient, payer, and facility.',
+        404,
+      );
+    linkedPreauth = pa;
+  }
+
+  let resolvedAuthorization: typeof schema.shaPatientAuthorizations.$inferSelect | null = null;
+  if (input.authorizationId) {
+    const [auth] = await db
+      .select()
+      .from(schema.shaPatientAuthorizations)
+      .where(
+        and(
+          eq(schema.shaPatientAuthorizations.id, input.authorizationId),
+          eq(schema.shaPatientAuthorizations.facilityId, scope.facilityId),
+          eq(schema.shaPatientAuthorizations.patientId, patient.id),
+        ),
+      )
+      .limit(1);
+    if (!auth || auth.tenantId !== scope.tenantId)
+      throw new InsuranceDomainError(
+        'AUTHORIZATION_NOT_FOUND',
+        'Authorization does not belong to this patient and facility.',
+        404,
+      );
+    resolvedAuthorization = auth;
+  }
+  if (
+    input.consentToken?.trim() &&
+    input.consentToken.trim() !== resolvedAuthorization?.consentToken &&
+    input.consentToken.trim() !== linkedPreauth?.consentToken
+  )
+    throw new InsuranceDomainError(
+      'AUTHORIZATION_MISMATCH',
+      'Consent token does not belong to the selected patient authorization.',
+      400,
+    );
+
+  let validatedPractitionerRegulator: PractitionerRegulator | null = null;
+  if (input.practitionerRegulator?.trim()) {
+    const regUpper = input.practitionerRegulator.trim().toUpperCase() as PractitionerRegulator;
+    if (!ALLOWED_PRACTITIONER_REGULATORS.includes(regUpper)) {
+      throw new InsuranceDomainError(
+        'INVALID_PRACTITIONER_REGULATOR',
+        `practitionerRegulator must be one of: ${ALLOWED_PRACTITIONER_REGULATORS.join(', ')}.`,
+        400,
+      );
+    }
+    validatedPractitionerRegulator = regUpper;
+  } else if (resolvedAuthorization?.practitionerRegulator) {
+    validatedPractitionerRegulator =
+      resolvedAuthorization.practitionerRegulator as PractitionerRegulator;
+  }
+
+  const effectiveConsentToken =
+    input.consentToken?.trim() ||
+    resolvedAuthorization?.consentToken ||
+    linkedPreauth?.consentToken ||
+    null;
+
+  const effectiveVirtualClaimId =
+    input.hieVirtualClaimId?.trim() || resolvedAuthorization?.virtualClaimId || null;
+
+  const submissionProtocol = input.submissionProtocol ?? 'FHIR_BUNDLE';
+
+  // Load facility service mappings
+  const mappings = await db
+    .select()
+    .from(schema.payerServiceCodeMappings)
+    .where(
+      and(
+        eq(schema.payerServiceCodeMappings.facilityId, scope.facilityId),
+        eq(schema.payerServiceCodeMappings.payerCode, payerCode),
+        eq(schema.payerServiceCodeMappings.isActive, true),
+      ),
+    );
+
+  const schemeCode = (input.schemeCode ?? '').trim().toUpperCase();
+  if (!schemeCode)
+    throw new InsuranceDomainError(
+      'SCHEME_REQUIRED',
+      'Select the actual payer scheme for this claim.',
+      400,
+    );
+  const isPhcClaim = Boolean(input.isPhcClaim || schemeCode === 'PHC');
+
+  const encounterDate = encounter
+    ? encounter.startedAt.toISOString().slice(0, 10)
+    : new Date().toISOString().slice(0, 10);
+  const billableStart =
+    subType === 'ip' && admission?.admissionDate
+      ? admission.admissionDate.slice(0, 10)
+      : encounterDate;
+  const billableEnd =
+    subType === 'ip' && admission?.dischargeDate
+      ? admission.dischargeDate.slice(0, 10)
+      : encounter?.endedAt
+        ? encounter.endedAt.toISOString().slice(0, 10)
+        : billableStart;
+
+  // Build claim line items with decimal-safe cents arithmetic
+  let totalBilledCents = 0;
+  let totalClaimedCents = 0;
+
+  const preparedLines = invoiceItems.map((bi, index) => {
+    const qty = bi.quantity;
+    if (!Number.isSafeInteger(qty) || qty === null || qty <= 0)
+      throw new InsuranceDomainError(
+        'FINANCIAL_REVIEW_REQUIRED',
+        'Stored billing quantity is missing or invalid; review the record before continuing.',
+        409,
+      );
+    const facUnitCents = requireRecordedMoneyCents(bi.unitPrice);
+    const facLineCents = multiplyMoneyCents(facUnitCents, qty);
+    totalBilledCents += facLineCents;
+
+    const matchedMapping =
+      (bi.tariffId ? mappings.find((m) => m.tariffId === bi.tariffId) : undefined) ??
+      (bi.tariffCode ? mappings.find((m) => m.localCode === bi.tariffCode) : undefined) ??
+      null;
+
+    const claimedUnitCents =
+      isPhcClaim || matchedMapping?.isPhcZeroTariff
+        ? 0
+        : matchedMapping?.reimbursementTariff !== null &&
+            matchedMapping?.reimbursementTariff !== undefined
+          ? requireRecordedMoneyCents(matchedMapping.reimbursementTariff)
+          : facUnitCents;
+
+    const claimedNetCents = isPhcClaim ? 0 : multiplyMoneyCents(claimedUnitCents, qty);
+    totalClaimedCents += claimedNetCents;
+
+    const preauthRef =
+      matchedMapping?.requiresPreauth && linkedPreauth
+        ? (linkedPreauth.payerAuthReference ?? linkedPreauth.preauthNumber)
+        : null;
+
+    return {
+      billingItemId: bi.id,
+      tariffId: bi.tariffId ?? null,
+      sequence: index + 1,
+      sourceType: bi.sourceType ?? bi.itemType,
+      sourceId: bi.sourceId ?? null,
+      localCode: bi.tariffCode ?? matchedMapping?.localCode ?? null,
+      description: bi.description,
+      serviceArea: matchedMapping?.serviceArea ?? bi.itemType.toUpperCase(),
+      payerServiceCode: matchedMapping?.payerServiceCode ?? null,
+      payerServiceName: matchedMapping?.payerServiceName ?? null,
+      fund: matchedMapping?.fund ?? schemeCode,
+      paymentMechanism: matchedMapping?.paymentMechanism ?? 'FEE_FOR_SERVICE',
+      servicedStart: billableStart,
+      servicedEnd: billableEnd,
+      quantity: qty,
+      facilityUnitPrice: formatCents(facUnitCents),
+      claimedUnitPrice: formatCents(claimedUnitCents),
+      claimedNetAmount: formatCents(claimedNetCents),
+      preauthReference: preauthRef,
+    };
+  });
+
+  const copayCents =
+    input.patientCopayAmount !== undefined
+      ? requireMoneyCents(input.patientCopayAmount, 'patientCopayAmount')
+      : 0;
+
+  const claimNumber = await nextEclaimNumber();
+  const claimUuid = randomUUID();
+  const created = await db.transaction(async (tx) => {
+    // Serialize claim creation against charges and the private-claim path.
+    // The earlier read check alone is not a concurrency guarantee.
+    const [lockedInvoice] = await tx
+      .select()
+      .from(schema.billingInvoices)
+      .where(
+        and(
+          eq(schema.billingInvoices.id, invoice.id),
+          eq(schema.billingInvoices.tenantId, scope.tenantId),
+          eq(schema.billingInvoices.facilityId, scope.facilityId),
+        ),
+      )
+      .for('update');
+    if (!lockedInvoice || lockedInvoice.voidedAt || lockedInvoice.status === 'Void')
+      throw new InsuranceDomainError(
+        'INVOICE_NOT_FOUND',
+        'Invoice is unavailable for claim preparation.',
+        409,
+      );
+    const currentItems = await tx
+      .select()
+      .from(schema.billingItems)
+      .where(eq(schema.billingItems.invoiceId, invoice.id))
+      .orderBy(asc(schema.billingItems.id));
+    if (
+      lockedInvoice.updatedAt.getTime() !== invoice.updatedAt.getTime() ||
+      JSON.stringify(currentItems) !== JSON.stringify(invoiceItems)
+    )
+      throw new InsuranceDomainError(
+        'INVOICE_CHANGED',
+        'The invoice changed during claim preparation. Review and prepare again.',
+        409,
+      );
+    const [existingSha] = await tx
+      .select({ id: schema.shaEclaims.id })
+      .from(schema.shaEclaims)
+      .where(
+        and(
+          eq(schema.shaEclaims.tenantId, scope.tenantId),
+          eq(schema.shaEclaims.facilityId, scope.facilityId),
+          eq(schema.shaEclaims.invoiceId, invoice.id),
+          sql`upper(trim(${schema.shaEclaims.payerCode})) = ${payerCode}`,
+          ne(schema.shaEclaims.status, 'CANCELLED'),
+        ),
+      )
+      .limit(1);
+    const [existingPrivate] = await tx
+      .select({ id: schema.privateInsuranceClaims.id })
+      .from(schema.privateInsuranceClaims)
+      .where(
+        and(
+          eq(schema.privateInsuranceClaims.tenantId, scope.tenantId),
+          eq(schema.privateInsuranceClaims.facilityId, scope.facilityId),
+          eq(schema.privateInsuranceClaims.invoiceId, invoice.id),
+          sql`upper(trim(${schema.privateInsuranceClaims.payerCode})) = ${payerCode}`,
+          ne(schema.privateInsuranceClaims.status, 'CANCELLED'),
+        ),
+      )
+      .limit(1);
+    if (existingSha || existingPrivate)
+      throw new InsuranceDomainError(
+        'DUPLICATE_INVOICE_CLAIM',
+        'An active claim for this invoice and payer already exists.',
+        409,
+      );
+    const [claim] = await tx
+      .insert(schema.shaEclaims)
+      .values({
+        tenantId: scope.tenantId,
+        facilityId: scope.facilityId,
+        patientId: patient.id,
+        encounterId: encounter?.id ?? null,
+        invoiceId: invoice.id,
+        invoiceFinalizedAt: claimInvoice.invoiceFinalizedAt,
+        invoiceSnapshot: claimInvoice.snapshot as unknown as Record<string, unknown>,
+        eligibilityVerificationId: eligibilityId,
+        preauthorizationId: linkedPreauth?.id ?? null,
+        authorizationId: resolvedAuthorization?.id ?? null,
+        consentToken: effectiveConsentToken,
+        submissionProtocol,
+        hieVirtualClaimId: effectiveVirtualClaimId,
+        dischargeReason: input.dischargeReason ?? null,
+        practitionerRegNumber:
+          input.practitionerRegNumber?.trim() ||
+          resolvedAuthorization?.practitionerRegNumber ||
+          linkedPreauth?.practitionerRegNumber ||
+          null,
+        practitionerRegulator: validatedPractitionerRegulator,
+        payerCode,
+        schemeCode,
+        claimNumber,
+        claimUuid,
+        claimType,
+        subType,
+        status: 'DRAFT',
+        environmentMode: 'UNCONFIGURED',
+        isSimulated: false,
+        billableStart: billableStart <= billableEnd ? billableStart : billableEnd,
+        billableEnd: billableEnd >= billableStart ? billableEnd : billableStart,
+        totalBilledAmount: formatCents(totalBilledCents),
+        totalClaimedAmount: formatCents(isPhcClaim ? 0 : totalClaimedCents),
+        patientCopayAmount: formatCents(copayCents),
+        isPhcClaim,
+        diagnosesSnapshot,
+        supportingSummary: {
+          invoiceNumber: invoice.invoiceNumber,
+          encounterType: encounter?.encounterType ?? null,
+          referralFacility: encounter?.referralFacility ?? null,
+          hasClinicalNotes: Boolean(encounter?.clinicalNotes || encounter?.chiefComplaint),
+          labOrdersCount: labCount,
+          radiologyOrdersCount: radiologyCount,
+          proceduresCount: procedureCount,
+          medicationsCount: encounterMedications.length,
+          ipdAdmissionId: subType === 'ip' ? (admission?.id ?? null) : null,
+          ipdDischargeSummaryPresent:
+            subType === 'ip' ? Boolean(admission?.dischargeSummary) : false,
+        },
+        createdByUserId: scope.userId,
+      })
+      .returning();
+
+    const insertedItems = await tx
+      .insert(schema.shaEclaimItems)
+      .values(
+        preparedLines.map((line) => ({
+          ...line,
+          eclaimId: claim.id,
+        })),
+      )
+      .returning();
+
+    await tx.insert(schema.shaEclaimStatusHistory).values({
+      eclaimId: claim.id,
+      fromStatus: null,
+      toStatus: 'DRAFT',
+      source: 'SYSTEM',
+      actorUserId: scope.userId,
+      reason: `Prepared from JaliCare invoice ${invoice.invoiceNumber} (${insertedItems.length} line items).`,
+    });
+
+    await tx.insert(schema.patientRecordAccessLogs).values({
+      patientId: patient.id,
+      userId: scope.userId,
+      tenantId: scope.tenantId,
+      facilityId: scope.facilityId,
+      action: 'VIEW',
+      accessChannel: 'STAFF_PORTAL',
+      recordType: 'ShaClaimPreparation',
+      recordId: claim.id,
+      purpose: 'BILLING',
+    });
+    return { claim, items: insertedItems };
+  });
+
+  await recordInsuranceAuditEvent(scope, {
+    action: 'SHA_ECLAIM_PREPARED',
+    resource: 'sha_eclaims',
+    resourceId: created.claim.id,
+    summary: {
+      claimNumber: created.claim.claimNumber,
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+      patientId: patient.id,
+      itemCount: created.items.length,
+      totalBilledAmount: created.claim.totalBilledAmount,
+      totalClaimedAmount: created.claim.totalClaimedAmount,
+    },
+  });
+
+  // Immediately run initial validation pass so user sees actionable issues or READY_FOR_SUBMISSION
+  return validateShaClaim(scope, created.claim.id);
+}
+
+export async function getShaClaimDetail(
+  scope: Pick<InsuranceActorScope, 'tenantId' | 'facilityId'>,
+  claimId: number,
+) {
+  await loadScopedFacility(scope);
+
+  const [row] = await db
+    .select({
+      claim: schema.shaEclaims,
+      invoiceNumber: schema.billingInvoices.invoiceNumber,
+      invoiceStatus: schema.billingInvoices.status,
+      patientMrn: schema.patients.mrn,
+      patientFirstName: schema.patients.firstName,
+      patientMiddleName: schema.patients.middleName,
+      patientLastName: schema.patients.lastName,
+    })
+    .from(schema.shaEclaims)
+    .innerJoin(schema.billingInvoices, eq(schema.billingInvoices.id, schema.shaEclaims.invoiceId))
+    .innerJoin(schema.patients, eq(schema.patients.id, schema.shaEclaims.patientId))
+    .where(
+      and(
+        eq(schema.shaEclaims.id, claimId),
+        eq(schema.shaEclaims.tenantId, scope.tenantId),
+        eq(schema.shaEclaims.facilityId, scope.facilityId),
+      ),
+    )
+    .limit(1);
+
+  if (!row) {
+    throw new InsuranceDomainError(
+      'ECLAIM_NOT_FOUND',
+      'SHA eClaim not found in this facility.',
+      404,
+    );
+  }
+
+  const items = await db
+    .select()
+    .from(schema.shaEclaimItems)
+    .where(eq(schema.shaEclaimItems.eclaimId, row.claim.id))
+    .orderBy(asc(schema.shaEclaimItems.sequence));
+
+  const submissions = await db
+    .select()
+    .from(schema.shaEclaimSubmissions)
+    .where(eq(schema.shaEclaimSubmissions.eclaimId, row.claim.id))
+    .orderBy(desc(schema.shaEclaimSubmissions.attemptNumber));
+
+  const [dispatchReview] = await db
+    .select({
+      id: schema.insuranceClaimDispatchGuards.id,
+      state: schema.insuranceClaimDispatchGuards.state,
+      attemptNumber: schema.insuranceClaimDispatchGuards.attemptNumber,
+      correlationId: schema.insuranceClaimDispatchGuards.correlationId,
+      createdAt: schema.insuranceClaimDispatchGuards.createdAt,
+    })
+    .from(schema.insuranceClaimDispatchGuards)
+    .where(
+      and(
+        eq(schema.insuranceClaimDispatchGuards.workflow, 'SHA'),
+        eq(schema.insuranceClaimDispatchGuards.claimId, row.claim.id),
+        eq(schema.insuranceClaimDispatchGuards.tenantId, scope.tenantId),
+        eq(schema.insuranceClaimDispatchGuards.facilityId, scope.facilityId),
+      ),
+    )
+    .limit(1);
+  const statusHistory = await db
+    .select()
+    .from(schema.shaEclaimStatusHistory)
+    .where(eq(schema.shaEclaimStatusHistory.eclaimId, row.claim.id))
+    .orderBy(desc(schema.shaEclaimStatusHistory.createdAt));
+
+  return {
+    ...row.claim,
+    invoiceNumber: row.invoiceNumber,
+    invoiceStatus: row.invoiceStatus,
+    patientMrn: row.patientMrn,
+    patientName: [row.patientFirstName, row.patientMiddleName, row.patientLastName]
+      .filter(Boolean)
+      .join(' '),
+    items,
+    submissions,
+    statusHistory,
+    dispatchReview: dispatchReview ?? null,
+  };
+}
+
+export async function listShaClaims(
+  scope: Pick<InsuranceActorScope, 'tenantId' | 'facilityId'>,
+  filters?: { status?: string; patientId?: number },
+) {
+  await loadScopedFacility(scope);
+
+  const conditions = [
+    eq(schema.shaEclaims.tenantId, scope.tenantId),
+    eq(schema.shaEclaims.facilityId, scope.facilityId),
+  ];
+  if (filters?.status) {
+    conditions.push(eq(schema.shaEclaims.status, filters.status.toUpperCase()));
+  }
+  if (filters?.patientId) {
+    conditions.push(eq(schema.shaEclaims.patientId, filters.patientId));
+  }
+
+  const rows = await db
+    .select({
+      claim: schema.shaEclaims,
+      invoiceNumber: schema.billingInvoices.invoiceNumber,
+      patientMrn: schema.patients.mrn,
+      patientFirstName: schema.patients.firstName,
+      patientMiddleName: schema.patients.middleName,
+      patientLastName: schema.patients.lastName,
+    })
+    .from(schema.shaEclaims)
+    .innerJoin(schema.billingInvoices, eq(schema.billingInvoices.id, schema.shaEclaims.invoiceId))
+    .innerJoin(schema.patients, eq(schema.patients.id, schema.shaEclaims.patientId))
+    .where(and(...conditions))
+    .orderBy(desc(schema.shaEclaims.updatedAt))
+    .limit(100);
+
+  return rows.map((r) => ({
+    ...r.claim,
+    invoiceNumber: r.invoiceNumber,
+    patientMrn: r.patientMrn,
+    patientName: [r.patientFirstName, r.patientMiddleName, r.patientLastName]
+      .filter(Boolean)
+      .join(' '),
+  }));
+}
+
+export async function validateShaClaim(scope: InsuranceActorScope, claimId: number) {
+  const facility = await loadScopedFacility(scope);
+  const detail = await getShaClaimDetail(scope, claimId);
+
+  if (
+    detail.status !== 'DRAFT' &&
+    detail.status !== 'VALIDATION_FAILED' &&
+    detail.status !== 'READY_FOR_SUBMISSION' &&
+    detail.status !== 'REJECTED'
+  ) {
+    throw new InsuranceDomainError(
+      'CLAIM_LOCKED_FOR_VALIDATION',
+      `Claim ${detail.claimNumber} is in status ${detail.status} and cannot be re-validated in place.`,
+      409,
+    );
+  }
+
+  const rawPatient = await loadTenantPatient(scope.tenantId, detail.patientId, scope.facilityId);
+  const patient = openPatientIdentifiers(rawPatient);
+  const { config: payerConfig } = await getFacilityPayerConfig(scope, detail.payerCode);
+
+  let eligibility: typeof schema.insuranceEligibilityVerifications.$inferSelect | null = null;
+  if (detail.eligibilityVerificationId) {
+    const [ver] = await db
+      .select()
+      .from(schema.insuranceEligibilityVerifications)
+      .where(
+        and(
+          eq(schema.insuranceEligibilityVerifications.id, detail.eligibilityVerificationId),
+          eq(schema.insuranceEligibilityVerifications.tenantId, scope.tenantId),
+          eq(schema.insuranceEligibilityVerifications.facilityId, scope.facilityId),
+          eq(schema.insuranceEligibilityVerifications.patientId, detail.patientId),
+          eq(schema.insuranceEligibilityVerifications.payerCode, detail.payerCode),
+        ),
+      )
+      .limit(1);
+    eligibility = ver ?? null;
+  }
+
+  const duplicateOthers = await db
+    .select({ id: schema.shaEclaims.id })
+    .from(schema.shaEclaims)
+    .where(
+      and(
+        eq(schema.shaEclaims.invoiceId, detail.invoiceId),
+        eq(schema.shaEclaims.payerCode, detail.payerCode),
+        ne(schema.shaEclaims.id, detail.id),
+        ne(schema.shaEclaims.status, 'CANCELLED'),
+      ),
+    );
+
+  const mappings = await db
+    .select()
+    .from(schema.payerServiceCodeMappings)
+    .where(
+      and(
+        eq(schema.payerServiceCodeMappings.tenantId, scope.tenantId),
+        eq(schema.payerServiceCodeMappings.facilityId, scope.facilityId),
+        eq(schema.payerServiceCodeMappings.payerCode, detail.payerCode),
+        eq(schema.payerServiceCodeMappings.isActive, true),
+      ),
+    );
+
+  const approvedRules = await db
+    .select()
+    .from(schema.payerBenefitRules)
+    .where(
+      and(
+        eq(schema.payerBenefitRules.tenantId, scope.tenantId),
+        eq(schema.payerBenefitRules.facilityId, scope.facilityId),
+        eq(schema.payerBenefitRules.payerCode, detail.payerCode),
+        eq(schema.payerBenefitRules.status, 'APPROVED'),
+      ),
+    );
+
+  const patientPreauths = await db
+    .select()
+    .from(schema.insurancePreauthorizations)
+    .where(
+      and(
+        eq(schema.insurancePreauthorizations.tenantId, scope.tenantId),
+        eq(schema.insurancePreauthorizations.facilityId, scope.facilityId),
+        eq(schema.insurancePreauthorizations.patientId, detail.patientId),
+        eq(schema.insurancePreauthorizations.payerCode, detail.payerCode),
+      ),
+    );
+
+  const [admission] =
+    detail.subType === 'ip'
+      ? await db
+          .select()
+          .from(schema.admissions)
+          .where(
+            and(
+              eq(schema.admissions.tenantId, scope.tenantId),
+              eq(schema.admissions.facilityId, scope.facilityId),
+              eq(schema.admissions.patientId, detail.patientId),
+              eq(schema.admissions.encounterId, detail.encounterId ?? -1),
+            ),
+          )
+          .orderBy(desc(schema.admissions.id))
+          .limit(1)
+      : [];
+
+  const trustedEligibility =
+    eligibility &&
+    !eligibility.isSimulated &&
+    (eligibility.source === 'AUTHORITATIVE_PAYER' ||
+      eligibility.source.startsWith('MANUAL_VERIFICATION:')) &&
+    isDateWithinWindow(
+      detail.billableStart,
+      eligibility.coverageStartDate,
+      eligibility.coverageEndDate,
+    ) &&
+    isDateWithinWindow(
+      detail.billableEnd,
+      eligibility.coverageStartDate,
+      eligibility.coverageEndDate,
+    )
+      ? eligibility
+      : null;
+
+  const issues = evaluateClaimValidationRules({
+    hasPatientShaOrNationalId: Boolean(
+      patient.shaNumber || patient.nationalId || patient.dhaClientRegistryId,
+    ),
+    facilityRegistryCode: payerConfig.facilityRegistryCode ?? facility.mflCode ?? null,
+    requireVerifiedEligibility: payerConfig.requireVerifiedEligibility,
+    eligibilityOutcome: trustedEligibility?.outcome ?? null,
+    isBeneficiaryAlive: trustedEligibility?.isAlive ?? null,
+    eligibilityCheckedAt: trustedEligibility?.checkedAt ?? null,
+    eligibilityMaxAgeHours: payerConfig.eligibilityMaxAgeHours,
+    billableStart: detail.billableStart,
+    billableEnd: detail.billableEnd,
+    subType: detail.subType,
+    hasAdmissionRecord: Boolean(admission),
+    hasDischargeDate: Boolean(admission?.dischargeDate),
+    diagnosesCount: detail.diagnosesSnapshot.length,
+    diagnoses: detail.diagnosesSnapshot,
+    isPhcClaim: detail.isPhcClaim,
+    totalClaimedCents: requireRecordedMoneyCents(detail.totalClaimedAmount),
+    hasDuplicateActiveInvoiceClaim: duplicateOthers.length > 0,
+    items: detail.items.map((item) => {
+      const mapping = item.payerServiceCode
+        ? mappings.find((m) => m.payerServiceCode === item.payerServiceCode)
+        : undefined;
+      const rule = item.payerServiceCode
+        ? approvedRules.find((r) => r.payerServiceCode === item.payerServiceCode)
+        : undefined;
+      const requiresPreauth = Boolean(mapping?.requiresPreauth || rule?.requiresPreauth);
+
+      const matchingPreauth = item.preauthReference
+        ? patientPreauths.find(
+            (pa) =>
+              pa.id === detail.preauthorizationId &&
+              pa.tenantId === scope.tenantId &&
+              !pa.isSimulated &&
+              (pa.source === 'AUTHORITATIVE_PAYER' || pa.source === 'MANUAL_PAYER_DECISION') &&
+              Boolean(pa.payerAuthReference?.trim()) &&
+              pa.requestedServiceCode === item.payerServiceCode &&
+              (!pa.invoiceId || pa.invoiceId === detail.invoiceId) &&
+              (!pa.encounterId || pa.encounterId === detail.encounterId) &&
+              (pa.payerAuthReference === item.preauthReference ||
+                pa.preauthNumber === item.preauthReference) &&
+              (pa.status === 'APPROVED' || pa.status === 'PARTIALLY_APPROVED') &&
+              isDateWithinWindow(item.servicedStart, pa.validFrom, pa.validUntil) &&
+              isDateWithinWindow(item.servicedEnd, pa.validFrom, pa.validUntil),
+          )
+        : undefined;
+
+      return {
+        sequence: item.sequence,
+        description: item.description,
+        payerServiceCode: item.payerServiceCode,
+        servicedStart: item.servicedStart,
+        servicedEnd: item.servicedEnd,
+        quantity: item.quantity,
+        claimedUnitCents: requireRecordedMoneyCents(item.claimedUnitPrice),
+        claimedNetCents: requireRecordedMoneyCents(item.claimedNetAmount),
+        requiresPreauth,
+        preauthReference: item.preauthReference,
+        preauthApprovedAndValid: Boolean(matchingPreauth),
+      };
+    }),
+  });
+
+  const errorCount = issues.filter((i) => i.severity === 'ERROR').length;
+  const targetStatus: EclaimStatus =
+    errorCount === 0 ? 'READY_FOR_SUBMISSION' : 'VALIDATION_FAILED';
+
+  if (detail.status !== 'REJECTED') {
+    assertEclaimTransition(detail.status, targetStatus);
+  }
+
+  const nextStatus = detail.status === 'REJECTED' && errorCount > 0 ? 'REJECTED' : targetStatus;
+
+  await db.transaction(async (tx) => {
+    await lockMutableClaim(tx, shaGuardScope(scope, detail), shaGuardError);
+    await tx
+      .update(schema.shaEclaims)
+      .set({
+        status: nextStatus,
+        validationIssues: issues,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.shaEclaims.id, detail.id));
+
+    if (nextStatus !== detail.status) {
+      await tx.insert(schema.shaEclaimStatusHistory).values({
+        eclaimId: detail.id,
+        fromStatus: detail.status,
+        toStatus: nextStatus,
+        source: 'VALIDATOR',
+        actorUserId: scope.userId,
+        reason:
+          errorCount === 0
+            ? 'All pre-submission validation checks passed.'
+            : `${errorCount} validation error(s) require resolution before submission.`,
+        metadata: { errorCount, warningCount: issues.length - errorCount },
+      });
+    }
+  });
+
+  await recordInsuranceAuditEvent(scope, {
+    action: 'SHA_ECLAIM_VALIDATED',
+    resource: 'sha_eclaims',
+    resourceId: detail.id,
+    summary: {
+      claimNumber: detail.claimNumber,
+      status: nextStatus,
+      errorCount,
+      warningCount: issues.length - errorCount,
+    },
+  });
+
+  return getShaClaimDetail(scope, detail.id);
+}
+
+export async function submitShaClaim(
+  scope: InsuranceActorScope,
+  claimId: number,
+  adapter: PayerGatewayAdapter = defaultShaGatewayAdapter,
+  operation: 'claims.submit' | 'claims.resubmit' = 'claims.submit',
+) {
+  const facility = await loadScopedFacility(scope);
+  let detail = await getShaClaimDetail(scope, claimId);
+
+  if (detail.status === 'DRAFT') {
+    detail = await validateShaClaim(scope, claimId);
+  }
+
+  /*
+   * The invoice may have been voided between preparation and dispatch. Sending
+   * a claim for money that has since been cancelled misstates the receivable to
+   * the payer, so re-check before the guard is reserved.
+   */
+  await assertClaimInvoiceStillValid({
+    tenantId: scope.tenantId,
+    facilityId: scope.facilityId,
+    invoiceId: detail.invoiceId,
+    makeError: (code, message, status) => new InsuranceDomainError(code, message, status),
+  });
+
+  if (detail.status === 'VALIDATION_FAILED') {
+    throw new InsuranceDomainError(
+      'CLAIM_VALIDATION_FAILED',
+      `Claim ${detail.claimNumber} failed pre-submission validation and cannot be dispatched to SHA.`,
+      422,
+      { validationIssues: detail.validationIssues },
+    );
+  }
+
+  if (detail.status !== 'READY_FOR_SUBMISSION') {
+    throw new InsuranceDomainError(
+      'INVALID_CLAIM_STATE_FOR_SUBMIT',
+      `Claim ${detail.claimNumber} is in status ${detail.status}; expected READY_FOR_SUBMISSION.`,
+      409,
+    );
+  }
+
+  assertEclaimTransition(detail.status, 'SUBMITTED');
+
+  const rawPatient = await loadTenantPatient(scope.tenantId, detail.patientId, scope.facilityId);
+  const patient = openPatientIdentifiers(rawPatient);
+  const { config: payerConfig } = await getFacilityPayerConfig(scope, detail.payerCode);
+  const facilityRegistryCode = payerConfig.facilityRegistryCode || facility.mflCode;
+  if (!facilityRegistryCode)
+    throw new InsuranceDomainError(
+      'FACILITY_REGISTRY_REQUIRED',
+      'Enter the authorized facility registry identifier before submission.',
+      400,
+    );
+
+  const preAuthRefs = Array.from(
+    new Set(
+      detail.items
+        .map((i) => i.preauthReference)
+        .filter((r): r is string => typeof r === 'string' && r.trim().length > 0),
+    ),
+  );
+
+  const bundleUuid = detail.submissionCount === 0 ? detail.claimUuid : randomUUID();
+
+  // Medication and diagnostic payloads require verified terminology and clinical
+  // status mappings. Do not turn local row IDs or order notes into payer codes/results.
+  const fhirBundle = buildShaFhirBundle({
+    bundleUuid,
+    claimUuid: detail.claimUuid,
+    claimNumber: detail.claimNumber,
+    use: 'claim',
+    claimType: detail.claimType as 'institutional' | 'pharmacy' | 'professional',
+    subType: detail.subType as 'op' | 'ip',
+    schemeCode: detail.schemeCode,
+    facilityRegistryCode,
+    facilityName: facility.name,
+    patient: {
+      internalId: patient.id,
+      shaNumber: patient.shaNumber,
+      nationalId: patient.nationalId,
+      crNumber: patient.dhaClientRegistryId,
+      fullName: [patient.firstName, patient.middleName, patient.lastName].filter(Boolean).join(' '),
+      firstName: patient.firstName,
+      lastName: patient.lastName,
+      gender: patient.gender,
+      birthDate: patient.dateOfBirth,
+    },
+    encounterId: detail.encounterId,
+    admissionDate: detail.subType === 'ip' ? detail.billableStart : null,
+    dischargeDate: detail.subType === 'ip' ? detail.billableEnd : null,
+    billableStart: detail.billableStart,
+    billableEnd: detail.billableEnd,
+    createdIso: new Date().toISOString(),
+    isPhcClaim: detail.isPhcClaim,
+    totalClaimedKes: detail.totalClaimedAmount,
+    preAuthReferences: preAuthRefs,
+    previousClaimReference: detail.previousSubmissionRef,
+    attendingPractitioner:
+      detail.practitionerRegNumber && detail.practitionerRegulator
+        ? {
+            registrationNumber: detail.practitionerRegNumber,
+            regulator: detail.practitionerRegulator,
+          }
+        : null,
+    diagnoses: detail.diagnosesSnapshot,
+    items: detail.items.map((i) => ({
+      sequence: i.sequence,
+      payerServiceCode: i.payerServiceCode ?? 'UNMAPPED',
+      payerServiceName: i.payerServiceName ?? i.description,
+      servicedStart: i.servicedStart,
+      servicedEnd: i.servicedEnd,
+      quantity: i.quantity,
+      unitPriceKes: i.claimedUnitPrice,
+      netKes: i.claimedNetAmount,
+    })),
+  });
+
+  // Validate FHIR R4 Kenya eClaims IG v0.1.0 conformance (including SNOMED CT prohibition & KES currency)
+  const fhirValidation = validateShaFhirBundle(fhirBundle);
+  if (!fhirValidation.valid) {
+    throw new InsuranceDomainError(
+      'FHIR_CLAIM_BUNDLE_INVALID',
+      fhirValidation.issues
+        .filter((i) => i.severity === 'ERROR')
+        .map((i) => i.message)
+        .join(' '),
+      422,
+      { issues: fhirValidation.issues },
+    );
+  }
+
+  const attemptNumber = detail.submissionCount + 1;
+  if (detail.submissionProtocol === 'HIE_VIRTUAL_CLAIM') {
+    throw new InsuranceDomainError(
+      'HIE_DIAGNOSIS_LINK_REQUIRED',
+      'Explicit diagnosis-to-intervention links are required before HIE virtual claim submission.',
+      501,
+    );
+  }
+  // Existing real transport configuration alone is not provider authorization.
+  // Only the explicitly labelled mock adapter is enabled until the facility's
+  // official interface, callback and end-to-end submission are verified.
+  if (
+    adapter === defaultShaGatewayAdapter &&
+    adapter.getConnectionStatus(facilityRegistryCode).mode !== 'mock'
+  )
+    throw new InsuranceDomainError(
+      'PAYER_TRANSMISSION_NOT_VERIFIED',
+      'Electronic SHA claim transmission is disabled pending authorized facility-specific provider verification.',
+      503,
+    );
+  const correlationId = randomUUID();
+  const guardScope = shaGuardScope(scope, detail);
+  const guardId = await reserveClaimDispatch(
+    { ...guardScope, attemptNumber, correlationId },
+    shaGuardError,
+  );
+  let gatewayRes;
+  try {
+    gatewayRes = await adapter.submitBundle({
+      tenantId: scope.tenantId,
+      facilityId: scope.facilityId,
+      actorUserId: scope.userId,
+      facilityRegistryOverride: facilityRegistryCode,
+      operation,
+      bundleUuid,
+      claimUuid: detail.claimUuid,
+      fhirBundle,
+      correlationId,
+    });
+  } catch {
+    await db.transaction(async (tx) => {
+      await markClaimDispatchUncertain(tx, guardId, guardScope);
+    });
+    throw new InsuranceDomainError(
+      'CLAIM_DISPATCH_REVIEW_REQUIRED',
+      'The claim dispatch outcome is uncertain. Check the payer record; do not blindly retry.',
+      409,
+    );
+  }
+  if (!isConsistentShaDispatch(gatewayRes)) {
+    gatewayRes = {
+      ...gatewayRes,
+      accepted: false,
+      outcome: 'FAILED',
+      approvedAmountKes: null,
+      rejectionReason: 'Unrecognized or contradictory payer processing result.',
+      errors: ['Unrecognized or contradictory payer processing result.'],
+    };
+  }
+  const submission = {
+    eclaimId: detail.id,
+    attemptNumber,
+    operation: operation === 'claims.resubmit' ? 'RESUBMIT' : 'SUBMIT',
+    bundleUuid,
+    environmentMode: gatewayRes.mode,
+    isSimulated: gatewayRes.isSimulated,
+    requestCorrelationId: gatewayRes.correlationId,
+    httpStatus: gatewayRes.httpStatus,
+    outcome: gatewayRes.outcome,
+    mediatorId: gatewayRes.mediatorId,
+    payerClaimId: gatewayRes.payerReference,
+    upstreamState: gatewayRes.upstreamState,
+    rejectionReason: gatewayRes.rejectionReason,
+    errors: gatewayRes.errors,
+    submittedByUserId: scope.userId,
+    acknowledgedAt: gatewayRes.accepted ? new Date() : null,
+  };
+  if (!gatewayRes.accepted && gatewayRes.outcome !== 'REJECTED') {
+    await db.transaction(async (tx) => {
+      await tx.insert(schema.shaEclaimSubmissions).values(submission);
+      await tx
+        .update(schema.shaEclaims)
+        .set({
+          environmentMode: gatewayRes.mode,
+          isSimulated: gatewayRes.isSimulated,
+          fhirBundle,
+          submissionCount: attemptNumber,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.shaEclaims.id, detail.id));
+      await tx.insert(schema.shaEclaimStatusHistory).values({
+        eclaimId: detail.id,
+        fromStatus: detail.status,
+        toStatus: detail.status,
+        source: 'PAYER_GATEWAY',
+        actorUserId: scope.userId,
+        reason: `Dispatch attempt #${attemptNumber} failed: ${gatewayRes.rejectionReason ?? 'Gateway unavailable'}`,
+        metadata: { correlationId: gatewayRes.correlationId, httpStatus: gatewayRes.httpStatus },
+      });
+      await markClaimDispatchUncertain(tx, guardId, guardScope);
+    });
+    throw new InsuranceDomainError(
+      'CLAIM_DISPATCH_REVIEW_REQUIRED',
+      'The payer dispatch outcome is uncertain. Review the payer record; do not blindly retry.',
+      409,
+      { correlationId: gatewayRes.correlationId, attemptNumber },
+    );
+  }
+
+  const finalStatus: EclaimStatus =
+    gatewayRes.outcome === 'REJECTED'
+      ? 'REJECTED'
+      : gatewayRes.outcome === 'APPROVED'
+        ? 'ADJUDICATED'
+        : gatewayRes.outcome === 'PARTIALLY_APPROVED'
+          ? 'PARTIALLY_ADJUDICATED'
+          : 'ACKNOWLEDGED';
+
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    await tx.insert(schema.shaEclaimSubmissions).values(submission);
+    await tx
+      .update(schema.shaEclaims)
+      .set({
+        status: finalStatus,
+        environmentMode: gatewayRes.mode,
+        isSimulated: gatewayRes.isSimulated,
+        payerClaimReference: gatewayRes.payerReference ?? detail.payerClaimReference,
+        mediatorId: gatewayRes.mediatorId ?? detail.mediatorId,
+        rejectionReason: gatewayRes.rejectionReason,
+        ...(gatewayRes.approvedAmountKes
+          ? { totalApprovedAmount: gatewayRes.approvedAmountKes }
+          : {}),
+        fhirBundle,
+        submissionCount: attemptNumber,
+        submittedByUserId: scope.userId,
+        submittedAt: now,
+        ...(gatewayRes.accepted ? { acknowledgedAt: now } : {}),
+        ...(finalStatus === 'ADJUDICATED' || finalStatus === 'PARTIALLY_ADJUDICATED'
+          ? { adjudicatedAt: now }
+          : {}),
+        updatedAt: now,
+      })
+      .where(eq(schema.shaEclaims.id, detail.id));
+
+    await tx.insert(schema.shaEclaimStatusHistory).values([
+      {
+        eclaimId: detail.id,
+        fromStatus: detail.status,
+        toStatus: 'SUBMITTED',
+        source: 'OPERATOR',
+        actorUserId: scope.userId,
+        reason: `Submitted attempt #${attemptNumber} (${operation}).`,
+        metadata: { bundleUuid, correlationId: gatewayRes.correlationId },
+      },
+      {
+        eclaimId: detail.id,
+        fromStatus: 'SUBMITTED',
+        toStatus: finalStatus,
+        source: gatewayRes.isSimulated ? 'SANDBOX_SIMULATION' : 'PAYER_GATEWAY',
+        actorUserId: scope.userId,
+        reason:
+          finalStatus === 'REJECTED'
+            ? (gatewayRes.rejectionReason ?? 'Rejected by payer.')
+            : `Acknowledged by ${gatewayRes.isSimulated ? 'sandbox simulation' : 'SHA gateway'} (${gatewayRes.payerReference ?? 'queued'}).`,
+        metadata: {
+          payerClaimReference: gatewayRes.payerReference,
+          mediatorId: gatewayRes.mediatorId,
+          upstreamState: gatewayRes.upstreamState,
+        },
+      },
+    ]);
+    await releaseClaimDispatch(tx, guardId, guardScope, 'OUTCOME_RECORDED');
+  });
+
+  await recordInsuranceAuditEvent(scope, {
+    action: operation === 'claims.resubmit' ? 'SHA_ECLAIM_RESUBMITTED' : 'SHA_ECLAIM_SUBMITTED',
+    resource: 'sha_eclaims',
+    resourceId: detail.id,
+    summary: {
+      claimNumber: detail.claimNumber,
+      attemptNumber,
+      status: finalStatus,
+      isSimulated: gatewayRes.isSimulated,
+      payerClaimReference: gatewayRes.payerReference,
+      correlationId: gatewayRes.correlationId,
+    },
+  });
+
+  return getShaClaimDetail(scope, detail.id);
+}
+
+export interface ResubmitShaClaimInput {
+  correctionNotes: string;
+  preauthorizationId?: number | null;
+  billableStart?: string;
+  billableEnd?: string;
+  diagnosesSnapshot?: Array<{ code: string; display: string; system?: string; type?: string }>;
+  itemCorrections?: Array<{
+    itemId: number;
+    payerServiceCode?: string;
+    payerServiceName?: string;
+    claimedUnitPrice?: string | number;
+    preauthReference?: string | null;
+  }>;
+}
+
+export async function resubmitShaClaim(
+  scope: InsuranceActorScope,
+  claimId: number,
+  input: ResubmitShaClaimInput,
+  adapter: PayerGatewayAdapter = defaultShaGatewayAdapter,
+) {
+  await loadScopedFacility(scope);
+  const detail = await getShaClaimDetail(scope, claimId);
+
+  if (detail.status !== 'REJECTED') {
+    throw new InsuranceDomainError(
+      'RESUBMIT_REQUIRES_REJECTED_CLAIM',
+      `Only REJECTED claims can be corrected and resubmitted (current status: ${detail.status}).`,
+      409,
+    );
+  }
+
+  const correctionNotes = input.correctionNotes?.trim() || '';
+  if (correctionNotes.length < 5) {
+    throw new InsuranceDomainError(
+      'MISSING_CORRECTION_NOTES',
+      'Provide correctionNotes describing what was fixed prior to resubmission.',
+      400,
+    );
+  }
+
+  if (input.preauthorizationId) {
+    const [pa] = await db
+      .select({
+        id: schema.insurancePreauthorizations.id,
+        invoiceId: schema.insurancePreauthorizations.invoiceId,
+        encounterId: schema.insurancePreauthorizations.encounterId,
+      })
+      .from(schema.insurancePreauthorizations)
+      .where(
+        and(
+          eq(schema.insurancePreauthorizations.id, input.preauthorizationId),
+          eq(schema.insurancePreauthorizations.tenantId, scope.tenantId),
+          eq(schema.insurancePreauthorizations.facilityId, scope.facilityId),
+          eq(schema.insurancePreauthorizations.patientId, detail.patientId),
+          eq(schema.insurancePreauthorizations.payerCode, detail.payerCode),
+        ),
+      )
+      .limit(1);
+    if (
+      !pa ||
+      (pa.invoiceId && pa.invoiceId !== detail.invoiceId) ||
+      (pa.encounterId && pa.encounterId !== detail.encounterId)
+    )
+      throw new InsuranceDomainError(
+        'PREAUTH_NOT_FOUND',
+        'Preauthorization does not belong to this claim patient and facility.',
+        404,
+      );
+  }
+
+  await db.transaction(async (tx) => {
+    await lockMutableClaim(tx, shaGuardScope(scope, detail), shaGuardError);
+    if (Array.isArray(input.itemCorrections)) {
+      for (const patch of input.itemCorrections) {
+        const existingItem = detail.items.find((i) => i.id === patch.itemId);
+        if (!existingItem) continue;
+
+        const nextUnitCents =
+          patch.claimedUnitPrice !== undefined
+            ? requireMoneyCents(patch.claimedUnitPrice, 'claimedUnitPrice')
+            : requireRecordedMoneyCents(existingItem.claimedUnitPrice);
+        const nextNetCents = detail.isPhcClaim
+          ? 0
+          : multiplyMoneyCents(nextUnitCents, existingItem.quantity);
+
+        await tx
+          .update(schema.shaEclaimItems)
+          .set({
+            ...(patch.payerServiceCode !== undefined
+              ? { payerServiceCode: patch.payerServiceCode.trim() }
+              : {}),
+            ...(patch.payerServiceName !== undefined
+              ? { payerServiceName: patch.payerServiceName.trim() }
+              : {}),
+            claimedUnitPrice: formatCents(detail.isPhcClaim ? 0 : nextUnitCents),
+            claimedNetAmount: formatCents(nextNetCents),
+            ...(patch.preauthReference !== undefined
+              ? { preauthReference: patch.preauthReference?.trim() || null }
+              : {}),
+            rejectionReason: null,
+          })
+          .where(eq(schema.shaEclaimItems.id, existingItem.id));
+      }
+    }
+
+    const updatedItems = await tx
+      .select()
+      .from(schema.shaEclaimItems)
+      .where(eq(schema.shaEclaimItems.eclaimId, detail.id));
+
+    const recomputedClaimedCents = updatedItems.reduce(
+      (sum, it) => sum + requireRecordedMoneyCents(it.claimedNetAmount),
+      0,
+    );
+    if (detail.isPhcClaim && recomputedClaimedCents !== 0)
+      throw new InsuranceDomainError(
+        'FINANCIAL_REVIEW_REQUIRED',
+        'Stored PHC claim amounts require review.',
+        409,
+      );
+
+    await tx
+      .update(schema.shaEclaims)
+      .set({
+        previousSubmissionRef: detail.payerClaimReference ?? detail.previousSubmissionRef,
+        rejectionReason: null,
+        ...(input.preauthorizationId !== undefined
+          ? { preauthorizationId: input.preauthorizationId }
+          : {}),
+        ...(input.billableStart ? { billableStart: input.billableStart } : {}),
+        ...(input.billableEnd ? { billableEnd: input.billableEnd } : {}),
+        ...(input.diagnosesSnapshot
+          ? {
+              diagnosesSnapshot: input.diagnosesSnapshot.map((d) => ({
+                code: d.code.trim(),
+                display: d.display.trim(),
+                system: d.system?.trim() ?? '',
+                type: d.type?.trim() ?? '',
+              })),
+            }
+          : {}),
+        totalClaimedAmount: formatCents(recomputedClaimedCents),
+        status: 'DRAFT',
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.shaEclaims.id, detail.id));
+
+    await tx.insert(schema.shaEclaimStatusHistory).values({
+      eclaimId: detail.id,
+      fromStatus: 'REJECTED',
+      toStatus: 'DRAFT',
+      source: 'CORRECTION',
+      actorUserId: scope.userId,
+      reason: `Claim corrected for resubmission: ${correctionNotes}`,
+      metadata: { previousSubmissionRef: detail.payerClaimReference },
+    });
+  });
+
+  // Re-validate and submit as RESUBMIT preserving full submission history
+  const validated = await validateShaClaim(scope, detail.id);
+  if (validated.status !== 'READY_FOR_SUBMISSION') {
+    throw new InsuranceDomainError(
+      'RESUBMIT_VALIDATION_FAILED',
+      'Corrected claim still has validation errors that must be resolved before resubmission.',
+      422,
+      { validationIssues: validated.validationIssues },
+    );
+  }
+
+  return submitShaClaim(scope, detail.id, adapter, 'claims.resubmit');
+}
+
+export async function refreshShaClaimStatus(
+  scope: InsuranceActorScope,
+  claimId: number,
+  adapter: PayerGatewayAdapter = defaultShaGatewayAdapter,
+) {
+  const facility = await loadScopedFacility(scope);
+  const detail = await getShaClaimDetail(scope, claimId);
+  if (detail.dispatchReview)
+    throw shaGuardError(
+      'CLAIM_DISPATCH_REVIEW_REQUIRED',
+      'Claim dispatch outcome is unresolved; status refresh requires authorized review.',
+      409,
+    );
+
+  if (detail.submissionCount === 0) {
+    return {
+      claim: detail,
+      gatewayStatus: {
+        checked: false,
+        message: 'Claim has not been submitted to SHA yet.',
+      },
+    };
+  }
+
+  const { config: payerConfig } = await getFacilityPayerConfig(scope, detail.payerCode);
+  const facilityRegistryCode =
+    payerConfig.facilityRegistryCode || facility.mflCode || facility.code;
+
+  const statusRes = await adapter.queryClaimStatus({
+    tenantId: scope.tenantId,
+    facilityId: scope.facilityId,
+    actorUserId: scope.userId,
+    facilityRegistryOverride: facilityRegistryCode,
+    claimUuid: detail.claimUuid,
+    payerClaimReference: detail.payerClaimReference,
+  });
+
+  if (
+    statusRes.recognized &&
+    statusRes.mappedStatus &&
+    statusRes.mappedStatus !== 'SUBMISSION_FAILED' &&
+    statusRes.mappedStatus !== detail.status &&
+    canTransitionEclaimStatus(detail.status, statusRes.mappedStatus)
+  ) {
+    const nextStatus = statusRes.mappedStatus;
+    const now = new Date();
+
+    await db.transaction(async (tx) => {
+      await lockMutableClaim(tx, shaGuardScope(scope, detail), shaGuardError);
+      await tx
+        .update(schema.shaEclaims)
+        .set({
+          status: nextStatus,
+          ...(statusRes.payerClaimReference
+            ? { payerClaimReference: statusRes.payerClaimReference }
+            : {}),
+          ...(statusRes.approvedAmountKes
+            ? { totalApprovedAmount: statusRes.approvedAmountKes }
+            : {}),
+          ...(statusRes.paidAmountKes ? { totalPaidAmount: statusRes.paidAmountKes } : {}),
+          ...(statusRes.rejectionReason ? { rejectionReason: statusRes.rejectionReason } : {}),
+          ...(nextStatus === 'ADJUDICATED' || nextStatus === 'PARTIALLY_ADJUDICATED'
+            ? { adjudicatedAt: now }
+            : {}),
+          ...(nextStatus === 'PAID' ? { paidAt: now } : {}),
+          updatedAt: now,
+        })
+        .where(eq(schema.shaEclaims.id, detail.id));
+
+      await tx.insert(schema.shaEclaimStatusHistory).values({
+        eclaimId: detail.id,
+        fromStatus: detail.status,
+        toStatus: nextStatus,
+        source: statusRes.isSimulated ? 'SANDBOX_SIMULATION' : 'PAYER_STATUS_QUERY',
+        actorUserId: scope.userId,
+        reason:
+          statusRes.rejectionReason ?? `Upstream adjudication status updated to ${nextStatus}.`,
+        metadata: {
+          upstreamState: statusRes.upstreamState,
+          correlationId: statusRes.correlationId,
+        },
+      });
+    });
+
+    await recordInsuranceAuditEvent(scope, {
+      action: 'SHA_ECLAIM_STATUS_REFRESHED',
+      resource: 'sha_eclaims',
+      resourceId: detail.id,
+      summary: {
+        claimNumber: detail.claimNumber,
+        fromStatus: detail.status,
+        toStatus: nextStatus,
+        upstreamState: statusRes.upstreamState,
+        isSimulated: statusRes.isSimulated,
+      },
+    });
+  }
+
+  const refreshed = await getShaClaimDetail(scope, detail.id);
+  return {
+    claim: refreshed,
+    gatewayStatus: {
+      checked: true,
+      recognized: statusRes.recognized,
+      upstreamState: statusRes.upstreamState,
+      mode: statusRes.mode,
+      isSimulated: statusRes.isSimulated,
+      correlationId: statusRes.correlationId,
+      errorMessage: statusRes.errorMessage,
+    },
+  };
+}
+
+/**
+ * Record an authoritative adjudication decision (e.g. from SHA portal review or
+ * verified callback) while strictly enforcing the server-side claim state machine.
+ */
+export async function recordClaimAdjudicationDecision(
+  scope: InsuranceActorScope,
+  claimId: number,
+  input: {
+    targetStatus: 'ADJUDICATED' | 'PARTIALLY_ADJUDICATED' | 'REJECTED' | 'DISPUTED' | 'CANCELLED';
+    approvedAmount?: string | number | null;
+    payerClaimReference?: string | null;
+    reason: string;
+  },
+) {
+  await loadScopedFacility(scope);
+  const detail = await getShaClaimDetail(scope, claimId);
+
+  assertEclaimTransition(detail.status, input.targetStatus);
+
+  const reason = input.reason?.trim() || '';
+  if (reason.length < 4) {
+    throw new InsuranceDomainError('MISSING_DECISION_REASON', 'reason is required.', 400);
+  }
+
+  if (
+    ['ADJUDICATED', 'PARTIALLY_ADJUDICATED'].includes(input.targetStatus) &&
+    (input.approvedAmount === undefined ||
+      input.approvedAmount === null ||
+      input.approvedAmount === '')
+  )
+    throw new InsuranceDomainError(
+      'APPROVED_AMOUNT_REQUIRED',
+      'Enter the actual payer-approved amount.',
+      400,
+    );
+  if (!(input.payerClaimReference?.trim() || detail.payerClaimReference?.trim()))
+    throw new InsuranceDomainError(
+      'PAYER_REFERENCE_REQUIRED',
+      'Record the actual payer decision reference.',
+      400,
+    );
+
+  const approvedCents =
+    input.approvedAmount !== undefined &&
+    input.approvedAmount !== null &&
+    input.approvedAmount !== ''
+      ? requireMoneyCents(input.approvedAmount, 'approvedAmount')
+      : input.targetStatus === 'REJECTED'
+        ? 0
+        : requireMoneyCents(detail.totalApprovedAmount, 'totalApprovedAmount');
+
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    await lockMutableClaim(tx, shaGuardScope(scope, detail), shaGuardError);
+    await tx
+      .update(schema.shaEclaims)
+      .set({
+        status: input.targetStatus,
+        totalApprovedAmount: formatCents(approvedCents),
+        ...(input.payerClaimReference
+          ? { payerClaimReference: input.payerClaimReference.trim() }
+          : {}),
+        ...(input.targetStatus === 'REJECTED' ? { rejectionReason: reason } : {}),
+        ...(input.targetStatus === 'ADJUDICATED' || input.targetStatus === 'PARTIALLY_ADJUDICATED'
+          ? { adjudicatedAt: now }
+          : {}),
+        updatedAt: now,
+      })
+      .where(eq(schema.shaEclaims.id, detail.id));
+
+    await tx.insert(schema.shaEclaimStatusHistory).values({
+      eclaimId: detail.id,
+      fromStatus: detail.status,
+      toStatus: input.targetStatus,
+      source: detail.isSimulated ? 'SANDBOX_SIMULATION' : 'MANUAL_PAYER_DECISION',
+      actorUserId: scope.userId,
+      reason,
+      metadata: { approvedAmount: formatCents(approvedCents) },
+    });
+  });
+
+  await recordInsuranceAuditEvent(scope, {
+    action: 'SHA_ECLAIM_ADJUDICATION_RECORDED',
+    resource: 'sha_eclaims',
+    resourceId: detail.id,
+    summary: {
+      claimNumber: detail.claimNumber,
+      fromStatus: detail.status,
+      toStatus: input.targetStatus,
+      approvedAmount: formatCents(approvedCents),
+      reason,
+    },
+  });
+
+  return getShaClaimDetail(scope, detail.id);
+}
+
+export interface IncomingShaCallbackInput {
+  entityType: 'claim' | 'preauth' | 'authorization' | 'payment_notice';
+  action?: string;
+  externalEntityId: string;
+  externalEventId?: string | null;
+  upstreamStatus?: string | null;
+  approvedAmountKes?: string | null;
+  rejectionReason?: string | null;
+  facilityRegistryCode?: string | null;
+  environment?: string;
+  signatureVerified: boolean;
+  payloadSummary?: Record<string, unknown>;
+}
+
+/**
+ * Retired fail-closed boundary. A caller-provided boolean is not evidence of
+ * provider authentication, facility/environment ownership, amount checks or
+ * atomic replay protection. No caller may apply such an event until a reviewed
+ * provider-specific verifier and transactional processing are implemented.
+ */
+export async function processIncomingShaWebhookEvent(
+  _input: IncomingShaCallbackInput,
+): Promise<never> {
+  throw new InsuranceDomainError(
+    'SHA_CALLBACK_NOT_VERIFIED',
+    'Facility-scoped provider callback verification is unavailable.',
+    503,
+  );
+}
+
+export async function listShaCallbackEvents(
+  scope: Pick<InsuranceActorScope, 'tenantId' | 'facilityId'>,
+) {
+  await loadScopedFacility(scope);
+  return db
+    .select({ id: schema.shaCallbackEvents.id, receivedAt: schema.shaCallbackEvents.receivedAt })
+    .from(schema.shaCallbackEvents)
+    .where(
+      and(
+        eq(schema.shaCallbackEvents.tenantId, scope.tenantId),
+        eq(schema.shaCallbackEvents.facilityId, scope.facilityId),
+      ),
+    )
+    .orderBy(desc(schema.shaCallbackEvents.receivedAt))
+    .limit(50);
+}

@@ -1,0 +1,106 @@
+{
+  "sessionDate": "2026-10-27",
+  "branch": "arena/e088f11d-afyahub-hmis-kenya",
+  "startingHead": "0111b5502e1a8d8a21faf53845360122275727df",
+  "syntheticOnly": true,
+  "baselineFileCount": 1256,
+  "baselineFilesMissing": [],
+  "changedExistingFiles": [
+    "src/auth/staff-role-policy.ts",
+    "src/tests/integration/platform-admin-http.spec.ts",
+    "src/components/modules/WorkforceModule.tsx",
+    "src/routes/workforce.routes.ts",
+    "drizzle/meta/_journal.json",
+    "src/config/facility-modules.ts",
+    "src/api/clients/workforce.client.ts",
+    "src/auth/permission-boundaries.ts",
+    "src/middleware/facility-module.middleware.ts",
+    "src/tests/facility-modules.spec.ts",
+    "src/tests/integration/workforce-payroll.db.spec.ts",
+    "src/workforce/workforce.service.ts",
+    "src/components/modules/PayrollModule.tsx",
+    "src/components/Sidebar.tsx",
+    "src/routes/platform/tenants.routes.ts",
+    "src/db/schema/workforce.ts",
+    "src/workforce/payroll-calculator.ts"
+  ],
+  "newPayrollCodeFiles": [
+    "src/components/modules/payroll/PayrollTools.tsx",
+    "src/tests/vitest/payroll-ui.spec.tsx",
+    "src/tests/vitest/payroll-statutory-policy.spec.ts",
+    "drizzle/0093_payroll_completion_controls.sql",
+    "scripts/payroll-completion-browser-synthetic.mjs"
+  ],
+  "sourceSha256": {
+    "src/auth/staff-role-policy.ts": "55578af50f1d7d7539d935710b63b3e64f39edc1d7de02dd44e6928b6859199b",
+    "src/tests/integration/platform-admin-http.spec.ts": "be4b289fe06161de003fda5bcdb81f35a011d7c60e8fffd79823b53abc23665f",
+    "src/components/modules/WorkforceModule.tsx": "20504dd6d33f4b93570e52aab5688c9988f55ed9d467374530bf3dc9e81a1b50",
+    "src/routes/workforce.routes.ts": "0a3420e189dc692f976860a0571af9ea66ed7fedb00340b48d35eb98a4c669da",
+    "drizzle/meta/_journal.json": "25e659d24b27c607adf204be122a9ee7ebe3a8c768c5f19125b0b1b725cdb5e1",
+    "src/config/facility-modules.ts": "702c370c41021eea7fee08791475c161f0f78af16a14885c60ca581576be5f7a",
+    "src/api/clients/workforce.client.ts": "36950c796ea39311643dbc01de79ca0b9c917b5e835a2558c01ec8689453ad64",
+    "src/auth/permission-boundaries.ts": "3196dbd484fa87433a6877b559a4fbe7f9014c8b836bc5e5eb1a61581d3d2b54",
+    "src/middleware/facility-module.middleware.ts": "45da58469655a9066dd32679cfa4cae94547ab3813c56aaf77bfdc1d96ccf2ce",
+    "src/tests/facility-modules.spec.ts": "1e864c78d9b9c60c7a7ac16a4527b24dff165f479370c1657afea560bc01ef2b",
+    "src/tests/integration/workforce-payroll.db.spec.ts": "c704b88c8bcbe0a99150bc414d92c61df716d2f40cde39ed93e4fb83e37e16cb",
+    "src/workforce/workforce.service.ts": "073c970f89e4efab0b02f6ba4e9dd16bcdc530b4c284c52841de61e4b4c1434a",
+    "src/components/modules/PayrollModule.tsx": "c658f813ef945df79e4ba6b524cbcc338a84b480b30cdfa74e94b90b95a7766a",
+    "src/components/Sidebar.tsx": "176408b95aa9c9ef0403180c03dcf87d501344b5875ae203f08348d5ed1a2c95",
+    "src/routes/platform/tenants.routes.ts": "60acc6d667522b5057a7888a2c10c1815fb33cad2acf8b98819ee2b8d2cc1659",
+    "src/db/schema/workforce.ts": "92af32504766dc24b422ca286d0327cff51c91a55ede51073461cfb09bb05519",
+    "src/workforce/payroll-calculator.ts": "d2e843882c0dc078efa50243d47dd475adcfbb32fe73c758968763ad85d40923",
+    "src/components/modules/payroll/PayrollTools.tsx": "84a2d1d3c1ceaf30af57b18456394fb607445d8a18e8a4e347cffd702d9ba9fb",
+    "src/tests/vitest/payroll-ui.spec.tsx": "5ad54f863596b6c5b186cc38619458eddb6ca3195147e1a74d8646cb8433f5cc",
+    "src/tests/vitest/payroll-statutory-policy.spec.ts": "3d37ea9b0677eb2e07060112172d0c2adc53352a5058d6a5465c7ba75d49d5f3",
+    "drizzle/0093_payroll_completion_controls.sql": "fb69a12114570a05ab17005901205a08c3cb4fff153d5afb5fc7001780553b92",
+    "scripts/payroll-completion-browser-synthetic.mjs": "d8d0570093dbec795c0c979100e3755d49f235b0d57c628c77964a4614ba4f9e"
+  },
+  "executedChecks": {
+    "emptyDatabaseMigrations": {
+      "applied": 94,
+      "failed": 0
+    },
+    "payrollDatabase": {
+      "passed": 19,
+      "failed": 0
+    },
+    "bankDatabase": {
+      "passed": 13,
+      "failed": 0
+    },
+    "offlineRegression": {
+      "suitesPassed": 205,
+      "suitesSkipped": 88,
+      "testsPassed": 1922,
+      "testsSkipped": 824,
+      "failed": 0
+    },
+    "browser": {
+      "passed": 18,
+      "failed": 0
+    },
+    "notes": [
+      "No production database, real employee/patient data, live provider activation, salary payment or statutory filing.",
+      "Offline database skips are not counted as exercised DB tests.",
+      "Initial targeted run passed 166 tests; fresh full offline result is the broader evidence."
+    ],
+    "typeScript": {
+      "exitCode": 0
+    },
+    "eslint": {
+      "errors": 0,
+      "warnings": 105,
+      "exitCode": 0
+    },
+    "productionFrontendBuild": {
+      "exitCode": 0,
+      "warning": "JS bundle exceeds 500 kB"
+    },
+    "productionServerBuild": {
+      "exitCode": 0
+    },
+    "repositoryPrettier": {
+      "exitCode": 0
+    }
+  }
+}

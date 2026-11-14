@@ -166,6 +166,29 @@ export default [
     },
   },
 
+  /* ------------------------------------------------------------
+     The data layer logs through Pino, not the console
+     ------------------------------------------------------------
+     `no-console` is off everywhere else because scripts, seeds and the SPA
+     legitimately write to a terminal. The query modules are different: they
+     run inside the request path, the Pino `moduleLogger` already exists, and
+     a `console.error('Error fetching tenants:', error)` line is invisible to
+     the structured log - it has no level, no module, no correlation id, and
+     it prints a stack trace into whatever the host does with stdout.
+
+     This rule is the regression guard. It is an error, so `npm run lint`
+     fails on a new `console.*` in these files rather than a source-text
+     assertion noticing it later. The scope starts here and widens one
+     domain at a time as each layer is converted; `src/routes/` and the
+     remaining service modules are next.
+   */
+  {
+    files: ['src/db/queries/**/*.ts'],
+    rules: {
+      'no-console': 'error',
+    },
+  },
+
   /* Tests may assert on anything, including unreachable-looking branches. */
   {
     files: ['src/tests/**/*.ts'],

@@ -1,0 +1,24 @@
+{
+  "baselineFiles": 1354,
+  "intentionallyChangedExistingFiles": [
+    "scripts/reconcile-syrona-plan.ts",
+    "scripts/verify-budget-planning-browser.mjs",
+    "src/api/clients/planning.client.ts",
+    "src/budget-planning/planning.routes.ts",
+    "src/budget-planning/planning.service.ts",
+    "src/budget-planning/reports.service.ts",
+    "src/budget-planning/workbook-worker.mjs",
+    "src/budget-planning/workbook.ts",
+    "src/components/modules/planning/PlanningImport.tsx",
+    "src/components/modules/planning/PlanningWorkspace.tsx",
+    "src/tests/budget-planning.db.spec.ts",
+    "src/tests/budget-planning.spec.ts",
+    "drizzle/meta/_journal.json"
+  ],
+  "unexpectedChangedExistingFiles": [],
+  "unchangedExistingFileCount": 1341,
+  "migration0095Unchanged": true,
+  "productionMigrations": 0,
+  "productionImports": 0,
+  "gitStagingCommitPushOrDestructiveCommandsPerformed": false
+}

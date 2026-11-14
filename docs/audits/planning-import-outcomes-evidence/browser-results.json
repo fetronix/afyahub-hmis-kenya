@@ -1,0 +1,17 @@
+{
+  "syntheticOnly": true,
+  "readOnlySnapshots": true,
+  "passed": true,
+  "checks": [
+    "Successful preview remains awaiting confirmation with zero created records",
+    "Preview has no successful row outcomes",
+    "Completed notification matches the actual disposable database receipt",
+    "Warnings retain defaulted, supplied and recalculated value origins",
+    "Errors and warnings export action is reachable",
+    "Failed transaction is visible with zero committed creates",
+    "Browser made no API calls, previews, confirmations or other mutations",
+    "No browser runtime errors"
+  ],
+  "errors": [],
+  "blockedRequests": []
+}

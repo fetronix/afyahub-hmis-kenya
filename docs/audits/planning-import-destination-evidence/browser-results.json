@@ -1,0 +1,70 @@
+{
+  "syntheticOnly": true,
+  "previewOnly": true,
+  "passed": true,
+  "checks": [
+    "Disposable facility starts with exactly one 2026 plan, not duplicates",
+    "Original CSV is staged only; no import has been executed",
+    "Existing-plan import is the default destination",
+    "Selecting Syrona 2026 automatically fills and locks year, MIXED type, KES and 5% inflation",
+    "No manually editable draft name is displayed for the existing destination",
+    "Server validates an existing-plan destination during preview",
+    "Server preview names the actual authenticated facility and chosen plan ID/assumptions",
+    "Preview displays reconciliation counts without writing plan records",
+    "Source worksheet and original CSV row identities are preserved",
+    "Normalization defaults and source warnings remain available in preview",
+    "Direct API preview rejects an incompatible currency independently of locked UI controls",
+    "Switching to new-draft mode reveals creation fields and invalidates the old destination preview",
+    "Existing facility/year plan requires explicit additional-plan authorization before new-draft preview",
+    "Switching destination modes did not create another plan",
+    "Same original batch/hash remains UPLOADED with no import result",
+    "No import execution event exists in the disposable fixture",
+    "Browser sent no confirmation or plan-creation request; protective interception was not triggered",
+    "No browser runtime errors",
+    "Only expected pre-login 401 and intentional currency-validation 400 occurred"
+  ],
+  "errors": [],
+  "failures": [
+    {
+      "path": "/api/auth/session",
+      "status": 401
+    },
+    {
+      "path": "/api/budget-planning/imports/1/preview",
+      "status": 400
+    }
+  ],
+  "mutations": [
+    {
+      "method": "POST",
+      "path": "/api/budget-planning/imports/1/preview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/budget-planning/imports/1/preview"
+    }
+  ],
+  "blocked": [],
+  "destination": {
+    "kind": "EXISTING",
+    "mode": "SKIP",
+    "facilityId": 1,
+    "facilityName": "Synthetic destination verification facility",
+    "planId": 1,
+    "name": "Syrona Medical Center Annual Plan 2026",
+    "financialYear": 2026,
+    "planType": "MIXED",
+    "currency": "KES",
+    "inflationBp": 500,
+    "version": 3,
+    "confirmAdditionalPlan": false,
+    "existingPlans": []
+  },
+  "counts": {
+    "newItems": 5,
+    "matchingItems": 0,
+    "skippedItems": 0,
+    "conflictingItems": 0,
+    "updates": 0
+  }
+}

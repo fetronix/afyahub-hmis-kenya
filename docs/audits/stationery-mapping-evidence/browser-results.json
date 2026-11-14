@@ -1,0 +1,95 @@
+{
+  "offlineOnly": true,
+  "realDatabaseAccessed": false,
+  "passed": true,
+  "checks": [
+    "Incomplete 1–1 block is reproduced with empty column mappings",
+    "Verified mapping does not overwrite an existing manual block",
+    "All three verified 1-based source ranges are filled",
+    "Original category spelling is preserved",
+    "Description column is B in all three blocks",
+    "Unit column is C in all three blocks",
+    "Base price column is D in all three blocks",
+    "All 36 monthly mapping fields use quantities, never projected costs",
+    "Existing plan and assumptions remain selected",
+    "No upload, preview, confirmation, plan creation, API request or other mutation occurred",
+    "No browser runtime errors"
+  ],
+  "errors": [],
+  "unexpectedRequests": [],
+  "sourceSha256": "244f9ba9bdd8f5a28793610cabfa8d931ecc76eff52b0fa553b11702e3f198e1",
+  "mappings": [
+    {
+      "sheet": "CSV",
+      "kind": "ITEM",
+      "category": "OPD CONSUMABLES",
+      "startRow": 9,
+      "endRow": 141,
+      "description": "B",
+      "unit": "C",
+      "price": "D",
+      "months": [
+        "F",
+        "H",
+        "J",
+        "L",
+        "N",
+        "P",
+        "R",
+        "T",
+        "V",
+        "X",
+        "Z",
+        "AB"
+      ]
+    },
+    {
+      "sheet": "CSV",
+      "kind": "ITEM",
+      "category": "DENTAL CONSUABLES",
+      "startRow": 145,
+      "endRow": 184,
+      "description": "B",
+      "unit": "C",
+      "price": "D",
+      "months": [
+        "F",
+        "H",
+        "J",
+        "L",
+        "N",
+        "P",
+        "R",
+        "T",
+        "V",
+        "X",
+        "Z",
+        "AB"
+      ]
+    },
+    {
+      "sheet": "CSV",
+      "kind": "ITEM",
+      "category": "CONSUMABLE ITEMS",
+      "startRow": 186,
+      "endRow": 244,
+      "description": "B",
+      "unit": "C",
+      "price": "D",
+      "months": [
+        "F",
+        "H",
+        "J",
+        "L",
+        "N",
+        "P",
+        "R",
+        "T",
+        "V",
+        "X",
+        "Z",
+        "AB"
+      ]
+    }
+  ]
+}

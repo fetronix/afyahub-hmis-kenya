@@ -1,0 +1,153 @@
+{
+  "passed": true,
+  "scope": "Authenticated production build on disposable synthetic facility, official CSV imports with zero-fill test assumptions; no production actions",
+  "checks": [
+    "Real authenticated facility planner navigates to Budget & Procurement Planning",
+    "Stationery excludes imported monthly branding items",
+    "Stationery paginates after section classification, not before it",
+    "Stationery OPD filter displays 133 imported records",
+    "Stationery DENTAL filter displays 40 imported records",
+    "Stationery OTHER filter displays 59 imported records",
+    "Case-insensitive search preserves both imported cotton-wool source rows",
+    "Stationery next page displays a different source-record page",
+    "Stationery View opens a genuinely read-only record",
+    "Year filter selects only 2027 plans",
+    "Stationery & Consumables: browser Create saves twelve quantities and server-calculated annual cost",
+    "Stationery & Consumables: View has no save action",
+    "Stationery & Consumables: browser Edit and Save persist prices, January/December changes and untouched months",
+    "Stationery & Consumables: browser Delete soft-removes the eligible draft and refreshes the table",
+    "Dedicated Branding table excludes stationery without requiring a manual category selection",
+    "Branding View exposes all twelve saved monthly quantities",
+    "Branding: browser Create saves twelve quantities and server-calculated annual cost",
+    "Branding: View has no save action",
+    "Branding: browser Edit and Save persist prices, January/December changes and untouched months",
+    "Branding inline edit under February filter retains January–December data",
+    "Branding: browser Delete soft-removes the eligible draft and refreshes the table",
+    "Uniform table is separate from monthly Branding",
+    "Uniform search locates the imported polo projection",
+    "Uniform View shows balances, buying costs, staff, per-staff quantities and contribution assumptions read-only",
+    "Uniform category filter retains the searched imported projection",
+    "Uniform browser Create applies the configured opening-balance and contribution calculation",
+    "Uniform browser Edit and Save persist all five requested inputs and recalculate net budget",
+    "Uniform browser Delete removes the draft from active results",
+    "All three browser deletions are retained as audited inactive records",
+    "Stationery & Consumables: captured actual browser POST, PATCH and DELETE success responses",
+    "Branding: captured actual browser POST, PATCH and DELETE success responses",
+    "Staff Uniform Projections: captured actual browser POST, PATCH and DELETE success responses",
+    "Read-only user can view Stationery & Consumables without edit/delete actions",
+    "Read-only user cannot create in Stationery & Consumables",
+    "Read-only user can view Branding without edit/delete actions",
+    "Read-only user cannot create in Branding",
+    "Read-only user can view Staff Uniform Projections without edit/delete actions",
+    "Read-only user cannot create in Staff Uniform Projections",
+    "Mobile Branding has no document-level horizontal overflow",
+    "No browser runtime errors",
+    "Only expected pre-login session 401 and read-only dashboard RBAC 403 responses; no planning API errors"
+  ],
+  "errors": [],
+  "failures": [
+    {
+      "phase": "login",
+      "method": "GET",
+      "path": "/api/auth/session",
+      "status": 401
+    },
+    {
+      "phase": "read-only login",
+      "method": "GET",
+      "path": "/api/auth/session",
+      "status": 401
+    }
+  ],
+  "mutations": [
+    {
+      "phase": "Stationery & Consumables",
+      "method": "POST",
+      "path": "/api/budget-planning/plans/2/items",
+      "status": 201
+    },
+    {
+      "phase": "Stationery & Consumables",
+      "method": "PATCH",
+      "path": "/api/budget-planning/plans/2/items/1335",
+      "status": 200
+    },
+    {
+      "phase": "Stationery & Consumables",
+      "method": "DELETE",
+      "path": "/api/budget-planning/plans/2/items/1335",
+      "status": 200
+    },
+    {
+      "phase": "Branding",
+      "method": "POST",
+      "path": "/api/budget-planning/plans/2/items",
+      "status": 201
+    },
+    {
+      "phase": "Branding",
+      "method": "PATCH",
+      "path": "/api/budget-planning/plans/2/items/1336",
+      "status": 200
+    },
+    {
+      "phase": "Branding",
+      "method": "PATCH",
+      "path": "/api/budget-planning/plans/2/items/1336",
+      "status": 200
+    },
+    {
+      "phase": "Branding",
+      "method": "DELETE",
+      "path": "/api/budget-planning/plans/2/items/1336",
+      "status": 200
+    },
+    {
+      "phase": "Staff Uniform Projections",
+      "method": "POST",
+      "path": "/api/budget-planning/plans/2/uniforms",
+      "status": 201
+    },
+    {
+      "phase": "Staff Uniform Projections",
+      "method": "PATCH",
+      "path": "/api/budget-planning/plans/2/uniforms/32",
+      "status": 200
+    },
+    {
+      "phase": "Staff Uniform Projections",
+      "method": "DELETE",
+      "path": "/api/budget-planning/plans/2/uniforms/32",
+      "status": 200
+    }
+  ],
+  "records": [
+    {
+      "section": "Stationery & Consumables",
+      "id": 1335,
+      "name": "UI Stationery record 1794651450982"
+    },
+    {
+      "section": "Branding",
+      "id": 1336,
+      "name": "UI Branding record 1794651450982"
+    },
+    {
+      "section": "Staff Uniform Projections",
+      "id": 32,
+      "name": "UI Uniform record 1794651450982"
+    }
+  ],
+  "screenshots": [
+    "01-stationery-consumables.png",
+    "04-stationery-view.png",
+    "07-stationery-saved.png",
+    "02-branding.png",
+    "05-branding-view.png",
+    "08-branding-saved.png",
+    "03-staff-uniform-projections.png",
+    "06-uniform-view.png",
+    "09-uniform-saved.png",
+    "10-branding-mobile.png"
+  ]
+}

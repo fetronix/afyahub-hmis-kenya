@@ -8,7 +8,12 @@
 import { type AuthRequest } from '../auth/auth.middleware.ts';
 import { requirePermission } from '../auth/authorization.middleware.ts';
 import { db } from '../db/index.ts';
-import * as queries from '../db/queries.ts';
+import {
+  importTariffs,
+  previewTariffImport,
+  tariffImportStatus,
+  TariffImportError,
+} from '../billing/tariff-import.service.ts';
 import * as schema from '../db/schema.ts';
 import * as reporting from '../reporting/reporting.service.ts';
 import {
@@ -70,6 +75,69 @@ router.get(
   },
 );
 
+function tariffImportFailure(res: Response, error: unknown) {
+  if (error instanceof TariffImportError)
+    return res
+      .status(error.status)
+      .json({ success: false, error: error.code, message: error.message, issues: error.issues });
+  if (sendTariffWriteError(error, res)) return;
+  console.error('Tariff import failed; no partial batch was committed.');
+  return res.status(500).json({
+    success: false,
+    error: 'TARIFF_IMPORT_FAILED',
+    message: 'Tariff import failed; review before retrying.',
+  });
+}
+
+router.post(
+  '/api/service-tariffs/import/validate',
+  requirePermission('tariffs.manage'),
+  async (req: AuthRequest, res: Response) => {
+    if (!requireFacilityAdminTariffRole(req, res)) return;
+    try {
+      const facility = await resolveTariffFacility(req, res, req.body?.facilityId);
+      if (!facility) return;
+      return res.json(await previewTariffImport(facility, req.body?.rows));
+    } catch (error) {
+      return tariffImportFailure(res, error);
+    }
+  },
+);
+
+router.post(
+  '/api/service-tariffs/import/status',
+  requirePermission('tariffs.manage'),
+  async (req: AuthRequest, res: Response) => {
+    if (!requireFacilityAdminTariffRole(req, res)) return;
+    try {
+      const facility = await resolveTariffFacility(req, res, req.body?.facilityId);
+      if (!facility) return;
+      return res.json(await tariffImportStatus(facility, req.body?.idempotencyKey));
+    } catch (error) {
+      return tariffImportFailure(res, error);
+    }
+  },
+);
+
+router.post(
+  '/api/service-tariffs/import',
+  requirePermission('tariffs.manage'),
+  async (req: AuthRequest, res: Response) => {
+    if (!requireFacilityAdminTariffRole(req, res)) return;
+    try {
+      const facility = await resolveTariffFacility(req, res, req.body?.facilityId);
+      if (!facility || !req.authContext) return;
+      const result = await importTariffs(facility, req.authContext.userId, {
+        ...req.body,
+        idempotencyKey: req.get('Idempotency-Key') ?? req.body?.idempotencyKey,
+      });
+      return res.status(result.idempotentReplay ? 200 : 201).json(result);
+    } catch (error) {
+      return tariffImportFailure(res, error);
+    }
+  },
+);
+
 router.post(
   '/api/service-tariffs',
   requirePermission('tariffs.manage'),
@@ -116,41 +184,54 @@ router.post(
         });
       }
 
-      const [created] = await db
-        .insert(schema.facilityServiceTariffs)
-        .values({
+      const actorUserId = req.authContext.userId;
+      const created = await db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(schema.facilityServiceTariffs)
+          .values({
+            tenantId: facility.tenantId,
+            facilityId: facility.id,
+            code: input.code,
+            description: input.description,
+            department: input.department,
+            unit: input.unit,
+            fee: input.fee,
+            shaStatus: input.shaStatus,
+            shaNotes: input.shaNotes,
+            billingKey: input.billingKey,
+            effectiveFrom: input.effectiveFrom,
+            effectiveTo: input.effectiveTo,
+            autoBill: input.autoBill,
+            isActive: true,
+          })
+          .returning();
+
+        await tx.insert(schema.auditLogs).values({
           tenantId: facility.tenantId,
           facilityId: facility.id,
-          code: input.code,
-          description: input.description,
-          department: input.department,
-          unit: input.unit,
-          fee: input.fee,
-          shaStatus: input.shaStatus,
-          shaNotes: input.shaNotes,
-          billingKey: input.billingKey,
-          effectiveFrom: input.effectiveFrom,
-          effectiveTo: input.effectiveTo,
-          autoBill: input.autoBill,
-          isActive: true,
-        })
-        .returning();
-
-      await queries.logAuditEvent(
-        facility.tenantId,
-        facility.id,
-        String(req.authContext.userId),
-        'CREATE',
-        'FACILITY_SERVICE_TARIFF',
-        String(created.id),
-        `Created tariff ${created.code} for department ${created.department}.`,
-      );
+          userId: String(actorUserId),
+          action: 'CREATE',
+          resource: 'FACILITY_SERVICE_TARIFF',
+          resourceId: String(created.id),
+          details: JSON.stringify({
+            code: created.code,
+            department: created.department,
+            unit: created.unit,
+            fee: created.fee,
+            billingKey: created.billingKey,
+            effectiveFrom: created.effectiveFrom,
+            effectiveTo: created.effectiveTo,
+            autoBill: created.autoBill,
+          }),
+        });
+        return created;
+      });
 
       return res.status(201).json(created);
     } catch (error: unknown) {
       if (sendTariffWriteError(error, res)) return;
 
-      console.error('Failed to create service tariff:', error);
+      console.error('Failed to create service tariff; transaction rolled back.');
       return res.status(500).json({
         success: false,
         error: 'SERVICE_TARIFF_CREATE_FAILED',
@@ -234,46 +315,83 @@ router.put(
         });
       }
 
-      const [updated] = await db
-        .update(schema.facilityServiceTariffs)
-        .set({
-          code: input.code,
-          description: input.description,
-          department: input.department,
-          unit: input.unit,
-          fee: input.fee,
-          shaStatus: input.shaStatus,
-          shaNotes: input.shaNotes,
-          billingKey: input.billingKey,
-          effectiveFrom: input.effectiveFrom,
-          effectiveTo: input.effectiveTo,
-          autoBill: input.autoBill,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(schema.facilityServiceTariffs.id, tariffId),
-            eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
-            eq(schema.facilityServiceTariffs.facilityId, facility.id),
-          ),
-        )
-        .returning();
+      const actorUserId = req.authContext.userId;
+      const updated = await db.transaction(async (tx) => {
+        const [locked] = await tx
+          .select()
+          .from(schema.facilityServiceTariffs)
+          .where(
+            and(
+              eq(schema.facilityServiceTariffs.id, tariffId),
+              eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
+              eq(schema.facilityServiceTariffs.facilityId, facility.id),
+            ),
+          )
+          .for('update');
+        if (!locked) throw new Error('Tariff was unavailable during update');
+        const [updated] = await tx
+          .update(schema.facilityServiceTariffs)
+          .set({
+            code: input.code,
+            description: input.description,
+            department: input.department,
+            unit: input.unit,
+            fee: input.fee,
+            shaStatus: input.shaStatus,
+            shaNotes: input.shaNotes,
+            billingKey: input.billingKey,
+            effectiveFrom: input.effectiveFrom,
+            effectiveTo: input.effectiveTo,
+            autoBill: input.autoBill,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(schema.facilityServiceTariffs.id, tariffId),
+              eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
+              eq(schema.facilityServiceTariffs.facilityId, facility.id),
+            ),
+          )
+          .returning();
 
-      await queries.logAuditEvent(
-        facility.tenantId,
-        facility.id,
-        String(req.authContext.userId),
-        'UPDATE',
-        'FACILITY_SERVICE_TARIFF',
-        String(updated.id),
-        `Updated tariff ${updated.code}. Existing invoice item snapshots are unchanged.`,
-      );
+        await tx.insert(schema.auditLogs).values({
+          tenantId: facility.tenantId,
+          facilityId: facility.id,
+          userId: String(actorUserId),
+          action: 'UPDATE',
+          resource: 'FACILITY_SERVICE_TARIFF',
+          resourceId: String(updated.id),
+          details: JSON.stringify({
+            before: {
+              code: locked.code,
+              department: locked.department,
+              unit: locked.unit,
+              fee: locked.fee,
+              billingKey: locked.billingKey,
+              effectiveFrom: locked.effectiveFrom,
+              effectiveTo: locked.effectiveTo,
+              autoBill: locked.autoBill,
+            },
+            after: {
+              code: updated.code,
+              department: updated.department,
+              unit: updated.unit,
+              fee: updated.fee,
+              billingKey: updated.billingKey,
+              effectiveFrom: updated.effectiveFrom,
+              effectiveTo: updated.effectiveTo,
+              autoBill: updated.autoBill,
+            },
+          }),
+        });
+        return updated;
+      });
 
       return res.json(updated);
     } catch (error: unknown) {
       if (sendTariffWriteError(error, res)) return;
 
-      console.error('Failed to update service tariff:', error);
+      console.error('Failed to update service tariff; transaction rolled back.');
       return res.status(500).json({
         success: false,
         error: 'SERVICE_TARIFF_UPDATE_FAILED',
@@ -305,19 +423,33 @@ router.patch(
         });
       }
 
-      const [updated] = await db
-        .update(schema.facilityServiceTariffs)
-        .set({ isActive: false, updatedAt: new Date() })
-        .where(
-          and(
-            eq(schema.facilityServiceTariffs.id, tariffId),
-            eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
-            eq(schema.facilityServiceTariffs.facilityId, facility.id),
-            eq(schema.facilityServiceTariffs.isActive, true),
-          ),
-        )
-        .returning();
+      const actorUserId = req.authContext.userId;
+      const updated = await db.transaction(async (tx) => {
+        const [updated] = await tx
+          .update(schema.facilityServiceTariffs)
+          .set({ isActive: false, updatedAt: new Date() })
+          .where(
+            and(
+              eq(schema.facilityServiceTariffs.id, tariffId),
+              eq(schema.facilityServiceTariffs.tenantId, facility.tenantId),
+              eq(schema.facilityServiceTariffs.facilityId, facility.id),
+              eq(schema.facilityServiceTariffs.isActive, true),
+            ),
+          )
+          .returning();
 
+        if (!updated) return null;
+        await tx.insert(schema.auditLogs).values({
+          tenantId: facility.tenantId,
+          facilityId: facility.id,
+          userId: String(actorUserId),
+          action: 'DEACTIVATE',
+          resource: 'FACILITY_SERVICE_TARIFF',
+          resourceId: String(updated.id),
+          details: JSON.stringify({ code: updated.code, department: updated.department }),
+        });
+        return updated;
+      });
       if (!updated) {
         return res.status(404).json({
           success: false,
@@ -326,19 +458,9 @@ router.patch(
         });
       }
 
-      await queries.logAuditEvent(
-        facility.tenantId,
-        facility.id,
-        String(req.authContext.userId),
-        'DEACTIVATE',
-        'FACILITY_SERVICE_TARIFF',
-        String(updated.id),
-        `Deactivated tariff ${updated.code}. Existing invoice item snapshots are unchanged.`,
-      );
-
       return res.json(updated);
     } catch (error: unknown) {
-      console.error('Failed to deactivate service tariff:', error);
+      console.error('Failed to deactivate service tariff; transaction rolled back.');
       return res.status(500).json({
         success: false,
         error: 'SERVICE_TARIFF_DEACTIVATE_FAILED',
