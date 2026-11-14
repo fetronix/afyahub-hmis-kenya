@@ -1,0 +1,52 @@
+{
+  "syntheticOnly": true,
+  "notActualIncident": true,
+  "passed": true,
+  "checks": [
+    "Reproduced both cancelled, not-previewed source batches without confirming imports",
+    "Synthetic 2026 annual target is DRAFT / KES / revision 1 / 5%",
+    "Re-upload of cancelled batch 1 reports the safe action without changing history or creating a batch",
+    "Batch 1 is inspectable read-only, without import controls",
+    "Re-upload of cancelled batch 2 reports the safe action without changing history or creating a batch",
+    "Batch 2 is inspectable read-only, without import controls",
+    "Dismissing retry confirmation leaves both batches cancelled",
+    "Only explicitly confirmed batch 2 reopens for review; batch 1 stays cancelled",
+    "Retry preserves batch identity, source hash, size, upload actor/time and creates no duplicate",
+    "The existing 2026 DRAFT/KES/revision-1/5% annual plan can be selected as merge target",
+    "Target plan and its categories/items/uniforms remain byte-for-byte unchanged",
+    "Both cancellation events remain and the explicit retry has its own actor/time audit",
+    "Browser never previews or confirms an import during this investigation",
+    "Exactly one browser retry POST was explicitly authorized",
+    "No browser runtime errors",
+    "Only expected pre-login 401 and duplicate-upload 409 responses"
+  ],
+  "errors": [],
+  "failures": [
+    {
+      "path": "/api/auth/session",
+      "status": 401
+    },
+    {
+      "path": "/api/budget-planning/imports",
+      "status": 409
+    },
+    {
+      "path": "/api/budget-planning/imports",
+      "status": 409
+    }
+  ],
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/api/budget-planning/imports"
+    },
+    {
+      "method": "POST",
+      "path": "/api/budget-planning/imports"
+    },
+    {
+      "method": "POST",
+      "path": "/api/budget-planning/imports/2/retry-review"
+    }
+  ]
+}

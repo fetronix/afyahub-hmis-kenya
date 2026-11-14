@@ -142,6 +142,9 @@ const FAMILY_DEPARTMENTS: Record<BillingFamily, readonly string[]> = {
   BED_DAY: ['inpatient'],
   DELIVERY: ['inpatient', 'specialty'],
   PHARMACY: ['pharmacy'],
+  /* Dialysis is delivered in a renal unit, which some facilities file under a
+     specialty rather than its own department. */
+  DIALYSIS: ['dialysis', 'renal', 'specialty', 'inpatient'],
 };
 
 export function departmentsForFamily(family: BillingFamily): readonly string[] {
@@ -793,6 +796,9 @@ export function codesForFamily(input: {
     case 'PHARMACY':
       return tariffCodeCandidates('DRUG', name, ['PHARMACY', 'MEDICATION']);
 
+    case 'DIALYSIS':
+      return tariffCodeCandidates('DIALYSIS', name, ['DIALYSIS', 'DIALYSIS-SESSION']);
+
     default:
       return [];
   }
@@ -809,6 +815,7 @@ export function familyLabel(family: BillingFamily): string {
     BED_DAY: 'bed-day charge',
     DELIVERY: 'delivery',
     PHARMACY: 'prescription',
+    DIALYSIS: 'dialysis session',
   };
 
   return labels[family] ?? family;

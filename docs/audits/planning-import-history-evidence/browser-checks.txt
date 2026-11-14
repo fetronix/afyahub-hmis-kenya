@@ -1,0 +1,17 @@
+PASS Reproduced both cancelled, not-previewed source batches without confirming imports
+PASS Synthetic 2026 annual target is DRAFT / KES / revision 1 / 5%
+PASS Re-upload of cancelled batch 1 reports the safe action without changing history or creating a batch
+PASS Batch 1 is inspectable read-only, without import controls
+PASS Re-upload of cancelled batch 2 reports the safe action without changing history or creating a batch
+PASS Batch 2 is inspectable read-only, without import controls
+PASS Dismissing retry confirmation leaves both batches cancelled
+PASS Only explicitly confirmed batch 2 reopens for review; batch 1 stays cancelled
+PASS Retry preserves batch identity, source hash, size, upload actor/time and creates no duplicate
+PASS The existing 2026 DRAFT/KES/revision-1/5% annual plan can be selected as merge target
+PASS Target plan and its categories/items/uniforms remain byte-for-byte unchanged
+PASS Both cancellation events remain and the explicit retry has its own actor/time audit
+PASS Browser never previews or confirms an import during this investigation
+PASS Exactly one browser retry POST was explicitly authorized
+PASS No browser runtime errors
+PASS Only expected pre-login 401 and duplicate-upload 409 responses
+CHECKS 16 PASSED true

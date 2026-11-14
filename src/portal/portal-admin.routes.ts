@@ -586,7 +586,8 @@ router.post(
     } catch (error) {
       if (sendError(res, error)) return;
 
-      console.error('Sharing grant redemption failed:', error);
+      // Database errors can contain grant codes or patient-linked parameters.
+      console.error('Sharing grant redemption failed.');
       res.status(500).json({ success: false, error: 'SHARING_REDEEM_FAILED' });
     }
   },

@@ -1,3 +1,4 @@
+import { DataTable, PageHeader } from '../ui/layout.tsx';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { useHmis } from '../../context/HmisContext.tsx';
@@ -67,9 +68,10 @@ function periodRange(period: PeriodId): { from?: string; to?: string } {
    ============================================================ */
 
 function formatKes(value: string | number | null | undefined): string {
-  const number = Number(value ?? 0);
+  if (value === null || value === undefined || value === '') return 'Not available';
+  const number = Number(value);
 
-  if (!Number.isFinite(number)) return 'KES 0';
+  if (!Number.isFinite(number)) return 'Not available';
 
   return `KES ${number.toLocaleString('en-KE', {
     minimumFractionDigits: number % 1 === 0 ? 0 : 2,
@@ -232,7 +234,10 @@ export const ReportsModule: React.FC = () => {
 
   const channelMax = byChannel.reduce((max, row) => Math.max(max, Number(row.amount) || 0), 0);
 
-  const trendMax = Math.max(1, ...(trend?.points.map((point) => point.occupiedBeds) ?? [1]));
+  const trendMax = Math.max(1, ...(trend?.points.map((point) => point.occupiedBeds) ?? []));
+  const trendPeak = trend?.points.length
+    ? Math.max(...trend.points.map((point) => point.occupiedBeds))
+    : null;
 
   if (!currentFacility) {
     return (
@@ -246,12 +251,10 @@ export const ReportsModule: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="rounded-card border border-hair bg-surface p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-card">
+      <PageHeader>
         <div>
-          <h1 className="font-display text-[1.35rem] leading-tight tracking-tight text-ink">
-            Reports &amp; Analytics
-          </h1>
-          <p className="mt-1 text-xs leading-relaxed text-muted">
+          <h1 className="ui-page-title">Reports &amp; Analytics</h1>
+          <p className="ui-page-description">
             {currentFacility.name}
             <span className="mx-1.5 text-slate-300">·</span>
             <span className="font-mono">{currentFacility.mflCode || 'No MFL'}</span>
@@ -288,7 +291,7 @@ export const ReportsModule: React.FC = () => {
             Refresh
           </button>
         </div>
-      </div>
+      </PageHeader>
 
       {error && (
         <div className="px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-start gap-2">
@@ -310,9 +313,11 @@ export const ReportsModule: React.FC = () => {
               <KpiCard
                 label="Invoiced"
                 value={formatKes(revenue?.totals.invoiced)}
-                hint={`${revenue?.totals.invoiceCount ?? 0} invoice${
-                  (revenue?.totals.invoiceCount ?? 0) === 1 ? '' : 's'
-                } in period`}
+                hint={
+                  revenue
+                    ? `${revenue.totals.invoiceCount} invoice${revenue.totals.invoiceCount === 1 ? '' : 's'} in period`
+                    : 'Invoice count unavailable'
+                }
                 icon={<Coins className="w-4 h-4 text-blue-700" />}
               />
 
@@ -334,7 +339,7 @@ export const ReportsModule: React.FC = () => {
 
               <KpiCard
                 label="Voided"
-                value={String(revenue?.totals.voidedCount ?? 0)}
+                value={revenue ? String(revenue.totals.voidedCount) : 'Not available'}
                 hint="Excluded from every figure above"
                 icon={<RefreshCw className="w-4 h-4 text-slate-400" />}
               />
@@ -349,7 +354,9 @@ export const ReportsModule: React.FC = () => {
                 </span>
               }
             >
-              {byService.length === 0 ? (
+              {!revenue ? (
+                <EmptyRow>Invoice-cohort data is unavailable.</EmptyRow>
+              ) : byService.length === 0 ? (
                 <EmptyRow>
                   No invoiced services in this period. Charges appear here as soon as consultations,
                   lab tests, medicines or bed-days are billed.
@@ -397,15 +404,9 @@ export const ReportsModule: React.FC = () => {
               )}
             </SectionCard>
 
-            {/*
-              Money in, split by the channel it actually arrived
-              through. SHA settles through the claims workflow, mobile
-              money through the online rail, cash through the drawer.
-              The foot of the panel reconciles the split to Collected
-              rather than asking the reader to trust it.
-            */}
+            {/* Recorded payment methods on the invoice cohort, not verified provider settlement. */}
             <SectionCard
-              title="Money In by Payment Channel"
+              title="Recorded Payment Methods on Invoice Cohort"
               icon={<Wallet className="w-4 h-4 text-emerald-700" />}
               action={
                 <span className="text-2xs text-slate-500">
@@ -413,8 +414,10 @@ export const ReportsModule: React.FC = () => {
                 </span>
               }
             >
-              {byChannel.length === 0 ? (
-                <EmptyRow>No payments recorded in this period.</EmptyRow>
+              {!revenue ? (
+                <EmptyRow>Invoice-cohort payment data is unavailable.</EmptyRow>
+              ) : byChannel.length === 0 ? (
+                <EmptyRow>No payments recorded against invoices in this cohort.</EmptyRow>
               ) : (
                 <div className="space-y-3">
                   {byChannel.map((row) => {
@@ -510,53 +513,63 @@ export const ReportsModule: React.FC = () => {
             </SectionCard>
           </div>
 
+          {(operations?.lengthOfStay.outOfScopeAdmissionCount ?? 0) > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              {operations?.lengthOfStay.outOfScopeAdmissionCount} admission(s) have inconsistent
+              tenant links and were excluded for review.
+            </div>
+          )}
           {/* ======================= BED OCCUPANCY ======================= */}
           <div className="space-y-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
               <KpiCard
                 label="Occupancy"
-                value={`${operations?.occupancy.occupancyRate ?? 0}%`}
+                value={operations ? `${operations.occupancy.occupancyRate}%` : 'Not available'}
                 icon={<BedDouble className="w-4 h-4 text-teal-700" />}
                 tone={(operations?.occupancy.occupancyRate ?? 0) >= 90 ? 'warn' : 'default'}
               />
               <KpiCard
                 label="Beds"
-                value={String(operations?.occupancy.bedCount ?? 0)}
+                value={operations ? String(operations.occupancy.bedCount) : 'Not available'}
                 icon={<BedDouble className="w-4 h-4 text-slate-400" />}
               />
               <KpiCard
                 label="Occupied"
-                value={String(operations?.occupancy.occupiedBeds ?? 0)}
+                value={operations ? String(operations.occupancy.occupiedBeds) : 'Not available'}
                 icon={<Activity className="w-4 h-4 text-rose-600" />}
               />
               <KpiCard
                 label="Available"
-                value={String(operations?.occupancy.availableBeds ?? 0)}
+                value={operations ? String(operations.occupancy.availableBeds) : 'Not available'}
                 tone="good"
                 icon={<BedDouble className="w-4 h-4 text-emerald-700" />}
               />
               <KpiCard
                 label="Cleaning"
-                value={String(operations?.occupancy.cleaningBeds ?? 0)}
+                value={operations ? String(operations.occupancy.cleaningBeds) : 'Not available'}
                 icon={<RefreshCw className="w-4 h-4 text-amber-600" />}
               />
               <KpiCard
                 label="Out of service"
-                value={String(operations?.occupancy.outOfServiceBeds ?? 0)}
+                value={operations ? String(operations.occupancy.outOfServiceBeds) : 'Not available'}
                 icon={<AlertTriangle className="w-4 h-4 text-slate-400" />}
               />
             </div>
 
             <SectionCard
-              title="Occupied Bed-Days — Last 14 Days"
+              title="Estimated Daily Occupancy — Last 14 Days"
               icon={<TrendingUp className="w-4 h-4 text-teal-700" />}
               action={
                 <span className="text-2xs text-slate-500">
-                  Peak {trendMax} patient{trendMax === 1 ? '' : 's'}
+                  {trendPeak === null
+                    ? 'Peak not available'
+                    : `Peak ${trendPeak} patient${trendPeak === 1 ? '' : 's'}`}
                 </span>
               }
             >
-              {!trend || trend.points.length === 0 ? (
+              {!trend ? (
+                <EmptyRow>Occupancy trend is unavailable.</EmptyRow>
+              ) : trend.points.length === 0 ? (
                 <EmptyRow>No admission history to plot yet.</EmptyRow>
               ) : (
                 <div className="h-32 flex items-end gap-1.5">
@@ -594,7 +607,7 @@ export const ReportsModule: React.FC = () => {
                 <EmptyRow>No wards configured for this facility.</EmptyRow>
               ) : (
                 <div className="overflow-x-auto -mx-5 px-5">
-                  <table className="w-full text-xs text-left">
+                  <DataTable className="w-full text-xs text-left">
                     <thead className="text-2xs text-slate-500 uppercase tracking-wider">
                       <tr>
                         <th className="py-2 font-medium">Ward</th>
@@ -645,7 +658,7 @@ export const ReportsModule: React.FC = () => {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </DataTable>
                 </div>
               )}
             </SectionCard>
@@ -655,8 +668,10 @@ export const ReportsModule: React.FC = () => {
           <div className="space-y-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
               <KpiCard
-                label="Inpatients now"
-                value={String(operations?.lengthOfStay.activeAdmissions ?? 0)}
+                label="Active stays with readable dates"
+                value={
+                  operations ? String(operations.lengthOfStay.activeAdmissions) : 'Not available'
+                }
                 icon={<BedDouble className="w-4 h-4 text-teal-700" />}
               />
               <KpiCard
@@ -678,7 +693,7 @@ export const ReportsModule: React.FC = () => {
               />
               <KpiCard
                 label="Over 7 days"
-                value={String(operations?.lengthOfStay.overstayCount ?? 0)}
+                value={operations ? String(operations.lengthOfStay.overstayCount) : 'Not available'}
                 hint="Discharge review"
                 tone={(operations?.lengthOfStay.overstayCount ?? 0) > 0 ? 'warn' : 'default'}
                 icon={<AlertTriangle className="w-4 h-4 text-amber-600" />}
@@ -691,12 +706,20 @@ export const ReportsModule: React.FC = () => {
                 icon={<BarChart3 className="w-4 h-4 text-blue-700" />}
                 action={
                   <span className="text-2xs text-slate-500">
-                    {operations?.lengthOfStay.activeAdmissions ?? 0} current
+                    {operations
+                      ? `${operations.lengthOfStay.activeAdmissions} readable stays`
+                      : 'Not available'}
                   </span>
                 }
               >
-                {!operations || operations.lengthOfStay.activeAdmissions === 0 ? (
-                  <EmptyRow>No patients are currently admitted.</EmptyRow>
+                {!operations ? (
+                  <EmptyRow>Length-of-stay data is unavailable.</EmptyRow>
+                ) : operations.lengthOfStay.activeAdmissions === 0 ? (
+                  <EmptyRow>
+                    {operations.lengthOfStay.unparseableCount > 0
+                      ? `${operations.lengthOfStay.unparseableCount} admission(s) have unreadable dates and are excluded.`
+                      : 'No patients are currently admitted.'}
+                  </EmptyRow>
                 ) : (
                   <div className="space-y-2.5">
                     {operations.lengthOfStay.buckets.map((bucket) => {
@@ -740,12 +763,15 @@ export const ReportsModule: React.FC = () => {
                 icon={<Activity className="w-4 h-4 text-emerald-700" />}
                 action={
                   <span className="text-2xs text-slate-500">
-                    {operations?.lengthOfStay.dischargedInWindow ?? 0} discharge
-                    {(operations?.lengthOfStay.dischargedInWindow ?? 0) === 1 ? '' : 's'}
+                    {operations
+                      ? `${operations.lengthOfStay.dischargedInWindow} discharge${operations.lengthOfStay.dischargedInWindow === 1 ? '' : 's'}`
+                      : 'Not available'}
                   </span>
                 }
               >
-                {(operations?.lengthOfStay.dischargedInWindow ?? 0) === 0 ? (
+                {!operations ? (
+                  <EmptyRow>Discharge data is unavailable.</EmptyRow>
+                ) : operations.lengthOfStay.dischargedInWindow === 0 ? (
                   <EmptyRow>
                     No discharges recorded in this window, so there is no completed-stay average to
                     compare against.
@@ -777,11 +803,19 @@ export const ReportsModule: React.FC = () => {
               title="Longest Current Stays"
               icon={<Clock className="w-4 h-4 text-amber-600" />}
             >
-              {!operations || operations.longestStays.length === 0 ? (
-                <EmptyRow>No patients are currently admitted.</EmptyRow>
+              {(operations?.lengthOfStay.unresolvedPatientCount ?? 0) > 0 && (
+                <p className="mb-2 text-xs text-amber-700">
+                  {operations?.lengthOfStay.unresolvedPatientCount} stay(s) have missing or
+                  out-of-scope patient details and are omitted for review.
+                </p>
+              )}
+              {!operations ? (
+                <EmptyRow>Longest-stay data is unavailable.</EmptyRow>
+              ) : operations.longestStays.length === 0 ? (
+                <EmptyRow>No readable current stays are available.</EmptyRow>
               ) : (
                 <div className="overflow-x-auto -mx-5 px-5">
-                  <table className="w-full text-xs text-left">
+                  <DataTable className="w-full text-xs text-left">
                     <thead className="text-2xs text-slate-500 uppercase tracking-wider">
                       <tr>
                         <th className="py-2 font-medium">Patient</th>
@@ -817,16 +851,17 @@ export const ReportsModule: React.FC = () => {
                         </tr>
                       ))}
                     </tbody>
-                  </table>
+                  </DataTable>
                 </div>
               )}
             </SectionCard>
           </div>
 
           <p className="text-2xs text-slate-400 px-1">
-            Revenue is counted from invoice lines with voided invoices excluded. Bed occupancy is
-            the current state of the bed board, not a historical snapshot. Length of stay is
-            measured in whole days from the recorded admission date.
+            Invoice-line amounts exclude voided invoices but are not recognized or reconciled
+            revenue. Bed occupancy reflects the current bed board, not a verified historical
+            snapshot. Length of stay uses recorded admission dates whose timezone and corrections
+            need review.
             {operations?.generatedAt && (
               <> Generated {new Date(operations.generatedAt).toLocaleString()}.</>
             )}

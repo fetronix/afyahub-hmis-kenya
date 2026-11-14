@@ -16,7 +16,19 @@ import type { Express } from 'express';
 import type { Server } from 'node:http';
 
 import { createApp } from './src/app.ts';
+import { applyDefaultTimezone } from './src/config/timezone.ts';
 import { pool } from './src/db/index.ts';
+
+/*
+ * Apply the configured timezone before anything formats a date. `Intl` reads
+ * `process.env.TZ` lazily but caches, so doing this once at boot — and not
+ * per request — is what makes the setting stick.
+ */
+const timezone = applyDefaultTimezone();
+
+if (timezone.source !== null) {
+  console.log(`Timezone: ${timezone.timezone} (from ${timezone.source})`);
+}
 
 /** cPanel's default when the variable is missing locally. */
 const DEFAULT_PORT = 3000;

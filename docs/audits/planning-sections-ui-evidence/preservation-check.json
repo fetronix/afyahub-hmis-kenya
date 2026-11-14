@@ -1,0 +1,12 @@
+{
+  "baselineFiles": 1390,
+  "modifiedExistingFiles": [
+    "scripts/verify-budget-planning-browser.mjs",
+    "src/budget-planning/planning.routes.ts",
+    "src/components/modules/planning/PlanningEditors.tsx",
+    "src/components/modules/planning/PlanningWorkspace.tsx",
+    "src/tests/budget-planning.db.spec.ts"
+  ],
+  "missingBaselineFiles": [],
+  "note": "Preserves the pre-existing dirty/untracked checkout. This is not a clean Git baseline."
+}
