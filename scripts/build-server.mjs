@@ -83,12 +83,14 @@ const common = {
 };
 
 const ENTRY_POINTS = [
+  { in: 'src/budget-planning/workbook-worker.mjs', out: 'build/workbook-worker.mjs' },
   { in: 'server.ts', out: 'build/server.js' },
   { in: 'scripts/migration-status.ts', out: 'build/scripts/migration-status.js' },
   { in: 'scripts/migrate.ts', out: 'build/scripts/migrate.js' },
   { in: 'scripts/preflight.ts', out: 'build/scripts/preflight.js' },
   { in: 'src/seeds/permissions.ts', out: 'build/scripts/seed-permissions.js' },
   { in: 'src/db/clean-database.ts', out: 'build/scripts/clean-database.js' },
+  { in: 'src/bootstrap-admin.ts', out: 'build/scripts/bootstrap-admin.js' },
 ];
 
 async function main() {

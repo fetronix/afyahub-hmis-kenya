@@ -10,11 +10,19 @@ import { requireAnyPermission, requirePermission } from '../auth/authorization.m
 import * as billing from '../billing/billing.service.ts';
 import { radiologyChargeRequest } from '../billing/service-charges.ts';
 import * as queries from '../db/queries.ts';
+import { db } from '../db/index.ts';
+import * as schema from '../db/schema.ts';
 import { chargeSafely } from './shared/charges.ts';
 import { respondInternalError } from './shared/errors.ts';
 import { requireScopedFacility } from './shared/scoping.ts';
-import { and } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
+import { LaboratoryDomainError } from '../clinical/laboratory-contracts.ts';
 import { Router, type Response } from 'express';
+import {
+  createRadiologyOrderBodySchema,
+  radiologyReportBodySchema,
+} from '../validation/schemas/index.ts';
+import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
 const router = Router();
 
@@ -44,9 +52,10 @@ router.get(
 router.post(
   '/api/radiology-orders',
   requirePermission('clinical.create'),
+  validateBody(createRadiologyOrderBodySchema),
   async (req: AuthRequest, res: Response) => {
     try {
-      const body = (req.body ?? {}) as Record<string, unknown>;
+      const body = getValidatedBody<Record<string, unknown>>(req);
 
       const facility = await requireScopedFacility(
         req,
@@ -54,40 +63,56 @@ router.post(
         body.facilityId ?? req.query.facilityId,
       );
 
-      if (!facility) return;
+      if (!facility || !req.authContext) return;
+      const patient = await queries.requirePatientInTenant(
+        req.authContext,
+        Number(body.patientId),
+        facility.tenantId,
+      );
+      if (!patient) return res.status(404).json({ error: 'PATIENT_NOT_FOUND' });
+      if (body.encounterId != null) {
+        const [encounter] = await db
+          .select({ id: schema.encounters.id })
+          .from(schema.encounters)
+          .where(
+            and(
+              eq(schema.encounters.id, Number(body.encounterId)),
+              eq(schema.encounters.patientId, patient.id),
+              eq(schema.encounters.facilityId, facility.id),
+              eq(schema.encounters.tenantId, facility.tenantId),
+            ),
+          )
+          .limit(1);
+        if (!encounter)
+          return res.status(400).json({
+            error: 'PATIENT_ENCOUNTER_MISMATCH',
+            message: 'The encounter must belong to this patient and facility.',
+          });
+      }
 
+      const { idempotencyKey, ...orderBody } = body;
       const payload = {
-        ...body,
+        ...orderBody,
         facilityId: facility.id,
         tenantId: facility.tenantId,
       } as Parameters<typeof queries.createRadiologyOrder>[0];
 
-      const order = await queries.createRadiologyOrder(payload);
+      const result =
+        typeof idempotencyKey === 'string'
+          ? await queries.createRadiologyOrderIdempotent(
+              payload,
+              idempotencyKey,
+              req.authContext.userId,
+            )
+          : { order: await queries.createRadiologyOrder(payload), idempotentReplay: false };
 
-      /*
-       * The table has `procedure_name`, not `test_name`. Reading a field
-       * that does not exist meant no RAD-<study> tariff could ever match:
-       * a chest X-ray priced as RAD-CHEST-X-RAY was recorded and never
-       * billed, while only a generic RADIOLOGY tariff would catch it.
-       */
-      const radiologyOrder = order as {
-        id?: number;
-        tenantId?: number;
-        facilityId?: number;
-        patientId?: number;
-        encounterId?: number | null;
-        procedureName?: string;
-        modality?: string;
-      } | null;
-
-      let charge: billing.ChargeResult | null = null;
-
-      if (radiologyOrder && radiologyOrder.id) {
-        charge = await chargeSafely(radiologyChargeRequest(radiologyOrder as never));
-      }
-
-      res.status(201).json({ ...order, billing: charge });
+      // Requesting a study does not establish that it was performed.
+      res
+        .status(result.idempotentReplay ? 200 : 201)
+        .json({ ...result.order, idempotentReplay: result.idempotentReplay, billing: null });
     } catch (err: any) {
+      if (err instanceof LaboratoryDomainError)
+        return res.status(err.status).json({ error: err.code, message: err.message });
       respondInternalError(res, err, 'POST /api/radiology-orders');
     }
   },
@@ -96,7 +121,14 @@ router.post(
 router.put(
   '/api/radiology-orders/:id/report',
   requireAnyPermission('clinical.update', 'laboratory.results.enter'),
+  validateBody(radiologyReportBodySchema),
   async (req: AuthRequest, res: Response) => {
+    const body = getValidatedBody<{
+      facilityId?: number | null;
+      findings?: string;
+      impression?: string;
+      reportedBy: string;
+    }>(req);
     const orderId = Number(req.params.id);
 
     if (!Number.isSafeInteger(orderId) || orderId <= 0) {
@@ -108,11 +140,7 @@ router.put(
       return;
     }
 
-    const facility = await requireScopedFacility(
-      req,
-      res,
-      req.query.facilityId ?? (req.body ?? {}).facilityId,
-    );
+    const facility = await requireScopedFacility(req, res, req.query.facilityId ?? body.facilityId);
 
     if (!facility) return;
 
@@ -129,11 +157,19 @@ router.put(
         return;
       }
 
-      const { findings, impression, reportedBy } = req.body;
+      const { findings, impression, reportedBy } = body;
 
-      const order = await queries.updateRadiologyReport(orderId, findings, impression, reportedBy);
-
-      res.json(order);
+      const order = await queries.updateRadiologyReport(
+        orderId,
+        findings,
+        impression,
+        reportedBy,
+        req.authContext!.userId,
+      );
+      if (!order) return res.status(404).json({ error: 'RADIOLOGY_ORDER_NOT_FOUND' });
+      const { billingOutboxAttemptId, ...reported } = order;
+      const charge = await chargeSafely(radiologyChargeRequest(reported), billingOutboxAttemptId);
+      res.json({ ...reported, billing: charge });
     } catch (err: any) {
       respondInternalError(res, err, 'PUT /api/radiology-orders/:id/report');
     }

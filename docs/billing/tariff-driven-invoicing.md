@@ -1,6 +1,6 @@
 # Tariff-Driven Automatic Invoicing
 
-**Status:** implemented, not yet runtime-verified against PostgreSQL
+**Historical design note:** Parts of this document describe earlier behavior. For the current evidence, restrictions and unresolved risks, see [the 2026-10-30 readiness baseline](../audits/MASTER_READINESS_BASELINE_2026-10-30.md).
 **Migration:** `drizzle/0009_billing_provenance_and_inpatient.sql`
 **Engine:** `src/billing/billing.service.ts`
 
@@ -17,15 +17,15 @@ and inpatient stays were all free by default.
 Billing is now raised **server-side** at the moment the clinical event
 occurs, priced from the facility's own `facility_service_tariffs` table.
 
-| Clinical event | Source type | Raised on |
-|---|---|---|
-| Encounter created (non-inpatient) | `CONSULTATION` | `POST /api/encounters` |
-| Laboratory order | `LAB_ORDER` | `POST /api/lab-orders` |
-| Procedure recorded | `PROCEDURE` | `POST /api/procedures` |
-| Radiology order | `RADIOLOGY` | `POST /api/radiology-orders` |
-| Medication dispensed | `PHARMACY` | `POST /api/pharmacy/dispense` |
-| Patient admitted | `ADMISSION` | `POST /api/admissions` |
-| Each night of the stay | `BED_DAY` | discharge, transfer, or on demand |
+| Clinical event                    | Source type    | Raised on                         |
+| --------------------------------- | -------------- | --------------------------------- |
+| Encounter created (non-inpatient) | `CONSULTATION` | `POST /api/encounters`            |
+| Laboratory order                  | `LAB_ORDER`    | `POST /api/lab-orders`            |
+| Procedure recorded                | `PROCEDURE`    | `POST /api/procedures`            |
+| Radiology order                   | `RADIOLOGY`    | `POST /api/radiology-orders`      |
+| Medication dispensed              | `PHARMACY`     | `POST /api/pharmacy/dispense`     |
+| Patient admitted                  | `ADMISSION`    | `POST /api/admissions`            |
+| Each night of the stay            | `BED_DAY`      | discharge, transfer, or on demand |
 
 ---
 
@@ -35,8 +35,8 @@ occurs, priced from the facility's own `facility_service_tariffs` table.
 
 1. **Active facility tariff** matching one of the candidate codes — wins.
 2. If no tariff matches:
-   - Pharmacy uses the medication's own `unitPrice` as a fallback.
-   - Every other service is **not billed**, and the response says so.
+   - The pharmacy dispense route no longer trusts a browser-provided price; without a configured tariff it reports the event as unpriced.
+   - Other fallback rules must be audited per event. Missing prices are not zero or proof of free care.
 3. **No price is ever invented.** A zero-priced tariff is treated as
    "not configured", not as free care.
 
@@ -45,15 +45,15 @@ occurs, priced from the facility's own `facility_service_tariffs` table.
 Tariff codes are free text entered by a facility admin, so the engine
 tries several plausible codes in order and the first configured one wins.
 
-| Service | Candidate codes, in order |
-|---|---|
-| Consultation | `CONSULT-<ENCOUNTER_TYPE>`, `OPD-CONSULT`, `CONSULTATION`, `CONSULT` |
-| Laboratory | `LAB-<TEST NAME>`, `<TEST NAME>`, `LAB-GENERAL`, `LABORATORY` |
-| Procedure | `PROC-<NAME>`, `<NAME>`, `PROCEDURE`, `PROC-GENERAL` |
-| Radiology | `RAD-<NAME>`, `<NAME>`, `RADIOLOGY`, `RAD-GENERAL`, `IMAGING` |
-| Pharmacy | `DRUG-<NAME>`, `<NAME>`, `PHARMACY`, `MEDICATION` |
-| Admission | `ADMIT-<WARD CODE>`, `ADMISSION`, `INPATIENT-ADMISSION` |
-| Bed night | `BED-<WARD CODE>`, `WARD-<WARD CODE>`, `BED-DAY`, `INPATIENT-BED-DAY`, `WARD-DAY`, `BED` |
+| Service      | Candidate codes, in order                                                                |
+| ------------ | ---------------------------------------------------------------------------------------- |
+| Consultation | `CONSULT-<ENCOUNTER_TYPE>`, `OPD-CONSULT`, `CONSULTATION`, `CONSULT`                     |
+| Laboratory   | `LAB-<TEST NAME>`, `<TEST NAME>`, `LAB-GENERAL`, `LABORATORY`                            |
+| Procedure    | `PROC-<NAME>`, `<NAME>`, `PROCEDURE`, `PROC-GENERAL`                                     |
+| Radiology    | `RAD-<NAME>`, `<NAME>`, `RADIOLOGY`, `RAD-GENERAL`, `IMAGING`                            |
+| Pharmacy     | `DRUG-<NAME>`, `<NAME>`, `PHARMACY`, `MEDICATION`                                        |
+| Admission    | `ADMIT-<WARD CODE>`, `ADMISSION`, `INPATIENT-ADMISSION`                                  |
+| Bed night    | `BED-<WARD CODE>`, `WARD-<WARD CODE>`, `BED-DAY`, `INPATIENT-BED-DAY`, `WARD-DAY`, `BED` |
 
 Names are normalised: uppercased, non-alphanumerics collapsed to `-`.
 A test named `Full Haemogram` becomes `LAB-FULL-HAEMOGRAM`.
@@ -78,12 +78,12 @@ BED_DAY:7:2026-10-21
 Migration 0009 adds a **UNIQUE index** on that column, so a replayed
 event cannot create a second charge even under concurrent requests.
 
-It is intentionally *not* a partial index: PostgreSQL treats NULLs as
+It is intentionally _not_ a partial index: PostgreSQL treats NULLs as
 distinct in a UNIQUE index, so manually entered items stay unconstrained,
 while `ON CONFLICT (idempotency_key)` can still infer the index. A
 partial index would fail with "no unique or exclusion constraint matching
 the ON CONFLICT specification". Re-dispensing, re-saving an order, re-running a discharge or
-calling bed-day accrual repeatedly all bill exactly once.
+calling bed-day accrual repeatedly use the same key. This does not prove duplicate clinical actions share a source, or that concurrent charge, payment and void writers are serialized.
 
 Manual invoice items created by a cashier leave the key NULL and are
 therefore unconstrained, exactly as before.
@@ -99,7 +99,7 @@ therefore unconstrained, exactly as before.
 - Invoice numbers come from a database sequence (`billing_invoice_number_seq`),
   so concurrent cashiers cannot collide on `INV-000123`.
 - `POST /api/invoices/:id/void` voids rather than deletes. A paid invoice
-  must have its payment reversed first.
+  with any recorded payment requires authorized financial review; a complete receipt reversal/refund workflow is not established.
 - `GET /api/invoices/:id` returns the header, the lines with their clinical
   provenance, and all payments.
 - `GET /api/analytics/revenue` returns revenue by service category,
@@ -111,7 +111,7 @@ therefore unconstrained, exactly as before.
 
 Every charge is wrapped in `chargeSafely()`. A missing tariff, a closed
 invoice, a duplicate or a database fault is logged and returned to the
-caller as `billing.message`. **The clinical action still succeeds.**
+caller as `billing.message`. **The clinical action still succeeds.** If the unpriced retry queue cannot be written, the response now explicitly calls for manual reconciliation instead of claiming it was queued.
 
 A patient is never refused admission because a tariff row is missing.
 
@@ -201,6 +201,7 @@ or skip step 1 only on a database you can afford to rebuild. Do not run the
 migration on a production database without a dump.
 
 ### Known pre-existing issue
+
 `drizzle/meta` has no snapshots for migrations `0004`, `0007` and `0008`.
 `drizzle-kit migrate` reads `_journal.json` and the SQL files, so applying
 is unaffected — but `drizzle-kit generate` will produce a spurious diff
@@ -208,6 +209,7 @@ until those snapshots are regenerated. Resolve that before generating any
 future migration from the schema.
 
 ### Rollback
+
 The migration is additive except for the `verified_at`-style column drops
 it does not perform. To roll back:
 
@@ -226,16 +228,16 @@ ALTER TABLE admissions DROP COLUMN IF EXISTS discharged_by, DROP COLUMN IF EXIST
 
 The engine bills nothing until tariffs exist. Minimum viable set:
 
-| Code | Department | Suggested fee |
-|---|---|---|
-| `OPD-CONSULT` | OPD | 500.00 |
-| `LAB-GENERAL` | Laboratory | 800.00 |
-| `RADIOLOGY` | Radiology | 1500.00 |
-| `PROCEDURE` | OPD | 2000.00 |
-| `ADMISSION` | Inpatient | 1000.00 |
-| `BED-DAY` | Inpatient | 1500.00 |
-| `BED-ICU` | Inpatient | 8000.00 |
-| `PHARMACY` | Pharmacy | per-drug, or leave unset to use the drug price |
+| Code          | Department | Suggested fee                                  |
+| ------------- | ---------- | ---------------------------------------------- |
+| `OPD-CONSULT` | OPD        | 500.00                                         |
+| `LAB-GENERAL` | Laboratory | 800.00                                         |
+| `RADIOLOGY`   | Radiology  | 1500.00                                        |
+| `PROCEDURE`   | OPD        | 2000.00                                        |
+| `ADMISSION`   | Inpatient  | 1000.00                                        |
+| `BED-DAY`     | Inpatient  | 1500.00                                        |
+| `BED-ICU`     | Inpatient  | 8000.00                                        |
+| `PHARMACY`    | Pharmacy   | per-drug, or leave unset to use the drug price |
 
 Enter these through **Configuration → Service Tariffs**, or `POST /api/service-tariffs`
 with the `tariffs.manage` permission.
@@ -244,14 +246,14 @@ with the `tariffs.manage` permission.
 
 ## 8. What was NOT implemented
 
-| Item | Status |
-|---|---|
-| SHA / NHIF claim submission | Not implemented. `insurance_claims` captures claims; there is no submission, adjudication or remittance reconciliation. |
-| Payer split (insurance vs self-pay per line) | Not implemented. The invoice carries a single `payerType`. |
-| Cashier shift reconciliation | Not implemented. |
-| Pre-authorisation | Not implemented. |
-| Insurance coverage rules | Not implemented. |
-| Credit notes / refunds | Void only. |
-| Report exports (MOH 705/731) | Not implemented. |
+| Item                                         | Status                                                                                                                  |
+| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| SHA / NHIF claim submission                  | Not implemented. `insurance_claims` captures claims; there is no submission, adjudication or remittance reconciliation. |
+| Payer split (insurance vs self-pay per line) | Not implemented. The invoice carries a single `payerType`.                                                              |
+| Cashier shift reconciliation                 | Not implemented.                                                                                                        |
+| Pre-authorisation                            | Not implemented.                                                                                                        |
+| Insurance coverage rules                     | Not implemented.                                                                                                        |
+| Credit notes / refunds                       | Void only.                                                                                                              |
+| Report exports (MOH 705/731)                 | Not implemented.                                                                                                        |
 
 These are honest gaps, not oversights to be discovered later.

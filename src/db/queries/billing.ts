@@ -1,0 +1,460 @@
+/**
+ * JaliCare HMIS
+ * Queries: Invoices, payments, insurance claims, and invoice detail
+ *
+ * Extracted from `../queries.ts`, which re-exports every function here so that
+ * `import * as queries from '../queries.ts'` keeps working. The SQL, the scope
+ * checks and the transaction boundaries are moved verbatim; nothing was rewritten.
+ */
+import { and, desc, eq, sql } from 'drizzle-orm';
+import { db } from '../index.ts';
+import * as schema from '../schema.ts';
+
+import { InpatientDomainError } from '../inpatient-contracts.ts';
+
+import { requireTenantScope, requireFacilityScope } from '../../auth/scope.service.ts';
+import type { AuthorizationContext } from '../../auth/authorization.types.ts';
+
+import { parseMoneyToCents } from '../../billing/settlement.ts';
+import { readInvoicePaymentLedger } from '../../billing/payment-ledger.ts';
+import { calendarDateInZone, validTimezone } from '../../dashboard/timezone.ts';
+import { tariffModuleForDepartment } from '../../billing/tariff-departments.ts';
+import {
+  dateVerdict,
+  unitVerdict,
+  type CatalogueServiceType,
+} from '../../billing/tariff-resolver.ts';
+
+import { moduleLogger } from '../../logging/logger.ts';
+
+const log = moduleLogger('db.billing');
+
+// Finance & Billing
+export async function getInvoices(facilityId?: number, patientId?: number) {
+  try {
+    const query = db.select().from(schema.billingInvoices);
+    const conditions = [];
+    if (facilityId) conditions.push(eq(schema.billingInvoices.facilityId, facilityId));
+    if (patientId) conditions.push(eq(schema.billingInvoices.patientId, patientId));
+
+    if (conditions.length > 0) {
+      return await query.where(and(...conditions)).orderBy(desc(schema.billingInvoices.createdAt));
+    }
+    return await query.orderBy(desc(schema.billingInvoices.createdAt));
+  } catch (error) {
+    log.error({ err: error }, 'invoices.fetch_failed');
+    throw new Error('Failed to fetch billing invoices', { cause: error });
+  }
+}
+
+export async function createInvoice(
+  invoiceData: typeof schema.billingInvoices.$inferInsert,
+  items: Array<Omit<typeof schema.billingItems.$inferInsert, 'invoiceId'>>,
+) {
+  try {
+    return await db.transaction(async (tx) => {
+      // Lock and revalidate selected tariffs inside the invoice transaction.
+      // A concurrent price/approval edit must not create a stale charge.
+      const selected = items
+        .filter((item) => item.tariffId != null)
+        .sort((a, b) => Number(a.tariffId) - Number(b.tariffId));
+      if (selected.length) {
+        const [scope] = await tx
+          .select({ timezone: schema.facilities.timezone, tenantTimezone: schema.tenants.timezone })
+          .from(schema.facilities)
+          .innerJoin(schema.tenants, eq(schema.tenants.id, schema.facilities.tenantId))
+          .where(
+            and(
+              eq(schema.facilities.id, invoiceData.facilityId),
+              eq(schema.facilities.tenantId, invoiceData.tenantId),
+            ),
+          )
+          .limit(1);
+        const zone = scope?.timezone ?? scope?.tenantTimezone;
+        if (!validTimezone(zone)) throw new Error('TARIFF_TIMEZONE_REQUIRED');
+        for (const item of selected) {
+          const [row] = await tx
+            .select({ tariff: schema.facilityServiceTariffs, service: schema.facilityServices })
+            .from(schema.facilityServiceTariffs)
+            .innerJoin(
+              schema.facilityServices,
+              eq(schema.facilityServices.id, schema.facilityServiceTariffs.facilityServiceId),
+            )
+            .where(
+              and(
+                eq(schema.facilityServiceTariffs.id, item.tariffId!),
+                eq(schema.facilityServiceTariffs.facilityId, invoiceData.facilityId),
+                eq(schema.facilityServiceTariffs.tenantId, invoiceData.tenantId),
+                eq(schema.facilityServices.facilityId, invoiceData.facilityId),
+                eq(schema.facilityServices.tenantId, invoiceData.tenantId),
+              ),
+            )
+            .for('share');
+          const t = row?.tariff,
+            service = row?.service;
+          const family = (
+            service?.category === 'LABORATORY' ? 'LAB_TEST' : service?.category
+          ) as CatalogueServiceType;
+          if (
+            !t ||
+            !service ||
+            !t.isActive ||
+            t.archivedAt ||
+            !service.isActive ||
+            tariffModuleForDepartment(t.department) !==
+              tariffModuleForDepartment(service.department) ||
+            Number(t.fee) <= 0 ||
+            dateVerdict(t.effectiveFrom, t.effectiveTo, calendarDateInZone(zone)) !== 'OK' ||
+            t.unit.trim().toLowerCase() !== service.unit.trim().toLowerCase() ||
+            unitVerdict(family, t.unit) !== 'OK' ||
+            item.facilityServiceId !== service.id ||
+            item.serviceCode !== service.code ||
+            item.serviceDepartment !== service.department ||
+            item.serviceUnit !== t.unit ||
+            item.description !== service.name ||
+            item.tariffCode !== t.code ||
+            parseMoneyToCents(item.unitPrice) !== parseMoneyToCents(t.fee)
+          )
+            throw new Error('TARIFF_CHANGED_REVIEW_REQUIRED');
+        }
+      }
+      const [invoice] = await tx.insert(schema.billingInvoices).values(invoiceData).returning();
+
+      if (!invoice) {
+        throw new Error('Invoice insert returned no record');
+      }
+
+      if (items.length > 0) {
+        const itemsToInsert = items.map((item) => ({
+          ...item,
+          invoiceId: invoice.id,
+        }));
+
+        await tx.insert(schema.billingItems).values(itemsToInsert);
+      }
+
+      return invoice;
+    });
+  } catch (error) {
+    log.error({ err: error }, 'invoice.create_failed');
+    throw new Error('Failed to create patient invoice', { cause: error });
+  }
+}
+export async function getInvoiceItems(invoiceId: number) {
+  try {
+    return await db
+      .select()
+      .from(schema.billingItems)
+      .where(eq(schema.billingItems.invoiceId, invoiceId));
+  } catch (error) {
+    log.error({ err: error }, 'invoice_items.fetch_failed');
+    throw new Error('Failed to fetch invoice line items', { cause: error });
+  }
+}
+
+/**
+ * Legacy unscoped helper: no authenticated actor is available for an audit.
+ * HTTP callers must use recordSettledPayment instead. Retained for existing
+ * internal compatibility until a reviewed migration can remove it.
+ */
+export async function recordPayment(paymentData: typeof schema.billingPayments.$inferInsert) {
+  try {
+    return await db.transaction(async (tx) => {
+      // Lock the invoice so simultaneous payments cannot both spend
+      // the same outstanding balance.
+      const [invoice] = await tx
+        .select()
+        .from(schema.billingInvoices)
+        .where(eq(schema.billingInvoices.id, paymentData.invoiceId))
+        .for('update');
+
+      if (!invoice) {
+        throw new Error('INVOICE_NOT_FOUND');
+      }
+      if (invoice.status === 'Void' || invoice.voidedAt) {
+        throw new Error('INVOICE_VOIDED');
+      }
+
+      // A legacy internal writer cannot bypass facility bank-only policy. SQL also guards INSERT.
+      const policy = await tx.execute(
+        sql`SELECT facility_id FROM facility_bank_payment_policies WHERE facility_id=${invoice.facilityId} AND tenant_id=${invoice.tenantId}`,
+      );
+      if (
+        policy.rows.length ||
+        /bank|transfer|eft|rtgs|pesalink/i.test(paymentData.paymentMethod ?? '')
+      ) {
+        throw new Error('BANK_VERIFICATION_REQUIRED');
+      }
+      const amountCents = parseMoneyToCents(paymentData.amount);
+      const balanceCents = parseMoneyToCents(invoice.balanceAmount);
+      const totalCents = parseMoneyToCents(invoice.totalAmount);
+      const paidCents = parseMoneyToCents(invoice.paidAmount);
+      const creditCents = parseMoneyToCents(invoice.creditBalance);
+
+      if (amountCents === null || amountCents <= 0) {
+        throw new Error('INVALID_PAYMENT_AMOUNT');
+      }
+      if (
+        balanceCents === null ||
+        totalCents === null ||
+        paidCents === null ||
+        creditCents === null ||
+        balanceCents < 0 ||
+        totalCents < 0 ||
+        paidCents < 0 ||
+        creditCents < 0 ||
+        balanceCents !== Math.max(0, totalCents - paidCents) ||
+        creditCents !== Math.max(0, paidCents - totalCents)
+      ) {
+        throw new Error('INVOICE_RECONCILIATION_REQUIRED');
+      }
+      const ledger = await readInvoicePaymentLedger(tx, invoice.id);
+      if (!ledger || ledger.netCents !== paidCents)
+        throw new Error('INVOICE_RECONCILIATION_REQUIRED');
+
+      if (amountCents > balanceCents) {
+        throw new Error('PAYMENT_EXCEEDS_BALANCE');
+      }
+
+      const newPaidCents = paidCents + amountCents;
+      const newBalanceCents = Math.max(0, totalCents - newPaidCents);
+      const newStatus =
+        newBalanceCents === 0 ? 'Paid' : newPaidCents > 0 ? 'Partially Paid' : 'Unpaid';
+
+      // Both writes are part of the same transaction. If either fails,
+      // PostgreSQL rolls back both.
+      const [payment] = await tx.insert(schema.billingPayments).values(paymentData).returning();
+
+      if (!payment) {
+        throw new Error('Payment insert returned no record');
+      }
+
+      await tx
+        .update(schema.billingInvoices)
+        .set({
+          paidAmount: (newPaidCents / 100).toFixed(2),
+          balanceAmount: (newBalanceCents / 100).toFixed(2),
+          status: newStatus,
+        })
+        .where(eq(schema.billingInvoices.id, invoice.id));
+
+      return payment;
+    });
+  } catch (error) {
+    // Database error text may include payment parameters; retain the cause
+    // for local handling without writing it or its values to application logs.
+    log.error('payment.record_failed');
+    throw new Error('Failed to record patient payment', { cause: error });
+  }
+}
+// Insurance Claims
+export async function getClaims(facilityId?: number) {
+  try {
+    if (facilityId) {
+      return await db
+        .select()
+        .from(schema.insuranceClaims)
+        .where(eq(schema.insuranceClaims.facilityId, facilityId))
+        .orderBy(desc(schema.insuranceClaims.claimNumber));
+    }
+    return await db
+      .select()
+      .from(schema.insuranceClaims)
+      .orderBy(desc(schema.insuranceClaims.claimNumber));
+  } catch (error) {
+    log.error({ err: error }, 'insurance_claims.fetch_failed');
+    throw new Error('Failed to fetch claims', { cause: error });
+  }
+}
+
+export async function createClaim(data: typeof schema.insuranceClaims.$inferInsert) {
+  try {
+    const res = await db.insert(schema.insuranceClaims).values(data).returning();
+    return res[0];
+  } catch (error) {
+    log.error({ err: error }, 'insurance_claim.create_failed');
+    throw new Error('Failed to submit insurance claim', { cause: error });
+  }
+}
+
+export async function updateClaimStatus(
+  id: number,
+  status: string,
+  approvedAmount?: string,
+  notes?: string,
+) {
+  try {
+    const updateData: any = { status };
+    if (approvedAmount !== undefined) updateData.approvedAmount = approvedAmount;
+    if (notes !== undefined) updateData.adjudicationNotes = notes;
+    const res = await db
+      .update(schema.insuranceClaims)
+      .set(updateData)
+      .where(eq(schema.insuranceClaims.id, id))
+      .returning();
+    return res[0];
+  } catch (error) {
+    log.error({ err: error }, 'claim_status.update_failed');
+    throw new Error('Failed to update claim adjudication status', { cause: error });
+  }
+}
+
+/* ------------------------------------------------------------
+   INVOICE LIFECYCLE
+   ------------------------------------------------------------ */
+
+export async function getInvoiceDetailScoped(context: AuthorizationContext, invoiceId: number) {
+  const id = Number(invoiceId);
+
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    throw new InpatientDomainError('INVALID_INPUT', 'A valid invoice ID is required.', 400);
+  }
+
+  const [invoice] = await db
+    .select()
+    .from(schema.billingInvoices)
+    .where(eq(schema.billingInvoices.id, id))
+    .limit(1);
+
+  if (!invoice) return null;
+
+  requireTenantScope(context, invoice.tenantId);
+  requireFacilityScope(context, invoice.tenantId, invoice.facilityId);
+
+  const items = await db
+    .select()
+    .from(schema.billingItems)
+    .where(eq(schema.billingItems.invoiceId, invoice.id));
+
+  const payments = await db
+    .select()
+    .from(schema.billingPayments)
+    .where(eq(schema.billingPayments.invoiceId, invoice.id))
+    .orderBy(desc(schema.billingPayments.createdAt));
+
+  const refunds = await db
+    .select({
+      id: schema.billingRefunds.id,
+      invoiceId: schema.billingRefunds.invoiceId,
+      paymentId: schema.billingRefunds.paymentId,
+      refundNumber: schema.billingRefunds.refundNumber,
+      amount: schema.billingRefunds.amount,
+      refundMethod: schema.billingRefunds.refundMethod,
+      externalReference: schema.billingRefunds.externalReference,
+      reason: schema.billingRefunds.reason,
+      actorUserId: schema.billingRefunds.actorUserId,
+      createdAt: schema.billingRefunds.createdAt,
+    })
+    .from(schema.billingRefunds)
+    .where(eq(schema.billingRefunds.invoiceId, invoice.id))
+    .orderBy(desc(schema.billingRefunds.createdAt));
+
+  return { invoice, items, payments, refunds };
+}
+
+/**
+ * Void an invoice.
+ *
+ * Voiding is additive: the invoice and its lines are retained for audit,
+ * and `voided_at` removes it from open-invoice lookups so new charges
+ * open a fresh bill. A voided invoice cannot be voided twice.
+ */
+export async function voidInvoiceScoped(
+  context: AuthorizationContext,
+  invoiceId: number,
+  reason: string,
+) {
+  const id = Number(invoiceId);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    throw new InpatientDomainError('INVALID_INPUT', 'A valid invoice ID is required.', 400);
+  }
+  const normalizedReason = typeof reason === 'string' ? reason.trim() : '';
+  if (normalizedReason.length < 3 || normalizedReason.length > 500) {
+    throw new InpatientDomainError('INVALID_INPUT', 'A valid void reason is required.', 400);
+  }
+
+  return db.transaction(async (tx) => {
+    // The payment service locks this same row, so a concurrent payment and
+    // void cannot both succeed based on an old unpaid snapshot.
+    const [invoice] = await tx
+      .select()
+      .from(schema.billingInvoices)
+      .where(eq(schema.billingInvoices.id, id))
+      .limit(1)
+      .for('update');
+    if (!invoice) throw new InpatientDomainError('ADMISSION_NOT_FOUND', 'Invoice not found.', 404);
+    requireTenantScope(context, invoice.tenantId);
+    requireFacilityScope(context, invoice.tenantId, invoice.facilityId);
+    if (invoice.voidedAt || invoice.status === 'Void')
+      throw new InpatientDomainError(
+        'ADMISSION_ALREADY_CLOSED',
+        'This invoice has already been voided.',
+        409,
+      );
+
+    const paid = parseMoneyToCents(invoice.paidAmount);
+    const credit = parseMoneyToCents(invoice.creditBalance);
+    const total = parseMoneyToCents(invoice.totalAmount);
+    const balance = parseMoneyToCents(invoice.balanceAmount);
+    if (
+      paid === null ||
+      credit === null ||
+      total === null ||
+      balance === null ||
+      total < 0 ||
+      balance !== total ||
+      paid !== 0 ||
+      credit !== 0 ||
+      ['Paid', 'Partially Paid', 'Overpaid'].includes(invoice.status ?? '')
+    )
+      throw new InpatientDomainError(
+        'ADMISSION_ALREADY_CLOSED',
+        'The invoice has a payment, credit, or inconsistent balance and requires authorized review before voiding.',
+        409,
+      );
+    // Be conservative if a legacy payment exists even when the stored total is wrong.
+    const [payment] = await tx
+      .select({ id: schema.billingPayments.id })
+      .from(schema.billingPayments)
+      .where(eq(schema.billingPayments.invoiceId, invoice.id))
+      .limit(1);
+    if (payment)
+      throw new InpatientDomainError(
+        'ADMISSION_ALREADY_CLOSED',
+        'The invoice has a recorded payment and requires authorized review before voiding.',
+        409,
+      );
+
+    const activeJournals =
+      await tx.execute(sql`SELECT p.journal_id FROM accounting_billing_postings p
+      WHERE p.invoice_id=${invoice.id} AND p.tenant_id=${invoice.tenantId} AND p.facility_id=${invoice.facilityId}
+        AND NOT EXISTS (SELECT 1 FROM journal_entries r WHERE r.reversal_of_journal_id=p.journal_id AND r.status='POSTED')
+      LIMIT 1`);
+    if (activeJournals.rows.length)
+      throw new InpatientDomainError(
+        'ADMISSION_ALREADY_CLOSED',
+        'Reverse the active billing journals through accounting before voiding this invoice.',
+        409,
+      );
+    const [updated] = await tx
+      .update(schema.billingInvoices)
+      .set({
+        status: 'Void',
+        voidedAt: new Date(),
+        voidReason: normalizedReason,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.billingInvoices.id, invoice.id))
+      .returning();
+    await tx.insert(schema.auditLogs).values({
+      tenantId: invoice.tenantId,
+      facilityId: invoice.facilityId,
+      userId: String(context.userId),
+      action: 'UPDATE',
+      resource: 'Invoice',
+      resourceId: String(invoice.id),
+      details: 'Invoice voided; reason retained on invoice.',
+    });
+    return updated;
+  });
+}

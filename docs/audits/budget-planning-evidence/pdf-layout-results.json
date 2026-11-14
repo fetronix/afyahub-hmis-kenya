@@ -1,0 +1,24 @@
+[
+  {
+    "page": 1,
+    "pageWidth": 595.28,
+    "pageHeight": 841.89,
+    "letterheadTextPresent": true,
+    "bodyTopMinimumPt": 87.77978499999995,
+    "bodyBottomMaximumPt": 747.442236,
+    "reservedTopPt": 85,
+    "reservedBottomPt": 60,
+    "bodyWithinReservedMargins": true
+  },
+  {
+    "page": 2,
+    "pageWidth": 595.28,
+    "pageHeight": 841.89,
+    "letterheadTextPresent": true,
+    "bodyTopMinimumPt": 88.38989300000003,
+    "bodyBottomMaximumPt": 669.280908,
+    "reservedTopPt": 85,
+    "reservedBottomPt": 60,
+    "bodyWithinReservedMargins": true
+  }
+]

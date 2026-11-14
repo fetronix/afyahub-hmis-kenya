@@ -12,7 +12,7 @@
  * the caller's authorised scope.
  */
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
@@ -59,6 +59,10 @@ export interface LengthOfStaySummary {
   overstayCount: number;
   /** Admissions whose admission date could not be read. */
   unparseableCount: number;
+  /** Longest-stay records omitted because their patient could not be resolved within the tenant. */
+  unresolvedPatientCount: number;
+  /** Admissions with inconsistent tenant links are omitted. */
+  outOfScopeAdmissionCount: number;
   dischargedInWindow: number;
   averageDischargedStayDays: number | null;
   medianDischargedStayDays: number | null;
@@ -129,7 +133,11 @@ export async function getOperationsReportScoped(
 ): Promise<OperationsReport> {
   /* Every helper resolves and proves the facility is in scope. */
   const wards = await getWardsScoped(context, requestedFacilityId);
-  const admissions = await getAdmissionsScoped(context, requestedFacilityId);
+  const facilityAdmissions = await getAdmissionsScoped(context, requestedFacilityId);
+  // Facility FK alone does not prove that an inconsistent admission belongs to this tenant.
+  const admissions = facilityAdmissions.filter(
+    (admission) => context.tenantId !== null && admission.tenantId === context.tenantId,
+  );
   const beds = await loadBedsForWards(wards.map((ward) => ward.id));
 
   const facilityId = wards[0]?.facilityId ?? admissions[0]?.facilityId ?? 0;
@@ -261,7 +269,12 @@ export async function getOperationsReportScoped(
         lastName: schema.patients.lastName,
       })
       .from(schema.patients)
-      .where(inArray(schema.patients.id, patientIds));
+      .where(
+        and(
+          inArray(schema.patients.id, patientIds),
+          context.tenantId === null ? sql`false` : eq(schema.patients.tenantId, context.tenantId),
+        ),
+      );
 
     for (const row of rows) {
       patientById.set(
@@ -273,16 +286,21 @@ export async function getOperationsReportScoped(
     }
   }
 
-  const longestStays: LongestStayRow[] = longest.map((stay) => ({
-    admissionId: stay.admission.id,
-    patientId: stay.admission.patientId,
-    patientName:
-      patientById.get(stay.admission.patientId) ?? `Patient #${stay.admission.patientId}`,
-    wardName: wardNameById.get(stay.admission.wardId) ?? 'Ward',
-    bedNumber: bedNumberById.get(stay.admission.bedId) ?? null,
-    admissionDate: stay.admission.admissionDate,
-    days: stay.days,
-  }));
+  const unresolvedPatientCount = longest.filter(
+    (stay) => !patientById.has(stay.admission.patientId),
+  ).length;
+  const longestStays: LongestStayRow[] = longest
+    .filter((stay) => patientById.has(stay.admission.patientId))
+    .map((stay) => ({
+      admissionId: stay.admission.id,
+      patientId: stay.admission.patientId,
+      patientName:
+        patientById.get(stay.admission.patientId) ?? `Patient #${stay.admission.patientId}`,
+      wardName: wardNameById.get(stay.admission.wardId) ?? 'Ward',
+      bedNumber: bedNumberById.get(stay.admission.bedId) ?? null,
+      admissionDate: stay.admission.admissionDate,
+      days: stay.days,
+    }));
 
   return {
     facilityId,
@@ -304,6 +322,8 @@ export async function getOperationsReportScoped(
       longestStayDays: stats.longestDays,
       overstayCount: countOverstays(activeDays),
       unparseableCount,
+      unresolvedPatientCount,
+      outOfScopeAdmissionCount: facilityAdmissions.length - admissions.length,
       dischargedInWindow: dischargedDays.length,
       averageDischargedStayDays:
         dischargedDays.length === 0 ? null : roundDays(mean(dischargedDays) as number),
@@ -319,11 +339,10 @@ export async function getOperationsReportScoped(
 /**
  * Occupancy trend: occupied bed-days per day for the last `days` days.
  *
- * A bed-day is a night a patient spent in a bed, which is also the unit
- * the bed-day charge bills, so the trend reconciles with revenue. Days
- * before an admission began and after it ended are not counted; a
- * same-day admission and discharge still counts as one bed-day, matching
- * the billing rule in billing.service.ts.
+ * This legacy trend estimates occupied days from recorded admission and
+ * discharge text; it is not a billing-night ledger and is not reconciled to
+ * charges. Historical timezone, transfer, cutoff and grace evidence may be
+ * incomplete. The current facility policy, rather than this chart, governs billing.
  */
 export async function getOccupancyTrendScoped(
   context: AuthorizationContext,
@@ -334,10 +353,13 @@ export async function getOccupancyTrendScoped(
 
   const wards = await getWardsScoped(context, requestedFacilityId);
 
-  const [beds, admissions] = await Promise.all([
+  const [beds, facilityAdmissions] = await Promise.all([
     loadBedsForWards(wards.map((ward) => ward.id)),
     getAdmissionsScoped(context, requestedFacilityId),
   ]);
+  const admissions = facilityAdmissions.filter(
+    (admission) => context.tenantId !== null && admission.tenantId === context.tenantId,
+  );
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);

@@ -186,10 +186,32 @@ describe('Migration file integrity tests', () => {
 
       const sql = readFileSync(resolve(DRIZZLE_DIR, file), 'utf8').toUpperCase();
 
+      // Receipt identity migration deliberately refuses to adopt an unjournaled
+      // object. IF NOT EXISTS would also hide a concurrent collision after its
+      // preflight. Only these exact CREATEs may fail closed instead; their
+      // collisions and rollback are exercised against PostgreSQL separately.
+      const isReceiptIdentity = file === '0073_inventory_receipt_retry_identity.sql';
+      const unguardedTables = [
+        ...sql.matchAll(/CREATE TABLE(?! IF NOT EXISTS)\s+([A-Z0-9_]+)/g),
+      ].map((match) => match[1]);
+      const unguardedIndexes = [
+        ...sql.matchAll(/CREATE (?:UNIQUE )?INDEX(?! IF NOT EXISTS)\s+([A-Z0-9_]+)/g),
+      ].map((match) => match[1]);
+      expect(unguardedTables, `${file}: unguarded table creates`).toEqual(
+        isReceiptIdentity ? ['INVENTORY_RECEIPT_REQUESTS'] : [],
+      );
+      expect(unguardedIndexes, `${file}: unguarded index creates`).toEqual(
+        isReceiptIdentity ? ['INVENTORY_RECEIPT_REQUESTS_FACILITY_KEY_IDX'] : [],
+      );
+      if (isReceiptIdentity) {
+        const preflight = sql.split('--> STATEMENT-BREAKPOINT')[0];
+        expect(preflight).toContain("TO_REGCLASS('INVENTORY_RECEIPT_REQUESTS') IS NOT NULL");
+        expect(preflight).toContain("P.PRONAME='JCARE_INVENTORY_RECEIPT_REQUEST_GUARD'");
+        expect(preflight).toContain('RAISE EXCEPTION');
+      }
+
       const rules: Array<[RegExp, string]> = [
         [/ADD COLUMN(?! IF NOT EXISTS)/, 'ADD COLUMN must say IF NOT EXISTS'],
-        [/CREATE TABLE(?! IF NOT EXISTS)/, 'CREATE TABLE must say IF NOT EXISTS'],
-        [/CREATE (?:UNIQUE )?INDEX(?! IF NOT EXISTS)/, 'CREATE INDEX must say IF NOT EXISTS'],
         [/CREATE SEQUENCE(?! IF NOT EXISTS)/, 'CREATE SEQUENCE must say IF NOT EXISTS'],
         // eslint-disable-next-line no-control-regex -- ESLint reads the \b word boundary as the backspace control character
         [/(DROP TABLE|TRUNCATE|DELETE FROM|DROP COLUMN)/, 'the migration is not destructive'],

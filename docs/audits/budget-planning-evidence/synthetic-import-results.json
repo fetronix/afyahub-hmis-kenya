@@ -1,0 +1,49 @@
+{
+  "syntheticOnly": true,
+  "originalWorkbookAvailable": false,
+  "description": "Generated test workload only; not evidence that the requested original workbook was imported.",
+  "categories": [
+    {
+      "name": "Branding",
+      "items": 5
+    },
+    {
+      "name": "CONSUMABLE ITEMS",
+      "items": 59
+    },
+    {
+      "name": "DENTAL CONSUABLES",
+      "items": 40
+    },
+    {
+      "name": "OPD CONSUMABLES",
+      "items": 133
+    }
+  ],
+  "counts": {
+    "items": 237,
+    "uniforms": 7,
+    "monthly_entries": 2844
+  },
+  "batch": {
+    "filename": "synthetic-232-layout.xlsx",
+    "sha256": "0331d8545ad594ee45543f60820f8c0e1df7feea6f8907e276cb99bd95416b89",
+    "result": {
+      "planId": 22,
+      "created": 244,
+      "skipped": 0,
+      "updated": 0,
+      "version": 2,
+      "sourceRows": 244,
+      "validationErrors": 0
+    },
+    "validation": {
+      "rows": 244,
+      "errors": [],
+      "warnings": [
+        "Source formula text is retained for traceability only; derived costs are recalculated. No formulas are executed. Uniform contribution is an explicitly selected percentage of gross projected purchase cost; verify that this matches the source workbook."
+      ],
+      "previewHash": "0ce0f19971391275328437e21553f6468d802fed59a33e19e33362298dee36a4"
+    }
+  }
+}

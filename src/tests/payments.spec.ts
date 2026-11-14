@@ -8,7 +8,7 @@ import {
   parseMoneyToCents,
   validateTransactionCode,
 } from '../billing/settlement.ts';
-import { schemaSource } from './support/schema-source.ts';
+import { schemaSource, appSource } from './support/schema-source.ts';
 
 import { describe, expect, it } from 'vitest';
 
@@ -178,7 +178,7 @@ describe('Payment settlement — mobile money capture and overpayment handling',
   });
 
   it('4. WIRING', async () => {
-    const app = readRepoFile('src/app.ts');
+    const app = appSource();
 
     const postIndex = app.indexOf("'/api/billing/payments',");
     expect(postIndex > -1, 'the payment route is registered').toBe(true);

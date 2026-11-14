@@ -29,36 +29,89 @@
  */
 
 import { Router } from 'express';
+import budgetPlanningRoutes from '../budget-planning/planning.routes.ts';
 
 import complianceRoutes from '../compliance/compliance.routes.ts';
+import dashboardRoutes from '../dashboard/dashboard.routes.ts';
+import inboxRoutes from '../notifications/inbox.routes.ts';
 import facilityModuleRoutes from '../config/facility-modules.routes.ts';
 import clinicalRecordsRoutes from '../clinical/clinical-records.routes.ts';
 import staffInvitationRoutes from '../auth/staff-invitation.routes.ts';
 import staffRolesRoutes from '../auth/staff-roles.routes.ts';
 import { requireFacilityModule } from '../middleware/facility-module.middleware.ts';
 import queuesRoutes from './queues.routes.ts';
+import operationsRoutes from './operations.routes.ts';
 import appointmentsRoutes from './appointments.routes.ts';
 import vitalsRoutes from './vitals.routes.ts';
-import diagnosesRoutes from './diagnoses.routes.ts';
+import icd11Routes from '../clinical/icd11/icd11.routes.ts';
 import medicationsRoutes from './medications.routes.ts';
+import diagnosesRoutes from './diagnoses.routes.ts';
 import theatreRoutes from './theatre.routes.ts';
+import theatreSchedulingRoutes from './theatre-scheduling.routes.ts';
 import laboratoryRoutes from './laboratory.routes.ts';
 import radiologyRoutes from './radiology.routes.ts';
 import pharmacyRoutes from './pharmacy.routes.ts';
 import procurementRoutes from './procurement.routes.ts';
-import serviceTariffsRoutes from './service-tariffs.routes.ts';
+import approvalPolicyRoutes from './approval-policy.routes.ts';
+import procurementWorkflowRoutes from './procurement-workflow.routes.ts';
+import inventoryAccountingRoutes from './inventory-accounting.routes.ts';
+import inventoryControlRoutes from './inventory-control.routes.ts';
+import workforceRoutes from './workforce.routes.ts';
+import fixedAssetRoutes from './fixed-assets.routes.ts';
+import facilityServicesRoutes from './facility-services.routes.ts';
 import billingRoutes from './billing.routes.ts';
 import dhaRoutes from './dha.routes.ts';
+import shaEclaimsRoutes from './sha-eclaims.routes.ts';
+import privateInsuranceRoutes from './private-insurance.routes.ts';
+import claimEvidenceRoutes from '../insurance/claims/claim-evidence.routes.ts';
+import accountingRoutes from './accounting.routes.ts';
+import paymentHubRoutes from '../payment-hub/routes.ts';
+import bankPaymentRoutes from '../bank-payments/routes.ts';
+import payerHubRoutes from '../insurance/hub/routes.ts';
+import dialysisRoutes from './dialysis.routes.ts';
+import bookingAdminRoutes from '../booking/booking-admin.routes.ts';
 import inpatientRoutes from './inpatient.routes.ts';
 import maternalHealthRoutes from './maternal-health.routes.ts';
 import platformRoutes from './platform.routes.ts';
+import documentRoutes from '../documents/document.routes.ts';
+
+import auditRoutes from './domains/audit.routes.ts';
+import billingAnalyticsRoutes from './domains/billing-analytics.routes.ts';
+import reportCentreRoutes from './domains/report-centre.routes.ts';
+import billingChargesRoutes from './domains/billing-charges.routes.ts';
+import serviceTariffLinksRoutes from './domains/service-tariff-links.routes.ts';
+import claimsRoutes from './domains/claims.routes.ts';
+import encountersRoutes from './domains/encounters.routes.ts';
+import interopRoutes from './domains/interop.routes.ts';
+import invoicesRoutes from './domains/invoices.routes.ts';
+import patientsRoutes from './domains/patients.routes.ts';
+import publicHealthRoutes from './domains/public-health.routes.ts';
+import tenancyRoutes from './domains/tenancy.routes.ts';
 
 export function createApiRoutes(): Router {
   const api = Router();
 
+  // Dashboard sections enforce their own module and permission boundaries.
+  api.use('/dashboard', dashboardRoutes);
+  api.use('/ops', operationsRoutes);
+  api.use('/notifications', inboxRoutes);
+  api.use('/payment-hub', paymentHubRoutes);
+  api.use('/bank-payments', bankPaymentRoutes);
+  api.use('/payer-hub', payerHubRoutes);
   api.use('/platform', platformRoutes);
   api.use('/staff-invitations', staffInvitationRoutes);
   api.use('/staff-roles', staffRolesRoutes);
+
+  /*
+   * Printable documents. Every route behind this mount asks the document
+   * service for its own permission (`billing.read`, `procurement.read`,
+   * `laboratory.read`, `radiology.read`, `inpatient.read`) and re-checks the
+   * tenant and facility of the row it loaded, so no module gate is needed here:
+   * a facility that has not enabled procurement simply has no purchase orders
+   * to print.
+   */
+  api.use('/documents', documentRoutes);
+  api.use('/budget-planning', requireFacilityModule('accounting'), budgetPlanningRoutes);
 
   /*
    * Facility module provisioning. Deliberately outside the
@@ -72,6 +125,8 @@ export function createApiRoutes(): Router {
    * figure cannot be edited in the browser or stored out of date.
    */
   api.use('/compliance', complianceRoutes);
+  // Terminology is shared across clinical modules; routes enforce permissions.
+  api.use('/icd11', icd11Routes);
 
   // Facility module enforcement. Keep platform administration, invitations,
   // tenants, and facility-context endpoints outside these operational guards.
@@ -107,6 +162,7 @@ export function createApiRoutes(): Router {
   api.use('/inpatient', requireFacilityModule('inpatient'));
   api.use('/nursing-notes', requireFacilityModule('inpatient'));
   api.use('/theatre-cases', requireFacilityModule('theatre'));
+  api.use('/theatre', requireFacilityModule('theatre'));
 
   api.use('/lab-tests', requireFacilityModule('laboratory'));
   api.use('/lab-orders', requireFacilityModule('laboratory'));
@@ -121,34 +177,91 @@ export function createApiRoutes(): Router {
 
   api.use('/suppliers', requireFacilityModule('procurement'));
   api.use('/purchase-orders', requireFacilityModule('procurement'));
+  api.use('/procurement', requireFacilityModule('procurement'));
 
   api.use('/claims', requireFacilityModule('insurance'));
+  api.use('/insurance/evidence', requireFacilityModule('insurance'), claimEvidenceRoutes);
+  api.use('/insurance/sha', requireFacilityModule('insurance'), shaEclaimsRoutes);
+  api.use('/insurance', requireFacilityModule('insurance'), privateInsuranceRoutes);
+  api.use('/accounting', requireFacilityModule('accounting'), accountingRoutes);
+  api.use('/dialysis', requireFacilityModule('dialysis'), dialysisRoutes);
+  api.use('/booking/admin', requireFacilityModule('website_booking'), bookingAdminRoutes);
   api.use('/integrations', requireFacilityModule('interoperability'));
   api.use('/public-health', requireFacilityModule('public_health'));
   api.use('/analytics', requireFacilityModule('analytics'));
   api.use('/reporting', requireFacilityModule('analytics'));
+  api.use('/reporting/centre', reportCentreRoutes);
   api.use('/interoperability', requireFacilityModule('interoperability'));
+  // FHIR is mounted under /interop, while MOH routes under that prefix have
+  // separate reporting permissions. Do not gate the entire prefix as FHIR.
+  api.use('/interop/fhir', requireFacilityModule('interoperability'));
   api.use('/audit-logs', requireFacilityModule('audit'));
 
   /*
-   * Clinical domains that already had their own routers before this file
-   * existed. They register absolute paths under their own prefixes, so they
-   * mount at the router root rather than at a prefix.
+   * Clinical domains whose routers register `/api`-relative paths (`/wards`,
+   * `/maternity/summary`, `/immunisation/schedule`). Because `createApiRoutes`
+   * itself is mounted at `/api`, Express prepends `/api` to reach them.
    */
   api.use(maternalHealthRoutes);
   api.use(inpatientRoutes);
-  api.use(dhaRoutes);
-  api.use(billingRoutes);
-  api.use(serviceTariffsRoutes);
-  api.use(procurementRoutes);
-  api.use(pharmacyRoutes);
-  api.use(radiologyRoutes);
-  api.use(laboratoryRoutes);
-  api.use(theatreRoutes);
-  api.use(medicationsRoutes);
-  api.use(diagnosesRoutes);
-  api.use(vitalsRoutes);
-  api.use(appointmentsRoutes);
-  api.use(queuesRoutes);
   return api;
+}
+
+/**
+ * Domain routers whose handlers register explicit `/api/...` paths.
+ *
+ * Mounted on `app` immediately after `app.use('/api', createApiRoutes())`,
+ * so every `/api` request still passes `requireAuth`, `requireAuthorization`,
+ * and every `requireFacilityModule` gate in `createApiRoutes()` before
+ * reaching these handlers — without doubling `/api` into `/api/api/...`.
+ */
+export function createDomainRoutes(): Router {
+  const domains = Router();
+
+  domains.use(dhaRoutes);
+  domains.use(billingRoutes);
+  domains.use(facilityServicesRoutes);
+  domains.use(procurementRoutes);
+  /*
+   * Approval thresholds govern procurement approval, so they are mounted with
+   * the procurement chain rather than under the platform administrator. The
+   * router carries its own facility-scope resolution and permission gates.
+   */
+  domains.use(approvalPolicyRoutes);
+  domains.use(procurementWorkflowRoutes);
+  domains.use(inventoryAccountingRoutes);
+  domains.use(inventoryControlRoutes);
+  // HR and payroll declare full /api/hr and /api/payroll paths.
+  domains.use(workforceRoutes);
+  domains.use('/api/fixed-assets', requireFacilityModule('accounting'), fixedAssetRoutes);
+  domains.use(pharmacyRoutes);
+  domains.use(radiologyRoutes);
+  domains.use(laboratoryRoutes);
+  domains.use(theatreRoutes);
+  domains.use(theatreSchedulingRoutes);
+  domains.use(medicationsRoutes);
+  domains.use(diagnosesRoutes);
+  domains.use(vitalsRoutes);
+  domains.use(appointmentsRoutes);
+  domains.use(queuesRoutes);
+
+  domains.use(tenancyRoutes);
+  domains.use(patientsRoutes);
+  domains.use(encountersRoutes);
+  domains.use(billingChargesRoutes);
+  /*
+   * The catalogue → tariff link table (migration 0021). Billing prefers
+   * an explicit link over a code match, so the screen that maintains it
+   * has to be reachable; the router was written but never mounted, which
+   * left the links panel answering 404 on every action.
+   */
+  domains.use(serviceTariffLinksRoutes);
+  domains.use(billingAnalyticsRoutes);
+  domains.use(claimsRoutes);
+  domains.use(invoicesRoutes);
+  domains.use(publicHealthRoutes);
+  domains.use(auditRoutes);
+  domains.use(interopRoutes);
+
+  return domains;
 }

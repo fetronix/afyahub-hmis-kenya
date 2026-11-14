@@ -1,6 +1,23 @@
-import { db } from './index.ts';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { db, pool } from './index.ts';
 import * as schema from './schema.ts';
 
+/**
+ * Demo dataset for a fresh installation.
+ *
+ * `npm run db:seed` runs this file directly. Until now nothing did: the
+ * function below was exported and never called, so the script printed nothing,
+ * inserted nothing and exited 0. A bootstrap step that silently does nothing is
+ * worse than one that is missing, because the install looks complete.
+ *
+ * Two things changed with that fix:
+ *   - the module calls itself when it is the entry point (the `runDirectly`
+ *     check at the bottom), and
+ *   - a failure now exits non-zero. `catch` used to print the error and return,
+ *     which told a scripted install the seed had succeeded.
+ */
 export async function seedInitialData() {
   try {
     const existingTenants = await db.select().from(schema.tenants).limit(1);
@@ -1003,5 +1020,20 @@ export async function seedInitialData() {
     console.log('Seeding completed successfully!');
   } catch (error) {
     console.error('Error during database seeding:', error);
+    // Rethrow so the CLI wrapper below can set a failing exit code. Callers
+    // that want to continue regardless must catch it themselves.
+    throw error;
   }
+}
+
+/*
+ * Only run when this file IS the command. `tsx src/db/seed.ts` (and the
+ * built `build/scripts/seed-permissions.js` style bundles) import modules that
+ * must not trigger a seed as a side effect.
+ */
+const invokedDirectly =
+  process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  await seedInitialData().finally(() => pool.end().catch(() => undefined));
 }

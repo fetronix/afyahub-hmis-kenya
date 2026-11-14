@@ -27,67 +27,128 @@ import {
   Download,
 } from 'lucide-react';
 
+type JourneyRecords = {
+  key: string;
+  encounters: Encounter[];
+  observations: Observation[];
+  diagnoses: Diagnosis[];
+  medications: Medication[];
+  labOrders: LabOrder[];
+  labResults: LabResult[];
+  invoices: BillingInvoice[];
+  fhirJson: string;
+};
+
 export const PatientJourneyModal: React.FC = () => {
-  const { selectedPatient, isJourneyModalOpen, setIsJourneyModalOpen, showToast } = useHmis();
-  const [encounters, setEncounters] = useState<Encounter[]>([]);
-  const [observations, setObservations] = useState<Observation[]>([]);
-  const [diagnoses, setDiagnoses] = useState<Diagnosis[]>([]);
-  const [medications, setMedications] = useState<Medication[]>([]);
-  const [labOrders, setLabOrders] = useState<LabOrder[]>([]);
-  const [labResults, setLabResults] = useState<LabResult[]>([]);
-  const [invoices, setInvoices] = useState<BillingInvoice[]>([]);
+  const { selectedPatient, currentTenant, currentFacility, isJourneyModalOpen } = useHmis();
+  if (!isJourneyModalOpen || !selectedPatient || !currentTenant?.id || !currentFacility?.id) {
+    return null;
+  }
+  // A new selection or scope must never inherit a previous modal's local state.
+  const key = `${currentTenant.id}:${currentFacility.id}:${selectedPatient.id}`;
+  return <PatientJourneyContent key={key} />;
+};
+
+const PatientJourneyContent: React.FC = () => {
+  const {
+    selectedPatient,
+    currentTenant,
+    currentFacility,
+    isJourneyModalOpen,
+    setIsJourneyModalOpen,
+    showToast,
+  } = useHmis();
+  const [records, setRecords] = useState<JourneyRecords | null>(null);
+  const [loadState, setLoadState] = useState<{
+    key: string;
+    status: 'loading' | 'ready' | 'error';
+  } | null>(null);
   const [activeTab, setActiveTab] = useState<
     'timeline' | 'vitals' | 'diagnoses' | 'meds' | 'labs' | 'billing' | 'consent' | 'fhir'
   >('timeline');
-  const [fhirJson, setFhirJson] = useState<string>('');
-  const [loading, setLoading] = useState(false);
+  const patientId = selectedPatient?.id;
+  const facilityId = currentFacility?.id;
+  const tenantId = currentTenant?.id;
+  const key = `${tenantId ?? ''}:${facilityId ?? ''}:${patientId ?? ''}`;
+  const currentRecords = records?.key === key ? records : null;
+  const encounters = currentRecords?.encounters ?? [];
+  const observations = currentRecords?.observations ?? [];
+  const diagnoses = currentRecords?.diagnoses ?? [];
+  const medications = currentRecords?.medications ?? [];
+  const labOrders = currentRecords?.labOrders ?? [];
+  const labResults = currentRecords?.labResults ?? [];
+  const invoices = currentRecords?.invoices ?? [];
+  const fhirJson = currentRecords?.fhirJson ?? '';
+  const loading = loadState?.key !== key || loadState.status === 'loading';
+  const loadError = loadState?.key === key && loadState.status === 'error';
 
   useEffect(() => {
-    if (!selectedPatient || !isJourneyModalOpen) return;
+    let active = true;
+    if (!patientId || !facilityId || !tenantId || !isJourneyModalOpen) {
+      return () => {
+        active = false;
+      };
+    }
+    const selectedPatientId = patientId;
+    const selectedFacilityId = facilityId;
 
     async function loadPatientDetails() {
-      setLoading(true);
       try {
         const [encs, vitals, diags, meds, labs, results, invs, fhir] = await Promise.all([
-          api.getEncounters(selectedPatient!.id),
-          api.getObservations(undefined, selectedPatient!.id),
-          api.getDiagnoses(undefined, selectedPatient!.id),
-          api.getMedications(undefined, selectedPatient!.id),
-          api.getLabOrders(undefined, selectedPatient!.id),
-          api.getLabResults(undefined, selectedPatient!.id),
-          api.getInvoices(undefined, selectedPatient!.id),
-          api.getFhirPatient(selectedPatient!.id).catch(() => null),
+          api.getEncounters(selectedPatientId),
+          api.getObservations(undefined, selectedPatientId),
+          api.getDiagnoses(undefined, selectedPatientId),
+          api.getMedications(undefined, selectedPatientId),
+          api.getLabOrders(undefined, selectedPatientId),
+          api.getLabResults(undefined, selectedPatientId),
+          api.getInvoices(undefined, selectedPatientId),
+          api.getFhirPatient(selectedPatientId, selectedFacilityId).catch(() => null),
         ]);
-
-        setEncounters(encs);
-        setObservations(vitals);
-        setDiagnoses(diags);
-        setMedications(meds);
-        setLabOrders(labs);
-        setLabResults(results);
-        setInvoices(invs);
-        if (fhir) {
-          setFhirJson(JSON.stringify(fhir, null, 2));
+        if (!active) return;
+        // Never label or export a response whose identity does not match the selected patient.
+        const fhirJson =
+          fhir?.resourceType === 'Patient' && fhir?.id === `ke-hmis-${selectedPatientId}`
+            ? JSON.stringify(fhir, null, 2)
+            : '';
+        setRecords({
+          key,
+          encounters: encs,
+          observations: vitals,
+          diagnoses: diags,
+          medications: meds,
+          labOrders: labs,
+          labResults: results,
+          invoices: invs,
+          fhirJson,
+        });
+        setLoadState({ key, status: 'ready' });
+      } catch {
+        if (active) {
+          console.error('Failed to load patient longitudinal records.');
+          setRecords(null);
+          setLoadState({ key, status: 'error' });
         }
-      } catch (err) {
-        console.error('Failed to load patient longitudinal records:', err);
-      } finally {
-        setLoading(false);
       }
     }
 
-    loadPatientDetails();
-  }, [selectedPatient, isJourneyModalOpen]);
+    void loadPatientDetails();
+    return () => {
+      active = false;
+    };
+  }, [key, patientId, facilityId, tenantId, isJourneyModalOpen]);
 
-  if (!isJourneyModalOpen || !selectedPatient) return null;
+  if (!isJourneyModalOpen || !selectedPatient || !currentTenant?.id || !currentFacility?.id)
+    return null;
 
   const downloadFhir = () => {
+    if (!fhirJson) return;
     const blob = new Blob([fhirJson], { type: 'application/fhir+json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `FHIR-Patient-${selectedPatient.mrn}.json`;
     a.click();
+    URL.revokeObjectURL(url);
     showToast('Downloaded HL7 FHIR R4 Patient Resource');
   };
 
@@ -140,6 +201,7 @@ export const PatientJourneyModal: React.FC = () => {
           <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
             <button
               onClick={downloadFhir}
+              disabled={!fhirJson || loading || loadError}
               className="px-2.5 sm:px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 rounded-md hover:bg-slate-50 flex items-center gap-1.5 transition-colors"
             >
               <Download className="w-3.5 h-3.5 text-blue-700" />
@@ -162,7 +224,7 @@ export const PatientJourneyModal: React.FC = () => {
               <span>
                 Allergies:{' '}
                 <strong className="text-orange-900">
-                  {selectedPatient.allergies || 'None known'}
+                  {selectedPatient.allergies || 'Not recorded'}
                 </strong>
               </span>
             </div>
@@ -171,7 +233,7 @@ export const PatientJourneyModal: React.FC = () => {
               <span>
                 Chronic Conditions:{' '}
                 <strong className="text-orange-900">
-                  {selectedPatient.chronicConditions || 'None known'}
+                  {selectedPatient.chronicConditions || 'Not recorded'}
                 </strong>
               </span>
             </div>
@@ -179,7 +241,7 @@ export const PatientJourneyModal: React.FC = () => {
           <div className="flex items-center gap-1 text-2xs text-orange-800">
             <span>Next of Kin:</span>
             <strong>
-              {selectedPatient.emergencyContactName || 'None'} (
+              {selectedPatient.emergencyContactName || 'Not recorded'} (
               {selectedPatient.emergencyContactRelationship || 'N/A'}) -{' '}
               {selectedPatient.emergencyContactPhone || ''}
             </strong>
@@ -216,6 +278,10 @@ export const PatientJourneyModal: React.FC = () => {
           {loading ? (
             <div className="flex items-center justify-center h-48 text-slate-400 text-xs">
               Loading longitudinal patient history...
+            </div>
+          ) : loadError ? (
+            <div role="alert" className="py-8 text-center text-xs text-red-700">
+              The patient history could not be loaded for this facility.
             </div>
           ) : (
             <>
@@ -360,10 +426,11 @@ export const PatientJourneyModal: React.FC = () => {
                       {diagnoses.map((d) => (
                         <tr key={d.id} className="hover:bg-slate-50/70">
                           <td className="px-4 py-2.5 font-mono font-bold text-teal-800">
-                            {d.icd10Code}
+                            {d.codingSystem === 'ICD-11' ? d.icd11Code : d.icd10Code}{' '}
+                            <span className="font-normal">({d.codingSystem ?? 'ICD-10'})</span>
                           </td>
                           <td className="px-4 py-2.5 font-medium text-slate-900">
-                            {d.icd10Description}
+                            {d.codingSystem === 'ICD-11' ? d.icd11Title : d.icd10Description}
                           </td>
                           <td className="px-4 py-2.5 text-slate-600">{d.diagnosisType}</td>
                           <td className="px-4 py-2.5">
@@ -584,16 +651,17 @@ export const PatientJourneyModal: React.FC = () => {
               {activeTab === 'fhir' && (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-xs text-slate-600">
-                    <span>HL7 FHIR R4 JSON Representation (Digital Health Agency Compatible)</span>
+                    <span>FHIR R4 JSON preview (DHA validation not established)</span>
                     <button
                       onClick={downloadFhir}
+                      disabled={!fhirJson}
                       className="px-2.5 py-1 bg-teal-700 text-white rounded text-2xs font-medium hover:bg-teal-800 transition-colors"
                     >
                       Download .json
                     </button>
                   </div>
                   <pre className="p-4 bg-slate-900 text-emerald-400 rounded-lg text-xs font-mono overflow-x-auto max-h-96">
-                    {fhirJson || '// Generating FHIR Patient Structure...'}
+                    {fhirJson || 'FHIR resource is unavailable for this patient and facility.'}
                   </pre>
                 </div>
               )}

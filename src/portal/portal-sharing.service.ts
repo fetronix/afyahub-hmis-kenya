@@ -2,11 +2,12 @@
  * JaliCare HMIS
  * Patient-authorised record sharing
  *
- * A patient releases selected categories to a named recipient for a
- * limited window. This is **not** a public link and **not** a national
- * HIE integration: redeeming requires an authenticated staff session
- * with `patients.read` inside the same tenant, and the code is
- * single-recipient, time-limited and revocable.
+ * A patient records a sharing request for selected categories. This is
+ * **not** a public link or a national HIE integration: redemption requires
+ * an authenticated staff session with `patients.read` in the same tenant.
+ * The recipient name is descriptive, not verified against the redeemer.
+ * A code is time-limited, revocable and single-use; redemption returns
+ * request metadata, not the underlying clinical records.
  *
  * The grant carries a purpose and a category list because "share my
  * record" without either is not a decision a patient can meaningfully
@@ -20,7 +21,6 @@ import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
 
 import type { AuthorizationContext } from '../auth/authorization.types.ts';
-import { logAuditEvent } from '../db/queries.ts';
 
 import type { PortalSession } from './portal-auth.service.ts';
 import { PortalError } from './portal.service.ts';
@@ -55,29 +55,33 @@ export async function createSharingGrant(
   const code = generateInvitationToken();
   const expiresAt = new Date(Date.now() + request.hours * 60 * 60 * 1000);
 
-  const [grant] = await db
-    .insert(schema.patientRecordSharingGrants)
-    .values({
-      tenantId: session.tenantId,
-      patientId: session.patientId,
-      createdByAccountId: session.accountId,
-      codeHash: hashInvitationToken(code),
-      recipientName: request.recipientName,
-      purpose: request.purpose,
-      categories: request.categories,
-      expiresAt,
-    })
-    .returning();
+  const grant = await db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(schema.patientRecordSharingGrants)
+      .values({
+        tenantId: session.tenantId,
+        patientId: session.patientId,
+        createdByAccountId: session.accountId,
+        codeHash: hashInvitationToken(code),
+        recipientName: request.recipientName,
+        purpose: request.purpose,
+        categories: request.categories,
+        expiresAt,
+      })
+      .returning();
 
-  await logAuditEvent(
-    session.tenantId,
-    session.facilityId,
-    null,
-    'SHARE',
-    'PatientRecordSharingGrant',
-    String(grant.id),
-    `Patient authorised sharing with ${request.recipientName} until ${expiresAt.toISOString()}`,
-  );
+    // Do not copy arbitrary recipient or purpose text into the audit log.
+    await tx.insert(schema.auditLogs).values({
+      tenantId: session.tenantId,
+      facilityId: session.facilityId,
+      userId: null,
+      action: 'SHARE',
+      resource: 'PatientRecordSharingGrant',
+      resourceId: String(created.id),
+      details: 'Patient created a sharing request',
+    });
+    return created;
+  });
 
   /*
    * The code is returned once. Only its hash is stored, so it cannot be
@@ -109,7 +113,12 @@ export async function listSharingGrants(session: PortalSession) {
       createdAt: schema.patientRecordSharingGrants.createdAt,
     })
     .from(schema.patientRecordSharingGrants)
-    .where(eq(schema.patientRecordSharingGrants.patientId, session.patientId))
+    .where(
+      and(
+        eq(schema.patientRecordSharingGrants.patientId, session.patientId),
+        eq(schema.patientRecordSharingGrants.tenantId, session.tenantId),
+      ),
+    )
     .orderBy(desc(schema.patientRecordSharingGrants.createdAt))
     .limit(50);
 
@@ -137,42 +146,38 @@ export async function revokeSharingGrant(
     throw new PortalError('A valid grant is required.', 400, 'INVALID_GRANT_ID');
   }
 
-  const [grant] = await db
-    .select()
-    .from(schema.patientRecordSharingGrants)
-    .where(
-      and(
-        eq(schema.patientRecordSharingGrants.id, grantId),
-        /* The account's own patient — never an id from the body. */
-        eq(schema.patientRecordSharingGrants.patientId, session.patientId),
-      ),
-    )
-    .limit(1);
+  return db.transaction(async (tx) => {
+    const [grant] = await tx
+      .select()
+      .from(schema.patientRecordSharingGrants)
+      .where(
+        and(
+          eq(schema.patientRecordSharingGrants.id, grantId),
+          eq(schema.patientRecordSharingGrants.patientId, session.patientId),
+          eq(schema.patientRecordSharingGrants.tenantId, session.tenantId),
+        ),
+      )
+      .for('update');
 
-  if (!grant) {
-    throw new PortalError('Grant not found.', 404, 'GRANT_NOT_FOUND');
-  }
+    if (!grant) throw new PortalError('Grant not found.', 404, 'GRANT_NOT_FOUND');
+    if (grant.revokedAt) return { state: 'REVOKED' };
 
-  if (grant.revokedAt) {
+    await tx
+      .update(schema.patientRecordSharingGrants)
+      .set({ revokedAt: new Date() })
+      .where(eq(schema.patientRecordSharingGrants.id, grant.id));
+    await tx.insert(schema.auditLogs).values({
+      tenantId: session.tenantId,
+      facilityId: session.facilityId,
+      userId: null,
+      action: 'REVOKE',
+      resource: 'PatientRecordSharingGrant',
+      resourceId: String(grant.id),
+      details: 'Patient revoked a sharing request',
+    });
+
     return { state: 'REVOKED' };
-  }
-
-  await db
-    .update(schema.patientRecordSharingGrants)
-    .set({ revokedAt: new Date() })
-    .where(eq(schema.patientRecordSharingGrants.id, grant.id));
-
-  await logAuditEvent(
-    session.tenantId,
-    session.facilityId,
-    null,
-    'REVOKE',
-    'PatientRecordSharingGrant',
-    String(grant.id),
-    'Patient revoked record sharing',
-  );
-
-  return { state: 'REVOKED' };
+  });
 }
 
 /* ============================================================
@@ -198,69 +203,64 @@ export async function redeemSharingGrant(context: AuthorizationContext, rawCode:
     throw new PortalError('Select a facility first.', 400, 'TENANT_REQUIRED');
   }
 
-  const [grant] = await db
-    .select()
-    .from(schema.patientRecordSharingGrants)
-    .where(
-      and(
-        eq(schema.patientRecordSharingGrants.codeHash, hashInvitationToken(code)),
-        eq(schema.patientRecordSharingGrants.tenantId, context.tenantId),
-      ),
-    )
-    .limit(1);
+  return db.transaction(async (tx) => {
+    // Locking the grant serializes redemption and patient revocation. Audit
+    // and access history commit with the transition or none of them do.
+    const [grant] = await tx
+      .select()
+      .from(schema.patientRecordSharingGrants)
+      .where(
+        and(
+          eq(schema.patientRecordSharingGrants.codeHash, hashInvitationToken(code)),
+          eq(schema.patientRecordSharingGrants.tenantId, context.tenantId!),
+        ),
+      )
+      .for('update');
 
-  if (!grant) {
-    throw new PortalError('That sharing code is not valid.', 404, 'GRANT_NOT_FOUND');
-  }
+    if (!grant) throw new PortalError('That sharing code is not valid.', 404, 'GRANT_NOT_FOUND');
+    if (grant.revokedAt)
+      throw new PortalError('The patient withdrew this sharing grant.', 410, 'GRANT_REVOKED');
+    if (grant.expiresAt.getTime() <= Date.now())
+      throw new PortalError('This sharing grant has expired.', 410, 'GRANT_EXPIRED');
+    if (grant.redeemedAt)
+      throw new PortalError('This sharing code has already been used.', 410, 'GRANT_USED');
 
-  if (grant.revokedAt) {
-    throw new PortalError('The patient withdrew this sharing grant.', 410, 'GRANT_REVOKED');
-  }
+    await tx
+      .update(schema.patientRecordSharingGrants)
+      .set({ redeemedAt: new Date(), redeemedByUserId: context.userId })
+      .where(eq(schema.patientRecordSharingGrants.id, grant.id));
 
-  if (grant.expiresAt.getTime() <= Date.now()) {
-    throw new PortalError('This sharing grant has expired.', 410, 'GRANT_EXPIRED');
-  }
+    await tx.insert(schema.auditLogs).values({
+      tenantId: grant.tenantId,
+      facilityId: context.facilityId,
+      userId: String(context.userId),
+      action: 'VIEW',
+      resource: 'PatientRecordSharingGrant',
+      resourceId: String(grant.id),
+      details: 'Staff redeemed a sharing request',
+    });
 
-  if (grant.redeemedAt) {
-    throw new PortalError('This sharing code has already been used.', 410, 'GRANT_USED');
-  }
+    await tx.insert(schema.patientRecordAccessLogs).values({
+      patientId: grant.patientId,
+      userId: context.userId,
+      tenantId: grant.tenantId,
+      facilityId: context.facilityId,
+      action: 'SHARE',
+      accessChannel: 'REFERRAL',
+      recordType: 'PatientRecordSharingGrant',
+      recordId: grant.id,
+      purpose: 'CARE_COORDINATION',
+    });
 
-  await db
-    .update(schema.patientRecordSharingGrants)
-    .set({ redeemedAt: new Date(), redeemedByUserId: context.userId })
-    .where(eq(schema.patientRecordSharingGrants.id, grant.id));
-
-  await logAuditEvent(
-    grant.tenantId,
-    context.facilityId,
-    String(context.userId),
-    'VIEW',
-    'PatientRecordSharingGrant',
-    String(grant.id),
-    `Sharing grant redeemed for ${grant.recipientName}`,
-  );
-
-  await db.insert(schema.patientRecordAccessLogs).values({
-    patientId: grant.patientId,
-    userId: context.userId,
-    tenantId: grant.tenantId,
-    facilityId: context.facilityId,
-    action: 'SHARE',
-    accessChannel: 'REFERRAL',
-    recordType: 'PatientRecordSharingGrant',
-    recordId: grant.id,
-    purpose: 'CARE_COORDINATION',
+    const categories = Array.isArray(grant.categories) ? (grant.categories as string[]) : [];
+    return {
+      patientId: grant.patientId,
+      recipientName: grant.recipientName,
+      purpose: grant.purpose,
+      categories: SHARING_CATEGORIES.filter((category) => categories.includes(category)),
+      expiresAt: grant.expiresAt,
+    };
   });
-
-  const categories = Array.isArray(grant.categories) ? (grant.categories as string[]) : [];
-
-  return {
-    patientId: grant.patientId,
-    recipientName: grant.recipientName,
-    purpose: grant.purpose,
-    categories: SHARING_CATEGORIES.filter((category) => categories.includes(category)),
-    expiresAt: grant.expiresAt,
-  };
 }
 
 /* ============================================================
