@@ -9,10 +9,19 @@ import {
   Users,
   Landmark,
   ChartNoAxesCombined,
+  Calculator,
 } from 'lucide-react';
 
 export type AccountingSection =
-  'dashboard' | 'setup' | 'ledger' | 'billing' | 'expenses' | 'payroll' | 'banking' | 'reports';
+  | 'dashboard'
+  | 'setup'
+  | 'budgeting'
+  | 'ledger'
+  | 'billing'
+  | 'expenses'
+  | 'payroll'
+  | 'banking'
+  | 'reports';
 export type AccountingView =
   | (typeof planningViews)[number][0]
   | 'dashboard'
@@ -54,6 +63,16 @@ export const ACCOUNTING_SECTIONS = [
       { id: 'periods', label: 'Financial Periods' },
       { id: 'mapping', label: 'Payroll Account Mapping' },
       { id: 'configuration', label: 'Accounting Configuration' },
+    ],
+  },
+  {
+    id: 'budgeting',
+    title: 'Budgeting & Financial Planning',
+    description:
+      'Separate financial projections and procurement planning; neither posts actual accounting.',
+    icon: Calculator,
+    views: [
+      { id: 'planningFinancials', label: 'Annual Financial Budget' },
       { id: 'planningDashboard', label: 'Budget & Procurement Planning' },
     ],
   },
@@ -128,10 +147,12 @@ export function AccountingNavigation({
   section,
   onNavigate,
   billingAllowed,
+  planningAllowed,
 }: {
   section: AccountingSection;
   onNavigate: (section: AccountingSection, view?: AccountingView) => void;
   billingAllowed: boolean;
+  planningAllowed: boolean;
 }) {
   return (
     <nav
@@ -149,30 +170,34 @@ export function AccountingNavigation({
           onChange={(event) => onNavigate(event.target.value as AccountingSection)}
           className="w-full rounded-lg border border-hair bg-white px-3 py-3 text-sm"
         >
-          {ACCOUNTING_SECTIONS.filter((item) => item.id !== 'billing' || billingAllowed).map(
-            (item) => (
-              <option key={item.id} value={item.id}>
-                {item.title}
-              </option>
-            ),
-          )}
+          {ACCOUNTING_SECTIONS.filter(
+            (item) =>
+              (item.id !== 'billing' || billingAllowed) &&
+              (item.id !== 'budgeting' || planningAllowed),
+          ).map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.title}
+            </option>
+          ))}
         </select>
       </label>
       <div className="hidden gap-1 sm:grid sm:grid-cols-2 lg:grid-cols-1">
-        {ACCOUNTING_SECTIONS.filter((item) => item.id !== 'billing' || billingAllowed).map(
-          (item) => (
-            <button
-              key={item.id}
-              type="button"
-              aria-current={section === item.id ? 'page' : undefined}
-              onClick={() => onNavigate(item.id)}
-              className={`flex min-w-0 items-center gap-2 rounded-lg px-3 py-3 text-left text-sm font-medium ${section === item.id ? 'bg-brand-700 text-white' : 'text-ink hover:bg-slate-100'}`}
-            >
-              <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
-              <span>{item.title}</span>
-            </button>
-          ),
-        )}
+        {ACCOUNTING_SECTIONS.filter(
+          (item) =>
+            (item.id !== 'billing' || billingAllowed) &&
+            (item.id !== 'budgeting' || planningAllowed),
+        ).map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            aria-current={section === item.id ? 'page' : undefined}
+            onClick={() => onNavigate(item.id)}
+            className={`flex min-w-0 items-center gap-2 rounded-lg px-3 py-3 text-left text-sm font-medium ${section === item.id ? 'bg-brand-700 text-white' : 'text-ink hover:bg-slate-100'}`}
+          >
+            <item.icon className="h-4 w-4 shrink-0" aria-hidden="true" />
+            <span>{item.title}</span>
+          </button>
+        ))}
       </div>
     </nav>
   );

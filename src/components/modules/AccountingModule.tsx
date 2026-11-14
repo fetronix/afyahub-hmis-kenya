@@ -1,3 +1,7 @@
+import {
+  readBudgetingView,
+  writeBudgetingView,
+} from './accounting/accounting-budget-navigation.ts';
 import { PlanningWorkspace } from './planning/PlanningWorkspace.tsx';
 import {
   ACCOUNTING_SECTIONS,
@@ -36,11 +40,29 @@ export const AccountingModule: React.FC<{ onOpenPayroll?: (tab: PayrollTabId) =>
   onOpenPayroll,
 }) => {
   const { currentFacility, authenticatedUser, showToast, setActiveModule } = useHmis();
-  const [section, setSection] = useState<AccountingSection>('dashboard');
-  const [view, setView] = useState<AccountingView>('dashboard');
+  const [section, setSection] = useState<AccountingSection>(() =>
+    readBudgetingView() ? 'budgeting' : 'dashboard',
+  );
+  const [view, setView] = useState<AccountingView>(() => readBudgetingView() ?? 'dashboard');
+  useEffect(() => {
+    const restore = () => {
+      const destination = readBudgetingView();
+      setSection(destination ? 'budgeting' : 'dashboard');
+      setView(destination ?? 'dashboard');
+    };
+    window.addEventListener('popstate', restore);
+    window.addEventListener('hashchange', restore);
+    return () => {
+      window.removeEventListener('popstate', restore);
+      window.removeEventListener('hashchange', restore);
+    };
+  }, []);
   const navigate = (next: AccountingSection, nextView?: AccountingView) => {
     setSection(next);
-    setView(nextView ?? ACCOUNTING_SECTIONS.find((item) => item.id === next)!.views[0].id);
+    const destination =
+      nextView ?? ACCOUNTING_SECTIONS.find((item) => item.id === next)!.views[0].id;
+    setView(destination);
+    writeBudgetingView(destination);
   };
   const activeSection = ACCOUNTING_SECTIONS.find((item) => item.id === section)!;
   const [start, setStart] = useState(`${today().slice(0, 4)}-01-01`),
@@ -273,6 +295,7 @@ export const AccountingModule: React.FC<{ onOpenPayroll?: (tab: PayrollTabId) =>
           section={section}
           onNavigate={navigate}
           billingAllowed={can('billing.read')}
+          planningAllowed={can('accounting.planning.read')}
         />
         <div className="min-w-0 space-y-4">
           <header>
@@ -287,29 +310,36 @@ export const AccountingModule: React.FC<{ onOpenPayroll?: (tab: PayrollTabId) =>
                   type="button"
                   aria-current={
                     view === item.id ||
-                    (item.id === 'planningDashboard' && view.startsWith('planning'))
+                    (item.id === 'planningDashboard' &&
+                      view.startsWith('planning') &&
+                      view !== 'planningFinancials')
                       ? 'page'
                       : undefined
                   }
                   className={
                     view === item.id ||
-                    (item.id === 'planningDashboard' && view.startsWith('planning'))
+                    (item.id === 'planningDashboard' &&
+                      view.startsWith('planning') &&
+                      view !== 'planningFinancials')
                       ? buttonClass
                       : 'rounded-lg border border-hair bg-white px-3 py-2 text-xs font-medium text-ink hover:bg-slate-100'
                   }
-                  onClick={() => setView(item.id)}
+                  onClick={() => navigate(section, item.id)}
                 >
                   {item.label}
                 </button>
               ))}
             </nav>
           )}
-          {view.startsWith('planning') && (
+          {view.startsWith('planning') && !can('accounting.planning.read') && (
+            <p role="alert">Planning access requires accounting.planning.read permission.</p>
+          )}
+          {view.startsWith('planning') && can('accounting.planning.read') && (
             <PlanningWorkspace
               key={`${currentFacility.id}:${authenticatedUser?.id}`}
               facilityId={currentFacility.id}
               view={view}
-              onNavigate={setView}
+              onNavigate={(next) => navigate('budgeting', next)}
               permissions={authenticatedUser?.permissions ?? []}
             />
           )}

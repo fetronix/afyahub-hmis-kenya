@@ -1,3 +1,4 @@
+import { useBudgetingEntry } from './components/modules/accounting/accounting-budget-navigation.ts';
 import React, { useEffect, useState } from 'react';
 import { HmisProvider, useHmis } from './context/HmisContext.tsx';
 import { InboxProvider } from './context/InboxContext.tsx';
@@ -60,6 +61,7 @@ const AppContent: React.FC = () => {
     retryContextInitialization,
   } = useHmis();
   const [payrollEntry, setPayrollEntry] = useState<PayrollTabId>('runs');
+  useBudgetingEntry(isAuthenticated, activeModule, setActiveModule);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       return window.localStorage.getItem('jalicare.sidebar.collapsed') === '1';

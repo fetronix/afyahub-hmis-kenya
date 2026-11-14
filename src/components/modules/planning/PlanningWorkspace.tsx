@@ -303,10 +303,14 @@ export function PlanningWorkspace({
   return (
     <div className="space-y-4">
       <header>
-        <h3 className="text-xl font-bold">Budget &amp; Procurement Planning</h3>
+        <h3 className="text-xl font-bold">
+          {view === 'planningFinancials'
+            ? 'Annual Financial Budget'
+            : 'Budget & Procurement Planning'}
+        </h3>
         <p className="text-sm text-muted">{planningViews.find(([id]) => id === view)?.[1]}</p>
       </header>
-      {can('reset') && can('manage') && (
+      {view !== 'planningFinancials' && can('reset') && can('manage') && (
         <section aria-label="Budget planning settings" className="space-y-3">
           <h4 className="font-semibold">Planning settings</h4>
           <button
@@ -340,18 +344,22 @@ export function PlanningWorkspace({
           )}
         </section>
       )}
-      <nav aria-label="Budget planning sections" className="flex flex-wrap gap-2">
-        {planningViews.map(([id, label]) => (
-          <button
-            key={id}
-            className={view === id ? button : quiet}
-            aria-current={view === id ? 'page' : undefined}
-            onClick={() => navigateSection(id)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
+      {view !== 'planningFinancials' && (
+        <nav aria-label="Budget planning sections" className="flex flex-wrap gap-2">
+          {planningViews
+            .filter(([id]) => id !== 'planningFinancials')
+            .map(([id, label]) => (
+              <button
+                key={id}
+                className={view === id ? button : quiet}
+                aria-current={view === id ? 'page' : undefined}
+                onClick={() => navigateSection(id)}
+              >
+                {label}
+              </button>
+            ))}
+        </nav>
+      )}
       <p className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm">
         Budget projections only — not inventory, purchase orders, goods received or actual
         expenditure. Amounts show known inputs; blank quantities are not zeros.

@@ -1,0 +1,21 @@
+{
+  "syntheticFixtureOnly": true,
+  "noAuthenticatedApplication": true,
+  "savedData": "synthetic browser local storage only",
+  "checks": [
+    "New parent opens the existing Annual Financial Budget view",
+    "Annual Financial Budget has one navigation entry, with no procurement duplicate",
+    "Existing grid editing recalculates dependent formulas",
+    "CSV action retains the existing plan/facility export destination",
+    "Refresh restores the financial destination and synthetic saved draft",
+    "Procurement retains its separate supporting sections",
+    "Supporting procurement view retains its existing view identity and table",
+    "Direct financial bookmark restores the correct view",
+    "Leaving budgeting preserves ordinary accounting navigation",
+    "Mobile accounting selector opens the same budgeting parent",
+    "No browser runtime errors or unexpected network/API requests"
+  ],
+  "errors": [],
+  "unexpectedRequests": [],
+  "passed": true
+}

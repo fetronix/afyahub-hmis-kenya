@@ -279,7 +279,7 @@ describe('Accounting & Finance modular workspace', () => {
     await click('Open Bank Payments & Reconciliation');
     expect(mocks.context.setActiveModule).toHaveBeenCalledWith('payment_transactions');
     expect(screen.getByText(/No live bank collection/)).toBeTruthy();
-    expect(new Set(ACCOUNTING_SECTIONS.map((x) => x.id)).size).toBe(8);
+    expect(new Set(ACCOUNTING_SECTIONS.map((x) => x.id)).size).toBe(9);
   });
   it('gates read-only operations, billing, payroll and bank destinations by permission', async () => {
     mocks.context.authenticatedUser.permissions = ['accounting.read'];
