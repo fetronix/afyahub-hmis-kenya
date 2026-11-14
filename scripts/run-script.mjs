@@ -36,6 +36,9 @@ const SOURCES = {
   preflight: 'scripts/preflight.ts',
   'seed-permissions': 'src/seeds/permissions.ts',
   'clean-database': 'src/db/clean-database.ts',
+  // First run: creates the global SUPER_ADMIN role and the platform user.
+  // Without it `seed-permissions` refuses, and a fresh install has no way in.
+  'bootstrap-admin': 'src/bootstrap-admin.ts',
 };
 
 const [name, ...args] = process.argv.slice(2);

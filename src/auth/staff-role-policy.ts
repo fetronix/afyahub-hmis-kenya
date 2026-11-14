@@ -91,16 +91,22 @@ export const MAX_ROLES_PER_STAFF_MEMBER = 20;
  */
 
 export const DELEGABLE_PERMISSION_MODULES = [
+  // Workforce tasks are explicit grants, never implied by staff-directory access.
+  'hr',
+  'payroll',
   'patients',
   'appointments',
   'clinical',
   'inpatient',
   'maternity',
+  'theatre',
   'laboratory',
   'pharmacy',
   'inventory',
   'procurement',
   'billing',
+  'payment_hub',
+  'payer_hub',
   'insurance',
   'reports',
   'public_health',
@@ -122,6 +128,7 @@ export const DELEGABLE_PERMISSION_MODULES = [
  * one answers "may a facility hand this task to a staff role at all?".
  */
 export const PROTECTED_PERMISSION_PREFIXES = [
+  'bank_payments.configure',
   'users.',
   'roles.',
   'audit.',
@@ -138,6 +145,20 @@ export const PROTECTED_PERMISSION_PREFIXES = [
   'portal.audit.',
   'portal.invites.',
   'portal.settings.',
+  'payer_hub.global.',
+  'payer_hub.assign',
+  'payer_hub.production.',
+  'payer_hub.facility.',
+  'payer_hub.credentials.',
+  'payment_hub.global.',
+  'payment_hub.assign',
+  'payment_hub.production.',
+  'payment_hub.facility.',
+  'payment_hub.credentials.',
+  'payment_hub.transfers.',
+  'insurance.sha.configuration.',
+  'insurance.payers.manage',
+  'insurance.mappings.manage',
 ] as const;
 
 export function isDelegablePermission(permission: {
