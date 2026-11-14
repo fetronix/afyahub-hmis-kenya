@@ -163,12 +163,21 @@ export function PartnerEquityWorkspace({
 }) {
   if (!permissions.includes('accounting.equity.read'))
     return <p role="alert">Partner equity access requires accounting.equity.read permission.</p>;
-  return <EquitySession key={facilityId} facilityName={facilityName} permissions={permissions} />;
+  return (
+    <EquitySession
+      key={facilityId}
+      facilityId={facilityId}
+      facilityName={facilityName}
+      permissions={permissions}
+    />
+  );
 }
 function EquitySession({
+  facilityId,
   facilityName,
   permissions,
 }: {
+  facilityId: number;
   facilityName: string;
   permissions: string[];
 }) {
@@ -310,7 +319,19 @@ function EquitySession({
           Partner financial statements · independent of posted accounting
         </p>
         <h2 className="text-2xl font-bold">{equityTitle}</h2>
-        <p>{facilityName} · KES</p>
+        <p>{safeId?.facility_name ?? facilityName} · KES</p>
+        <p className="text-xs text-slate-600">
+          Authenticated facility #{facilityId}. Statement currency: KES.
+          {safeId?.facility_currency && (
+            <> Facility currency (tenant setting): {safeId.facility_currency}.</>
+          )}
+        </p>
+        {safeId?.facility_currency && safeId.facility_currency !== 'KES' && (
+          <p role="alert" className="text-amber-800">
+            This source statement is in KES; the configured facility currency differs. No currency
+            conversion has been performed.
+          </p>
+        )}
         <p className="mt-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm">
           {formulaNotice}
         </p>
@@ -389,11 +410,16 @@ function EquitySession({
           Audit reason (10–500 characters)
           <input
             aria-label="Equity audit reason"
+            placeholder="e.g. Correct capital contribution from reviewed bank advice"
             className={field + ' ml-2 min-w-[280px]'}
             maxLength={500}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
           />
+          <span className="block text-xs text-slate-600">
+            Describe what changed and why. Your identity is recorded separately; do not use a
+            username as the reason.
+          </span>
         </label>
       )}
       {error && (

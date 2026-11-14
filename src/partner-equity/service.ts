@@ -43,6 +43,7 @@ export type Statement = {
   approved_by: number | null;
   approved_at: string | null;
   facility_name?: string;
+  facility_currency?: string;
   prepared_name?: string;
   reviewed_name?: string;
   approved_name?: string;
@@ -72,6 +73,21 @@ async function audit(
   next: unknown,
   why: string,
 ) {
+  const actor = (
+    await c.query('SELECT username,full_name FROM users WHERE id=$1 AND tenant_id=$2', [
+      s.actorId,
+      s.tenantId,
+    ])
+  ).rows[0];
+  const normalize = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
+  assert(
+    !actor ||
+      ![actor.username, actor.full_name]
+        .filter(Boolean)
+        .some((value) => normalize(value) === normalize(why)),
+    'MEANINGFUL_AUDIT_REASON_REQUIRED',
+    'Describe the financial change and why it was made; a username or staff name is not an audit explanation.',
+  );
   await c.query(
     'INSERT INTO equity_events(tenant_id,facility_id,statement_id,action,actor_id,previous_values,new_values,reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8)',
     [
@@ -179,12 +195,12 @@ export async function getStatement(s: Scope, id: unknown) {
     const name = (id: number | null) => names.find((n) => n.id === id)?.full_name ?? null;
     return {
       ...row,
-      facility_name: (
-        await c.query('SELECT name FROM facilities WHERE id=$1 AND tenant_id=$2', [
-          s.facilityId,
-          s.tenantId,
-        ])
-      ).rows[0]?.name,
+      ...((
+        await c.query(
+          'SELECT f.name AS facility_name, t.currency AS facility_currency FROM facilities f JOIN tenants t ON t.id=f.tenant_id WHERE f.id=$1 AND f.tenant_id=$2',
+          [s.facilityId, s.tenantId],
+        )
+      ).rows[0] as { facility_name?: string; facility_currency?: string }),
       prepared_name: name(row.prepared_by),
       reviewed_name: name(row.reviewed_by),
       approved_name: name(row.approved_by),

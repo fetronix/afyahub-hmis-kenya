@@ -26,10 +26,13 @@ const protectedText = (s: unknown) => {
   return /^[\s]*[=+\-@\t\r]/.test(text) ? "'" + text : text;
 };
 export function statementCsv(s: Statement) {
+  const calc = calculateEquity(s.model);
   return [
     ...statementRows(s),
     ['Statement', equityTitle],
     ['Facility', s.facility_name ?? 'Facility-scoped statement'],
+    ['Statement currency', 'KES'],
+    ['Facility currency (tenant setting)', s.facility_currency ?? 'Not supplied'],
     ['Financial year', s.financial_year],
     ['Reporting period', s.start_date + ' to ' + s.end_date],
     ['Status', s.status],
@@ -41,6 +44,12 @@ export function statementCsv(s: Statement) {
     ['Approved by', s.approved_name ?? 'Pending'],
     ['Approval date', s.approved_at ? String(s.approved_at) : 'Pending'],
     ['Formula status', formulaNotice],
+    ['Review acceptance', s.review_acceptance ?? 'Pending'],
+    ['Displayed allocation rounding cents', calc.rounding.allocationCents],
+    ['Displayed closing rounding cents', calc.rounding.closingCents],
+    ['Displayed sharing rounding basis points', calc.rounding.sharingBasisPoints],
+    ['Displayed ownership rounding basis points', calc.rounding.ownershipBasisPoints],
+    ['Unspecified inputs', calc.unspecified],
     ...Object.entries(formulaDefinitions),
   ]
     .map((row) =>
@@ -73,6 +82,8 @@ export function statementXlsx(s: Statement) {
     XLSX.utils.aoa_to_sheet([
       ['Title', equityTitle],
       ['Facility', s.facility_name ?? 'Facility-scoped statement'],
+      ['Statement currency', 'KES'],
+      ['Facility currency (tenant setting)', s.facility_currency ?? 'Not supplied'],
       ['Financial year', s.financial_year],
       ['Period', `${s.start_date} to ${s.end_date}`],
       ['Status', s.status],
@@ -88,6 +99,9 @@ export function statementXlsx(s: Statement) {
       ...Object.entries(formulaDefinitions),
       ['Displayed allocation rounding cents', calc.rounding.allocationCents],
       ['Displayed closing rounding cents', calc.rounding.closingCents],
+      ['Displayed sharing rounding basis points', calc.rounding.sharingBasisPoints],
+      ['Displayed ownership rounding basis points', calc.rounding.ownershipBasisPoints],
+      ['Unspecified inputs', calc.unspecified],
       ['Review acceptance', s.review_acceptance ?? 'Pending'],
       ...sourceNotes.map((n) => ['Source note', n]),
     ]),
@@ -157,7 +171,7 @@ export function equityDocument(s: Statement, facility: DocumentFacility): Docume
       })),
       {
         heading: 'Reconciliation',
-        body: `Exact allocation difference: ${r.exactAllocationDifference}; exact equity movement difference: ${r.exactClosingDifference}. Displayed partner allocations differ from total by ${r.rounding.allocationCents} cents and closing equity by ${r.rounding.closingCents} cents because total values use unrounded rational calculations. Unspecified cells: ${r.unspecified}. ${r.issues.join(' ')}`,
+        body: `Exact allocation difference: ${r.exactAllocationDifference}; exact equity movement difference: ${r.exactClosingDifference}. Displayed partner allocations differ from total by ${r.rounding.allocationCents} cents and closing equity by ${r.rounding.closingCents} cents because total values use unrounded rational calculations. Displayed sharing rounding: ${r.rounding.sharingBasisPoints} basis points; displayed ownership rounding: ${r.rounding.ownershipBasisPoints} basis points. Unspecified cells: ${r.unspecified}. ${r.issues.join(' ')}`,
       },
       {
         heading: 'Review acceptance',

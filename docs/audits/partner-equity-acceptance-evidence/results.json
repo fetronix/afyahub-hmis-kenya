@@ -1,0 +1,1249 @@
+{
+  "actualApplication": true,
+  "inMemoryAdapters": false,
+  "disposableDataOnly": true,
+  "productionVerified": false,
+  "checks": [
+    {
+      "operation": "Required schema exists in disposable database",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual Express application is ready",
+      "status": "PASS"
+    },
+    {
+      "operation": "Create statement through actual UI persists a draft",
+      "status": "PASS"
+    },
+    {
+      "operation": "All five original partner names and order",
+      "status": "PASS"
+    },
+    {
+      "operation": "All 84 supplied baseline cells match the actual grid",
+      "status": "PASS",
+      "evidence": "baseline-comparison.json"
+    },
+    {
+      "operation": "July 2025–June 2026 period and financial year preserved",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual authenticated facility name, ID and configured currency are shown",
+      "status": "PASS"
+    },
+    {
+      "operation": "Provisional formula warning is visible",
+      "status": "PASS"
+    },
+    {
+      "operation": "Monetary edits recalculate live charts",
+      "status": "PASS"
+    },
+    {
+      "operation": "Unsaved edits block saved-statement export",
+      "status": "PASS"
+    },
+    {
+      "operation": "Edited inputs and confirmed zero save to PostgreSQL",
+      "status": "PASS"
+    },
+    {
+      "operation": "Browser reload retrieves the saved edited draft",
+      "status": "PASS"
+    },
+    {
+      "operation": "Edited calculations reconcile while zero and unspecified remain distinct",
+      "status": "PASS"
+    },
+    {
+      "operation": "All five charts remain mounted and saved allocation chart matches the recalculated amount",
+      "status": "PASS"
+    },
+    {
+      "operation": "Generate saved edited CSV",
+      "status": "PASS"
+    },
+    {
+      "operation": "Clearing a confirmed zero restores explicit unspecified provenance",
+      "status": "PASS"
+    },
+    {
+      "operation": "Invalid formula-like input is rejected by the actual UI",
+      "status": "PASS"
+    },
+    {
+      "operation": "Server rejects invalid monetary input without persisting changes",
+      "status": "PASS"
+    },
+    {
+      "operation": "Username-only audit explanation is rejected atomically",
+      "status": "PASS"
+    },
+    {
+      "operation": "Source-period validation rejects copying the screenshot into another year",
+      "status": "PASS"
+    },
+    {
+      "operation": "Stale browser save receives a real HTTP conflict",
+      "status": "PASS"
+    },
+    {
+      "operation": "Stale UI fails closed and preserves the winning saved values",
+      "status": "PASS"
+    },
+    {
+      "operation": "All 84 supplied baseline cells match the actual grid",
+      "status": "PASS",
+      "evidence": "restored-baseline-comparison.json"
+    },
+    {
+      "operation": "Partner creation saves effective dates without changing the original five",
+      "status": "PASS"
+    },
+    {
+      "operation": "Partner editing persists the corrected register name",
+      "status": "PASS"
+    },
+    {
+      "operation": "Partner archival retains the register and historical five-partner statement",
+      "status": "PASS"
+    },
+    {
+      "operation": "Preparer cannot review their own financial inputs",
+      "status": "PASS"
+    },
+    {
+      "operation": "Read-only account cannot save financial inputs",
+      "status": "PASS"
+    },
+    {
+      "operation": "Read-only account cannot export without explicit export authority",
+      "status": "PASS"
+    },
+    {
+      "operation": "Read-only account is denied review by the actual server",
+      "status": "PASS"
+    },
+    {
+      "operation": "Read-only account is denied approval by the actual server",
+      "status": "PASS"
+    },
+    {
+      "operation": "Approval before explicit formula review is rejected",
+      "status": "PASS"
+    },
+    {
+      "operation": "Review-only role cannot approve",
+      "status": "PASS"
+    },
+    {
+      "operation": "Approval-only role cannot record formula review",
+      "status": "PASS"
+    },
+    {
+      "operation": "Incorrect formula acceptance phrase is rejected",
+      "status": "PASS"
+    },
+    {
+      "operation": "Explicit independent provisional acceptance is recorded with actor, reason and date",
+      "status": "PASS"
+    },
+    {
+      "operation": "Last financial editor cannot approve their own reviewed statement",
+      "status": "PASS"
+    },
+    {
+      "operation": "Authorized independent approval persists immutable status and approval identity",
+      "status": "PASS"
+    },
+    {
+      "operation": "Direct edit of an approved statement is refused without changing its version",
+      "status": "PASS"
+    },
+    {
+      "operation": "All 84 supplied baseline cells match the actual grid",
+      "status": "PASS",
+      "evidence": "approved-baseline-comparison.json"
+    },
+    {
+      "operation": "Activate a synthetic facility-scoped letterhead through authenticated API",
+      "status": "PASS"
+    },
+    {
+      "operation": "Generate CSV from the actual saved approved statement",
+      "status": "PASS"
+    },
+    {
+      "operation": "CSV contains all 84 SAVED baseline values",
+      "status": "PASS"
+    },
+    {
+      "operation": "CSV includes formula warning, review acceptance and null provenance",
+      "status": "PASS"
+    },
+    {
+      "operation": "Generate XLSX from the actual saved approved statement",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains all 84 SAVED baseline values",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX includes formula warning, review acceptance and null provenance",
+      "status": "PASS"
+    },
+    {
+      "operation": "Generate PDF from the actual saved approved statement",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF has readable document pages",
+      "status": "PASS"
+    },
+    {
+      "operation": "Exact reconciliation and all four source rounding differences are preserved",
+      "status": "PASS"
+    },
+    {
+      "operation": "Second annual period persists separately with no automatic opening carry",
+      "status": "PASS"
+    },
+    {
+      "operation": "Opening-balance preview performs no financial write",
+      "status": "PASS"
+    },
+    {
+      "operation": "Confirmed carry-forward saves exactly the reviewed per-partner closing amounts",
+      "status": "PASS"
+    },
+    {
+      "operation": "Carry audit retains approved source version and explicit rounding acknowledgement",
+      "status": "PASS"
+    },
+    {
+      "operation": "Approved statement renders non-editable values after period switching",
+      "status": "PASS"
+    },
+    {
+      "operation": "Mobile statement overflow is contained in its own scrollable grid",
+      "status": "PASS"
+    },
+    {
+      "operation": "Mobile scroll reaches the closing/ownership rows and rightmost totals",
+      "status": "PASS"
+    },
+    {
+      "operation": "All persisted financial audit explanations are meaningful operation reasons, not usernames",
+      "status": "PASS"
+    },
+    {
+      "operation": "No uncaught runtime errors during real application acceptance",
+      "status": "PASS"
+    },
+    {
+      "operation": "Is live facility label fido the intended authorized facility?",
+      "status": "BLOCKED",
+      "detail": "No live session or production identity inspection. Requires owner confirmation; no identity changed."
+    }
+  ],
+  "errors": [],
+  "requests": [
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/auth/session",
+      "status": 401
+    },
+    {
+      "phase": "preparer",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/auth/session",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/tenants",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/facilities",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/health",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/dashboard/overview",
+      "status": 403
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/accounting/overview",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "POST",
+      "path": "/api/partner-equity/statements",
+      "status": 201
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "create",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "PUT",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/auth/session",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/tenants",
+      "status": 304
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/facilities",
+      "status": 304
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/health",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/dashboard/overview",
+      "status": 403
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/accounting/overview",
+      "status": 304
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "edit",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8/export",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "PUT",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "validation",
+      "method": "PUT",
+      "path": "/api/partner-equity/statements/8",
+      "status": 400,
+      "error": "INVALID_EQUITY_INPUT"
+    },
+    {
+      "phase": "validation",
+      "method": "PUT",
+      "path": "/api/partner-equity/statements/8",
+      "status": 400,
+      "error": "MEANINGFUL_AUDIT_REASON_REQUIRED"
+    },
+    {
+      "phase": "validation",
+      "method": "POST",
+      "path": "/api/partner-equity/statements",
+      "status": 400,
+      "error": "SOURCE_PERIOD"
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/auth/session",
+      "status": 401
+    },
+    {
+      "phase": "preparer",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/auth/session",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/tenants",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/facilities",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/health",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/dashboard/overview",
+      "status": 403
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/accounting/overview",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "PUT",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "PUT",
+      "path": "/api/partner-equity/statements/8",
+      "status": 409
+    },
+    {
+      "phase": "preparer",
+      "method": "PUT",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "PUT",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "partner-register",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "PUT",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "partner-register",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "PUT",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "partner-register",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "POST",
+      "path": "/api/partner-equity/statements/8/workflow",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "review-approval",
+      "method": "POST",
+      "path": "/api/partner-equity/statements/8/workflow",
+      "status": 409,
+      "error": "INDEPENDENT_REVIEW_REQUIRED"
+    },
+    {
+      "phase": "reader",
+      "method": "GET",
+      "path": "/api/auth/session",
+      "status": 401
+    },
+    {
+      "phase": "reader",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 200
+    },
+    {
+      "phase": "reader",
+      "method": "GET",
+      "path": "/api/auth/session",
+      "status": 200
+    },
+    {
+      "phase": "reader",
+      "method": "GET",
+      "path": "/api/tenants",
+      "status": 200
+    },
+    {
+      "phase": "reader",
+      "method": "GET",
+      "path": "/api/facilities",
+      "status": 200
+    },
+    {
+      "phase": "reader",
+      "method": "GET",
+      "path": "/api/health",
+      "status": 200
+    },
+    {
+      "phase": "reader",
+      "method": "GET",
+      "path": "/api/dashboard/overview",
+      "status": 403
+    },
+    {
+      "phase": "reader",
+      "method": "GET",
+      "path": "/api/accounting/overview",
+      "status": 200
+    },
+    {
+      "phase": "reader",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "reader",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "reader",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "reader",
+      "method": "PUT",
+      "path": "/api/partner-equity/statements/8",
+      "status": 403,
+      "error": "FORBIDDEN"
+    },
+    {
+      "phase": "reader",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8/export?format=csv",
+      "status": 403,
+      "error": "FORBIDDEN"
+    },
+    {
+      "phase": "reader",
+      "method": "POST",
+      "path": "/api/partner-equity/statements/8/workflow",
+      "status": 403,
+      "error": "FORBIDDEN"
+    },
+    {
+      "phase": "reader",
+      "method": "POST",
+      "path": "/api/partner-equity/statements/8/workflow",
+      "status": 403,
+      "error": "FORBIDDEN"
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/auth/session",
+      "status": 401
+    },
+    {
+      "phase": "approver",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 200
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/auth/session",
+      "status": 200
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/tenants",
+      "status": 200
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/facilities",
+      "status": 200
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/health",
+      "status": 200
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/dashboard/overview",
+      "status": 403
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/accounting/overview",
+      "status": 200
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "approver",
+      "method": "POST",
+      "path": "/api/partner-equity/statements/8/workflow",
+      "status": 409,
+      "error": "APPROVAL_RESTRICTED"
+    },
+    {
+      "phase": "reviewer",
+      "method": "GET",
+      "path": "/api/auth/session",
+      "status": 401
+    },
+    {
+      "phase": "reviewer",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "status": 200
+    },
+    {
+      "phase": "reviewer",
+      "method": "GET",
+      "path": "/api/auth/session",
+      "status": 200
+    },
+    {
+      "phase": "reviewer",
+      "method": "GET",
+      "path": "/api/tenants",
+      "status": 200
+    },
+    {
+      "phase": "reviewer",
+      "method": "GET",
+      "path": "/api/facilities",
+      "status": 200
+    },
+    {
+      "phase": "reviewer",
+      "method": "GET",
+      "path": "/api/health",
+      "status": 200
+    },
+    {
+      "phase": "reviewer",
+      "method": "GET",
+      "path": "/api/dashboard/overview",
+      "status": 403
+    },
+    {
+      "phase": "reviewer",
+      "method": "GET",
+      "path": "/api/accounting/overview",
+      "status": 200
+    },
+    {
+      "phase": "reviewer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "reviewer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "reviewer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "reviewer",
+      "method": "POST",
+      "path": "/api/partner-equity/statements/8/workflow",
+      "status": 403,
+      "error": "FORBIDDEN"
+    },
+    {
+      "phase": "reviewer",
+      "method": "POST",
+      "path": "/api/partner-equity/statements/8/workflow",
+      "status": 403,
+      "error": "FORBIDDEN"
+    },
+    {
+      "phase": "reviewer",
+      "method": "POST",
+      "path": "/api/partner-equity/statements/8/workflow",
+      "status": 400,
+      "error": "FORMULA_REVIEW_REQUIRED"
+    },
+    {
+      "phase": "reviewer",
+      "method": "POST",
+      "path": "/api/partner-equity/statements/8/workflow",
+      "status": 200
+    },
+    {
+      "phase": "reviewer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "reviewer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "reviewer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "reviewer",
+      "method": "POST",
+      "path": "/api/partner-equity/statements/8/workflow",
+      "status": 409,
+      "error": "APPROVAL_RESTRICTED"
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "approver",
+      "method": "POST",
+      "path": "/api/partner-equity/statements/8/workflow",
+      "status": 200
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "reviewer",
+      "method": "PUT",
+      "path": "/api/partner-equity/statements/8",
+      "status": 409,
+      "error": "STATEMENT_PROTECTED"
+    },
+    {
+      "phase": "exports",
+      "method": "POST",
+      "path": "/api/facility-branding/facilities/7/letterheads?filename=acceptance-synthetic.pdf&bodyTopPt=90&bodyBottomPt=55&bodyLeftPt=36&bodyRightPt=36",
+      "status": 201
+    },
+    {
+      "phase": "exports",
+      "method": "POST",
+      "path": "/api/facility-branding/facilities/7/letterheads/3/activate",
+      "status": 200
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8/export",
+      "status": 200
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8/export",
+      "status": 200
+    },
+    {
+      "phase": "approver",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8/export",
+      "status": 200
+    },
+    {
+      "phase": "exports",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "POST",
+      "path": "/api/partner-equity/statements",
+      "status": 201
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/9",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/9/carry-preview",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "POST",
+      "path": "/api/partner-equity/statements/9/carry",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/9",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 400
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 400
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements",
+      "status": 400
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/statements/8",
+      "status": 200
+    },
+    {
+      "phase": "preparer",
+      "method": "GET",
+      "path": "/api/partner-equity/partners",
+      "status": 200
+    }
+  ],
+  "facility": {
+    "id": 7,
+    "name": "Disposable partners equity acceptance facility",
+    "currency": "KES"
+  },
+  "statementIds": {
+    "original": 8,
+    "next": 9
+  },
+  "mobile": {
+    "viewport": 390,
+    "document": 390,
+    "table": 1270
+  }
+}

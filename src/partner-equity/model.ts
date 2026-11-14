@@ -48,7 +48,10 @@ export const equityRows = [
   { id: 'revaluation', label: 'Add/(Less): Revaluation of Assets' },
   { id: 'adjustments', label: 'Add/(Less): Other Adjustments' },
   { id: 'closing', label: 'Equity at End of Period' },
-  { id: 'ownership', label: 'Percentage Ownership adjusted for depreciation' },
+  {
+    id: 'ownership',
+    label: 'Percentage Ownership adjusted for depreciation — PROVISIONAL (formula unverified)',
+  },
 ] as const;
 export type RowKey = (typeof equityRows)[number]['id'];
 export const formulaDefinitions = {

@@ -1,0 +1,17 @@
+[
+  {
+    "format": "csv",
+    "file": "05-approved-baseline.csv",
+    "bytes": 3248
+  },
+  {
+    "format": "xlsx",
+    "file": "05-approved-baseline.xlsx",
+    "bytes": 26667
+  },
+  {
+    "format": "pdf",
+    "file": "05-approved-baseline.pdf",
+    "bytes": 81346
+  }
+]

@@ -1,0 +1,104 @@
+[
+  {
+    "action": "CREATE_STATEMENT",
+    "actor_id": 32,
+    "reason": "Create source-period draft for disposable functional acceptance",
+    "created_at": "2026-11-14T22:36:06.672Z"
+  },
+  {
+    "action": "EDIT_STATEMENT",
+    "actor_id": 32,
+    "reason": "Correct test capital and net result using reviewed synthetic bank advice",
+    "created_at": "2026-11-14T22:36:08.753Z"
+  },
+  {
+    "action": "EXPORT_STATEMENT",
+    "actor_id": 32,
+    "reason": "Explicit authorized full statement export",
+    "created_at": "2026-11-14T22:36:10.809Z"
+  },
+  {
+    "action": "EDIT_STATEMENT",
+    "actor_id": 32,
+    "reason": "Restore the unchanged source baseline after isolated recalculation checks",
+    "created_at": "2026-11-14T22:36:12.689Z"
+  },
+  {
+    "action": "EDIT_STATEMENT",
+    "actor_id": 32,
+    "reason": "Record one synthetic shilling to exercise concurrent edit protection",
+    "created_at": "2026-11-14T22:36:17.028Z"
+  },
+  {
+    "action": "EDIT_STATEMENT",
+    "actor_id": 32,
+    "reason": "Restore exact source baseline after verified concurrent-save rejection",
+    "created_at": "2026-11-14T22:36:20.135Z"
+  },
+  {
+    "action": "ADD_PARTNER",
+    "actor_id": 32,
+    "reason": "Register an additional synthetic partner with an explicit admission date",
+    "created_at": "2026-11-14T22:36:21.918Z"
+  },
+  {
+    "action": "UPDATE_PARTNER",
+    "actor_id": 32,
+    "reason": "Correct the synthetic partner display name before period inclusion",
+    "created_at": "2026-11-14T22:36:23.286Z"
+  },
+  {
+    "action": "UPDATE_PARTNER",
+    "actor_id": 32,
+    "reason": "Archive the synthetic partner at the documented effective departure date",
+    "created_at": "2026-11-14T22:36:24.562Z"
+  },
+  {
+    "action": "SUBMIT",
+    "actor_id": 32,
+    "reason": "Submit the reconciled source-period draft for independent provisional review",
+    "created_at": "2026-11-14T22:36:26.073Z"
+  },
+  {
+    "action": "REVIEW",
+    "actor_id": 33,
+    "reason": "Independently reconcile screenshot amounts and accept documented provisional proportional rules",
+    "created_at": "2026-11-14T22:36:34.790Z"
+  },
+  {
+    "action": "APPROVE",
+    "actor_id": 34,
+    "reason": "Approve the independently reviewed source-period statement with known rounding disclosures",
+    "created_at": "2026-11-14T22:36:36.741Z"
+  },
+  {
+    "action": "EXPORT_STATEMENT",
+    "actor_id": 34,
+    "reason": "Explicit authorized full statement export",
+    "created_at": "2026-11-14T22:36:37.283Z"
+  },
+  {
+    "action": "EXPORT_STATEMENT",
+    "actor_id": 34,
+    "reason": "Explicit authorized full statement export",
+    "created_at": "2026-11-14T22:36:37.807Z"
+  },
+  {
+    "action": "EXPORT_STATEMENT",
+    "actor_id": 34,
+    "reason": "Explicit authorized full statement export",
+    "created_at": "2026-11-14T22:36:38.645Z"
+  },
+  {
+    "action": "CREATE_STATEMENT",
+    "actor_id": 32,
+    "reason": "Create the next annual period without implicitly carrying any prior balances",
+    "created_at": "2026-11-14T22:36:40.992Z"
+  },
+  {
+    "action": "CARRY_FORWARD",
+    "actor_id": 32,
+    "reason": "Carry reviewed partner closing balances and acknowledge the disclosed one-cent display difference",
+    "created_at": "2026-11-14T22:36:42.834Z"
+  }
+]

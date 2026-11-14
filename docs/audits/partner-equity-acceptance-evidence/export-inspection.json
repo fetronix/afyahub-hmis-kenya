@@ -1,0 +1,67 @@
+{
+  "checks": [
+    {
+      "operation": "Supplied screenshot hash matches source transcription provenance",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual edited CSV preserves saved edits, explicit zero and unspecified dash",
+      "status": "PASS"
+    },
+    {
+      "operation": "Approved CSV has all seven columns and fourteen financial rows",
+      "status": "PASS"
+    },
+    {
+      "operation": "Approved CSV reflects restored SAVED baseline, not earlier unsaved/edited values",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual browser PDF uses only scoped synthetic facility name and letterhead",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual PDF contains saved approval and explicit provisional depreciation warning",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual PDF retains the recorded independent provisional review explanation",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF preserves source reporting dates and financial year",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF per-partner section retains every numeric value and unspecified amount for Lucy Wanjiku",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF per-partner section retains every numeric value and unspecified amount for Jesee Mwaniki",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF per-partner section retains every numeric value and unspecified amount for Dr. Alex Muriithi",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF per-partner section retains every numeric value and unspecified amount for Teresia Gathoni",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF per-partner section retains every numeric value and unspecified amount for Dr. George Ngaruiya",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF summary retains every numeric source total",
+      "status": "PASS"
+    },
+    {
+      "operation": "Every PDF page is numbered",
+      "status": "PASS"
+    }
+  ],
+  "pdfPages": 3,
+  "pdfBytes": 81346,
+  "syntheticOnly": true
+}
