@@ -1,3 +1,4 @@
+import { PortalSignedDocuments } from '../PatientDocumentsPanel.tsx';
 /**
  * JaliCare HMIS
  * Patient digital health record portal
@@ -1448,11 +1449,12 @@ function PortalAccount({
    Shell
    ============================================================ */
 
-type TabId = 'home' | 'records' | 'share' | 'account';
+type TabId = 'home' | 'records' | 'documents' | 'share' | 'account';
 
 const TABS: Array<{ id: TabId; label: string; icon: React.ElementType }> = [
   { id: 'home', label: 'Home', icon: Home },
   { id: 'records', label: 'Records', icon: ClipboardList },
+  { id: 'documents', label: 'My Documents & Signed Consents', icon: FileText },
   { id: 'share', label: 'Share', icon: Share2 },
   { id: 'account', label: 'Account', icon: UserRound },
 ];
@@ -1592,6 +1594,7 @@ function PortalDashboard({ onSignedOut }: { onSignedOut: (message?: string) => v
         ) : null}
 
         {tab === 'records' ? <PortalRecords overview={overview} /> : null}
+        {tab === 'documents' ? <PortalSignedDocuments /> : null}
         {tab === 'share' ? <PortalSharing /> : null}
         {tab === 'account' ? <PortalAccount me={me} onSignedOut={onSignedOut} /> : null}
       </div>

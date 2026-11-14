@@ -16,6 +16,7 @@
  */
 
 export type DocumentKind =
+  | 'REPORTING_CENTRE'
   | 'PARTNER_EQUITY'
   | 'BUDGET_PLAN'
   | 'INVOICE'

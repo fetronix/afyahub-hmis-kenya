@@ -1,0 +1,13 @@
+﻿"JaliCare HMIS — Reporting Centre"
+"Inpatient admission register"
+"Facility: Synthetic clinical presentation facility"
+"Generated (UTC): 2026-11-14T23:30:12.019Z"
+"Records: 0"
+"Recorded admission date: 2026-01-01 to 2026-12-31 (inclusive)"
+"Note: Ward and bed are the current recorded references, not a reconstructed admission-time transfer history."
+"Note: Only valid ISO date prefixes can be filtered; missing or invalid dates are counted and excluded when a range is applied."
+"Note: Admission times are shown as recorded; manually corrected times and their origin require review."
+"Note: Missing or out-of-scope patient links are not inferred or matched by name and are counted for review."
+"Note: Data is a live snapshot and may change between pages or when regenerated."
+
+"Admission ID","MRN","Patient","Recorded admission time","Recorded status","Recorded current ward","Recorded current bed"

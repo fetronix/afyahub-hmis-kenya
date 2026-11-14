@@ -1,3 +1,7 @@
+import {
+  patientDocumentsRoutes,
+  portalDocumentsRoutes,
+} from './documents/patient-documents.routes.ts';
 import express, { type Request, type Response } from 'express';
 import { existsSync } from 'node:fs';
 import path from 'path';
@@ -181,6 +185,8 @@ export async function createApp() {
    * service re-checks tenant and facility scope against the row itself.
    */
   app.use('/api/facility-branding', facilityBrandingRoutes);
+  app.use('/api/patient-documents', patientDocumentsRoutes);
+  app.use('/api/portal/documents', portalDocumentsRoutes);
 
   app.use(express.json({ limit: '1mb' }));
 

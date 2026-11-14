@@ -171,6 +171,15 @@ router.put(
       const charge = await chargeSafely(radiologyChargeRequest(reported), billingOutboxAttemptId);
       res.json({ ...reported, billing: charge });
     } catch (err: any) {
+      if (
+        (err?.cause ?? err)?.code === '23514' &&
+        (err?.cause ?? err)?.message?.includes('RADIOLOGY_CONSENT_REQUIRED')
+      )
+        return res.status(409).json({
+          error: 'RADIOLOGY_CONSENT_REQUIRED',
+          message:
+            'Verify this procedure’s consent or record a policy-authorized exception before reporting/performance.',
+        });
       respondInternalError(res, err, 'PUT /api/radiology-orders/:id/report');
     }
   },

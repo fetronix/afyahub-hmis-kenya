@@ -175,7 +175,7 @@ describe('Reporting Centre navigation and report workbench', () => {
     expect(screen.getAllByTestId(/^report-category-/)).toHaveLength(7);
   });
 
-  it('generates scoped data, paginates, audits print separately and downloads the server export', async () => {
+  it('generates scoped data, paginates, opens the authorized facility PDF for print and downloads the server export', async () => {
     mocks.generate.mockImplementation(async (id, filters) =>
       result(
         id,
@@ -195,7 +195,7 @@ describe('Reporting Centre navigation and report workbench', () => {
         30,
       ),
     );
-    const print = vi.spyOn(window, 'print').mockImplementation(() => {});
+    const print = vi.spyOn(window, 'open').mockImplementation(() => null);
     const create = vi.fn(() => 'blob:synthetic');
     const revoke = vi.fn();
     Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: create });
@@ -219,15 +219,15 @@ describe('Reporting Centre navigation and report workbench', () => {
       }),
     );
     expect(await screen.findByText('PAGE-25')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /Print page/ }));
-    await waitFor(() => expect(print).toHaveBeenCalledOnce());
-    expect(mocks.generate).toHaveBeenLastCalledWith(
+    fireEvent.click(screen.getByRole('button', { name: /Print PDF/ }));
+    await waitFor(() =>
+      expect(print).toHaveBeenCalledWith('blob:synthetic', '_blank', 'noopener,noreferrer'),
+    );
+    expect(mocks.exportReport).toHaveBeenCalledWith(
       'inventory-category',
       expect.objectContaining({ facilityId: 10, offset: 25 }),
-      'print',
+      'pdf',
     );
-    expect(document.body.classList.contains('print-report-centre')).toBe(true);
-    fireEvent(window, new Event('afterprint'));
     expect(document.body.classList.contains('print-report-centre')).toBe(false);
     fireEvent.click(screen.getByRole('button', { name: 'Excel' }));
     await waitFor(() =>
@@ -237,7 +237,7 @@ describe('Reporting Centre navigation and report workbench', () => {
         'xlsx',
       ),
     );
-    expect(create).toHaveBeenCalledOnce();
+    expect(create).toHaveBeenCalledTimes(2);
     expect(click).toHaveBeenCalledOnce();
     print.mockRestore();
     click.mockRestore();

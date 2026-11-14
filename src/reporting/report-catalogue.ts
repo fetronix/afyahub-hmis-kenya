@@ -29,7 +29,7 @@ export interface ReportEntry {
   /** Implemented, scoped operational subset; null is an unavailable report. */
   engine: ReportEngineId | null;
   /** Reuse an existing document workflow rather than creating a second invoice engine. */
-  workflow: 'invoice' | null;
+  workflow: 'invoice' | 'laboratory' | 'radiology' | 'discharge' | null;
 }
 export interface ReportCategory {
   id: string;
@@ -82,7 +82,7 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         group: null,
         dependency: 'Approved integrated printable output and clinical sign-off.',
         engine: null,
-        workflow: null,
+        workflow: 'discharge',
       },
       {
         id: 'printables-operation-notes',
@@ -114,7 +114,7 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         group: null,
         dependency: 'Verified released result and approved print template.',
         engine: null,
-        workflow: null,
+        workflow: 'radiology',
       },
       {
         id: 'printables-laboratory-reports',
@@ -122,7 +122,7 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         group: null,
         dependency: 'Verified released result and approved print template.',
         engine: null,
-        workflow: null,
+        workflow: 'laboratory',
       },
       {
         id: 'printables-invoices',

@@ -1,0 +1,11 @@
+﻿"JaliCare HMIS — Reporting Centre"
+"Inventory batch expiry register"
+"Facility: Synthetic clinical presentation facility"
+"Generated (UTC): 2026-11-14T23:30:11.529Z"
+"Records: 0"
+"Recorded expiry date: 2026-01-01 to 2026-12-31 (inclusive)"
+"Note: This is a current batch snapshot, not a movement ledger or stock valuation. Quantities in different units are not added together."
+"Note: Only valid ISO calendar dates can be filtered; other recorded dates remain visible without a date range and are counted for review."
+"Note: Data is a live snapshot and may change between pages or when regenerated."
+
+"Item code","Item","Batch","Recorded expiry date","Quantity remaining","Unit"

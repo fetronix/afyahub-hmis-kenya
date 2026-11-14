@@ -1,3 +1,4 @@
+import { resolveActiveLetterhead } from '../../branding/letterhead.service.ts';
 import { Router, type Response } from 'express';
 import type { AuthRequest } from '../../auth/auth.middleware.ts';
 import { requirePermission } from '../../auth/authorization.middleware.ts';
@@ -84,7 +85,11 @@ router.post(
         throw new ReportCentreError('INVALID_REPORT_FORMAT', 'Select PDF, Excel or CSV.');
       }
       const report = await generateReport(context, req.params.reportId, filters, 'EXPORT_REQUEST');
-      return res.json(await exportReport(report, format));
+      const letterhead =
+        format === 'pdf'
+          ? await resolveActiveLetterhead(context.tenantId!, report.facilityId)
+          : null;
+      return res.json(await exportReport(report, format, letterhead));
     } catch (error) {
       handleError(error, res);
     }

@@ -1,3 +1,8 @@
+import {
+  uploadPatientDocument,
+  decideRadiologyConsent,
+} from '../../documents/patient-documents.service.ts';
+import { PDFDocument } from 'pdf-lib';
 /** Synthetic records only: authenticated HTTP through PostgreSQL, never a production database. */
 import { randomUUID } from 'node:crypto';
 import { unzipSync, strFromU8 } from 'fflate';
@@ -197,11 +202,58 @@ describeDb('Reporting Centre operational registers (synthetic PostgreSQL and HTT
     await pool.query(
       `INSERT INTO radiology_orders(tenant_id,facility_id,patient_id,modality,procedure_name,status,created_at) VALUES
        ($1,$2,$4,'X-ray','Synthetic Imaging','Requested','2026-04-01 10:00'),
-       ($1,$2,$4,'Ultrasound','Synthetic Later Imaging','Reported','2026-04-03 10:00'),
+       ($1,$2,$4,'Ultrasound','Synthetic Later Imaging','Requested','2026-04-03 10:00'),
        ($1,$3,$5,'X-ray','Synthetic Sibling Imaging','Requested','2026-04-01 10:00'),
        ($1,$2,$6,'X-ray','Synthetic Missing Link Imaging','Requested','2026-04-02 10:00')`,
       [tenant, facility, sibling, patient, siblingPatient, foreignPatient],
     );
+    // A reported fixture must now pass the same procedure-specific consent gate as real work.
+    const performedOrder = (
+      await pool.query(
+        "SELECT id FROM radiology_orders WHERE facility_id=$1 AND procedure_name='Synthetic Later Imaging'",
+        [facility],
+      )
+    ).rows[0].id;
+    const consentContext = {
+      userId: actor,
+      tenantId: tenant,
+      facilityId: facility,
+      roles: [],
+      isSuperAdmin: false,
+      permissions: [
+        'patients.read',
+        'patients.documents.read',
+        'patients.documents.upload',
+        'radiology.consent.verify',
+      ],
+    };
+    const consentPdf = await PDFDocument.create();
+    consentPdf.addPage().drawText('Synthetic procedure consent fixture');
+    const signed = await uploadPatientDocument(
+      consentContext,
+      patient,
+      {
+        filename: 'synthetic-consent.pdf',
+        title: 'Synthetic reporting fixture consent',
+        category: 'Consent',
+        documentType: 'Radiology procedure consent',
+        patientSignature: 'PRESENT',
+        doctorSignature: 'PRESENT',
+        doctorId: actor,
+        signingDate: '2026-04-03',
+        radiologyOrderId: performedOrder,
+        reason: 'Record synthetic signed consent before fixture performance',
+      },
+      Buffer.from(await consentPdf.save()),
+      'application/pdf',
+    );
+    await decideRadiologyConsent(consentContext, performedOrder, {
+      status: 'VERIFIED',
+      documentId: signed.id,
+      clinicianId: actor,
+      reason: 'Verify synthetic procedure consent before fixture performance',
+    });
+    await pool.query("UPDATE radiology_orders SET status='Reported' WHERE id=$1", [performedOrder]);
     await pool.query(
       `INSERT INTO pharmacy_dispensations(tenant_id,facility_id,patient_id,item_code_snapshot,item_name_snapshot,item_unit_snapshot,batch_number,quantity_dispensed,dispensed_by,dispensed_at) VALUES
        ($1,$2,$4,'SYN-A','Synthetic Medicine','Tablets','B-A',3,'Synthetic staff','2026-04-01 11:00'),

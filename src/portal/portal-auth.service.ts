@@ -87,7 +87,10 @@ export async function portalLogin(
     throw generic;
   }
 
-  const normalised = normaliseContact({ phone: identifier, email: identifier });
+  // An email local-part can contain 9–15 digits. Do not strip those into a phone lookup.
+  const normalised = identifier.includes('@')
+    ? normaliseContact({ email: identifier })
+    : normaliseContact({ phone: identifier });
 
   if (!normalised) {
     throw generic;

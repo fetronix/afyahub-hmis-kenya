@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   options: vi.fn(),
+  invoicePdf: vi.fn(),
+  openBlob: vi.fn(),
   api: {
     getInvoiceFinalization: vi.fn(),
     finalizeInvoice: vi.fn(),
@@ -33,6 +35,10 @@ const mocks = vi.hoisted(() => ({
     refreshKey: 0,
     triggerRefresh: vi.fn(),
   },
+}));
+vi.mock('../../api/clients/branding.client.ts', () => ({
+  documentClient: { invoice: mocks.invoicePdf },
+  openBlob: mocks.openBlob,
 }));
 vi.mock('../../context/HmisContext.tsx', () => ({ useHmis: () => mocks.context }));
 vi.mock('../../api/client.ts', () => ({ api: mocks.api, ApiError: class extends Error {} }));
@@ -142,6 +148,7 @@ describe('Reporting Centre invoice reopening', () => {
       id === 2 ? secondSnapshot : snapshot,
     );
     mocks.api.recordInvoicePrintAccess.mockResolvedValue(undefined);
+    mocks.invoicePdf.mockResolvedValue(new Blob(['synthetic PDF'], { type: 'application/pdf' }));
   });
   afterEach(() => {
     cleanup();
@@ -171,7 +178,9 @@ describe('Reporting Centre invoice reopening', () => {
     expect(radio).toBeChecked();
 
     fireEvent.click(screen.getByRole('button', { name: 'Print finalized invoice' }));
-    await waitFor(() => expect(print).toHaveBeenCalledOnce());
+    await waitFor(() => expect(mocks.openBlob).toHaveBeenCalledOnce());
+    expect(mocks.invoicePdf).toHaveBeenCalledWith(1);
+    expect(print).not.toHaveBeenCalled();
     expect(mocks.api.recordInvoicePrintAccess).toHaveBeenCalledWith(1, 10);
     fireEvent(window, new Event('afterprint'));
   });
@@ -254,6 +263,8 @@ describe('Reporting Centre invoice reopening', () => {
     expect(await screen.findByText('Second synthetic line')).toBeInTheDocument();
     await act(async () => resolvePrint());
     expect(print).not.toHaveBeenCalled();
+    expect(mocks.openBlob).not.toHaveBeenCalled();
+    expect(mocks.invoicePdf).not.toHaveBeenCalled();
     expect(document.body).not.toHaveClass('print-finalized-invoice');
     expect(screen.getByText('Second synthetic line')).toBeInTheDocument();
   });
@@ -271,6 +282,8 @@ describe('Reporting Centre invoice reopening', () => {
     await waitFor(() => expect(mocks.api.getInvoiceFinalization).toHaveBeenCalledTimes(2));
     await act(async () => resolvePrint());
     expect(print).not.toHaveBeenCalled();
+    expect(mocks.openBlob).not.toHaveBeenCalled();
+    expect(mocks.invoicePdf).not.toHaveBeenCalled();
     expect(document.body).not.toHaveClass('print-finalized-invoice');
     expect(await screen.findByText('Synthetic Hospital')).toBeInTheDocument();
   });

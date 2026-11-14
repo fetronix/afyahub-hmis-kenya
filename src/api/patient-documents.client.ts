@@ -1,0 +1,47 @@
+import { getSessionToken } from './clients/http.ts';
+import { getPortalToken } from './portal-client.ts';
+export interface PatientFile {
+  id: number;
+  patient_id: number;
+  root_id: number | null;
+  version: number;
+  title: string;
+  category: string;
+  document_type: string;
+  signing_date: string | null;
+  uploaded_at: string;
+  patient_signature: string;
+  doctor_signature: string;
+  doctor_id: number | null;
+  notes: string | null;
+  filename: string;
+  mime_type: string;
+  radiology_order_id: number | null;
+  procedure_name: string | null;
+  portal_released?: boolean;
+}
+export async function documentRequest<T>(
+  path: string,
+  options: RequestInit = {},
+  portal = false,
+): Promise<T> {
+  const token = portal ? getPortalToken() : getSessionToken();
+  const response = await fetch(`/api/${portal ? 'portal/documents' : 'patient-documents'}${path}`, {
+    ...options,
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers },
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.message ?? data.error ?? 'Document operation failed.');
+  }
+  if (path.includes('/file')) return (await response.blob()) as T;
+  return response.json();
+}
+export function documentAction<T>(path: string, body: unknown) {
+  return documentRequest<T>(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}

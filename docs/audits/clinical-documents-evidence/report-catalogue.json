@@ -1,0 +1,3641 @@
+[
+  {
+    "category": "PRINTABLES",
+    "name": "Sick-off certificates",
+    "id": "printables-sick-off-certificates",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Approved certificate, signatory and output."
+  },
+  {
+    "category": "PRINTABLES",
+    "name": "Medical notes",
+    "id": "printables-medical-notes",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Signed print template and referral workflow."
+  },
+  {
+    "category": "PRINTABLES",
+    "name": "Referral letters",
+    "id": "printables-referral-letters",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Signed print template and referral workflow."
+  },
+  {
+    "category": "PRINTABLES",
+    "name": "Inpatient statements",
+    "id": "printables-inpatient-statements",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Approved integrated printable output and clinical sign-off."
+  },
+  {
+    "category": "PRINTABLES",
+    "name": "Discharge summaries",
+    "id": "printables-discharge-summaries",
+    "module": "discharge",
+    "endpoint": "GET /api/documents/admissions/:id/discharge-summary.pdf",
+    "dataSource": "Existing persisted scoped document builder",
+    "filters": "Saved source document reference; not a tabular report",
+    "formats": "PDF",
+    "letterhead": "Existing historical/pinned facility renderer",
+    "status": "PARTIALLY FUNCTIONAL — existing document workflow",
+    "runtimeEvidence": "Existing real PostgreSQL/HTTP integration tests; no new reference-picker browser acceptance",
+    "limitation": "Approved integrated printable output and clinical sign-off. Enter source request/admission ID; no browsing, Excel or CSV."
+  },
+  {
+    "category": "PRINTABLES",
+    "name": "Operation notes",
+    "id": "printables-operation-notes",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Structured authorized notes and approved printable output."
+  },
+  {
+    "category": "PRINTABLES",
+    "name": "Anaesthetist notes",
+    "id": "printables-anaesthetist-notes",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Structured authorized notes and approved printable output."
+  },
+  {
+    "category": "PRINTABLES",
+    "name": "Bill consent forms",
+    "id": "printables-bill-consent-forms",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Financial-consent workflow, signatory and approved template."
+  },
+  {
+    "category": "PRINTABLES",
+    "name": "Radiology reports",
+    "id": "printables-radiology-reports",
+    "module": "radiology",
+    "endpoint": "GET /api/documents/radiology-orders/:id/pdf",
+    "dataSource": "Existing persisted scoped document builder",
+    "filters": "Saved source document reference; not a tabular report",
+    "formats": "PDF",
+    "letterhead": "Existing historical/pinned facility renderer",
+    "status": "PARTIALLY FUNCTIONAL — existing document workflow",
+    "runtimeEvidence": "Actual authenticated browser and HTTP; integration tests",
+    "limitation": "Verified released result and approved print template. Enter source request/admission ID; no browsing, Excel or CSV."
+  },
+  {
+    "category": "PRINTABLES",
+    "name": "Laboratory reports",
+    "id": "printables-laboratory-reports",
+    "module": "laboratory",
+    "endpoint": "GET /api/documents/laboratory-orders/:id/pdf",
+    "dataSource": "Existing persisted scoped document builder",
+    "filters": "Saved source document reference; not a tabular report",
+    "formats": "PDF",
+    "letterhead": "Existing historical/pinned facility renderer",
+    "status": "PARTIALLY FUNCTIONAL — existing document workflow",
+    "runtimeEvidence": "Existing real PostgreSQL/HTTP integration tests; no new reference-picker browser acceptance",
+    "limitation": "Verified released result and approved print template. Enter source request/admission ID; no browsing, Excel or CSV."
+  },
+  {
+    "category": "PRINTABLES",
+    "name": "Invoices",
+    "id": "printables-invoices",
+    "module": "invoice",
+    "endpoint": "GET /api/documents/invoices/:id/pdf",
+    "dataSource": "Existing persisted scoped document builder",
+    "filters": "Saved source document reference; not a tabular report",
+    "formats": "PDF",
+    "letterhead": "Existing historical/pinned facility renderer",
+    "status": "PARTIALLY FUNCTIONAL — existing document workflow",
+    "runtimeEvidence": "Existing real PostgreSQL/HTTP integration tests; no new reference-picker browser acceptance",
+    "limitation": "Real printable output and facility-approved template unverified."
+  },
+  {
+    "category": "PRINTABLES",
+    "name": "Receipts",
+    "id": "printables-receipts",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Standalone receipt print template."
+  },
+  {
+    "category": "PRINTABLES",
+    "name": "Purchase requisitions",
+    "id": "printables-purchase-requisitions",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Requisition or receiving workflow and approved template."
+  },
+  {
+    "category": "PRINTABLES",
+    "name": "Local purchase orders",
+    "id": "printables-local-purchase-orders",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Approved LPO output and print validation."
+  },
+  {
+    "category": "PRINTABLES",
+    "name": "Goods received notes",
+    "id": "printables-goods-received-notes",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Requisition or receiving workflow and approved template."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "Cashier daily summary",
+    "id": "financial-cashier-daily-summary",
+    "module": "finance",
+    "endpoint": "POST /api/reporting/centre/cashier-receipts/{generate,options,export}",
+    "dataSource": "billing_payments, billing_invoices",
+    "filters": "search, inclusive from/to dates, receiptFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "cashier-receipts",
+      "records": 0,
+      "columns": [
+        {
+          "key": "recordedDate",
+          "label": "Recorded payment date"
+        },
+        {
+          "key": "cashier",
+          "label": "Recorded cashier name"
+        },
+        {
+          "key": "method",
+          "label": "Recorded method"
+        },
+        {
+          "key": "receiptCount",
+          "label": "Receipts"
+        },
+        {
+          "key": "amount",
+          "label": "Known recorded amount",
+          "kind": "money"
+        },
+        {
+          "key": "unknownAmounts",
+          "label": "Invalid / unknown amounts"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134,
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 21215,
+      "xlsxRows": 14,
+      "xlsxBytes": 3520,
+      "csvBytes": 1134
+    },
+    "limitation": "Complete transaction-date data, cashier/department identity and verified reconciliation."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "All-cashier daily summary",
+    "id": "financial-all-cashier-daily-summary",
+    "module": "finance",
+    "endpoint": "POST /api/reporting/centre/cashier-receipts/{generate,options,export}",
+    "dataSource": "billing_payments, billing_invoices",
+    "filters": "search, inclusive from/to dates, receiptFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "cashier-receipts",
+      "records": 0,
+      "columns": [
+        {
+          "key": "recordedDate",
+          "label": "Recorded payment date"
+        },
+        {
+          "key": "cashier",
+          "label": "Recorded cashier name"
+        },
+        {
+          "key": "method",
+          "label": "Recorded method"
+        },
+        {
+          "key": "receiptCount",
+          "label": "Receipts"
+        },
+        {
+          "key": "amount",
+          "label": "Known recorded amount",
+          "kind": "money"
+        },
+        {
+          "key": "unknownAmounts",
+          "label": "Invalid / unknown amounts"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134,
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 21215,
+      "xlsxRows": 14,
+      "xlsxBytes": 3520,
+      "csvBytes": 1134
+    },
+    "limitation": "Complete transaction-date data, cashier/department identity and verified reconciliation."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "Department receipt summary",
+    "id": "financial-department-receipt-summary",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Complete transaction-date data, cashier/department identity and verified reconciliation."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "Department receipt breakdown",
+    "id": "financial-department-receipt-breakdown",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Complete transaction-date data, cashier/department identity and verified reconciliation."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "Managerial daily summary",
+    "id": "financial-managerial-daily-summary",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Complete transaction-date data, cashier/department identity and verified reconciliation."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "Trial balance",
+    "id": "financial-trial-balance",
+    "module": "accounting",
+    "endpoint": "POST /api/reporting/centre/ledger-trial-movements/{generate,options,export}",
+    "dataSource": "chart_of_accounts, journal_lines, journal_entries",
+    "filters": "search, inclusive from/to dates, accountFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "ledger-trial-movements",
+      "records": 0,
+      "columns": [
+        {
+          "key": "code",
+          "label": "Account code"
+        },
+        {
+          "key": "account",
+          "label": "Account"
+        },
+        {
+          "key": "type",
+          "label": "Account type"
+        },
+        {
+          "key": "debits",
+          "label": "Posted debits",
+          "kind": "money"
+        },
+        {
+          "key": "credits",
+          "label": "Posted credits",
+          "kind": "money"
+        },
+        {
+          "key": "netDebit",
+          "label": "Net debit movement",
+          "kind": "money"
+        },
+        {
+          "key": "netCredit",
+          "label": "Net credit movement",
+          "kind": "money"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134,
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 21699,
+      "xlsxRows": 16,
+      "xlsxBytes": 3596,
+      "csvBytes": 1286
+    },
+    "limitation": "Opening balances, posting completeness, mappings and source reconciliation; the available view is posted account movements only."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "Income statement",
+    "id": "financial-income-statement",
+    "module": "accounting",
+    "endpoint": "POST /api/reporting/centre/ledger-income/{generate,options,export}",
+    "dataSource": "chart_of_accounts, journal_lines, journal_entries",
+    "filters": "search, inclusive from/to dates, accountFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "ledger-income",
+      "records": 0,
+      "columns": [
+        {
+          "key": "code",
+          "label": "Account code"
+        },
+        {
+          "key": "account",
+          "label": "Account"
+        },
+        {
+          "key": "type",
+          "label": "Account type"
+        },
+        {
+          "key": "normalAmount",
+          "label": "Posted net in category direction",
+          "kind": "money"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134,
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 22038,
+      "xlsxRows": 17,
+      "xlsxBytes": 3594,
+      "csvBytes": 1305
+    },
+    "limitation": "Posting completeness, recognized revenue/cost policies, account mappings and source reconciliation."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "Balance sheet",
+    "id": "financial-balance-sheet",
+    "module": "accounting",
+    "endpoint": "POST /api/reporting/centre/ledger-balance-sheet/{generate,options,export}",
+    "dataSource": "chart_of_accounts, journal_lines, journal_entries",
+    "filters": "search, as-of date, accountFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "ledger-balance-sheet",
+      "records": 0,
+      "columns": [
+        {
+          "key": "code",
+          "label": "Account code"
+        },
+        {
+          "key": "account",
+          "label": "Account"
+        },
+        {
+          "key": "type",
+          "label": "Account type"
+        },
+        {
+          "key": "normalAmount",
+          "label": "Posted net in category direction",
+          "kind": "money"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134,
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 21546,
+      "xlsxRows": 17,
+      "xlsxBytes": 3615,
+      "csvBytes": 1361
+    },
+    "limitation": "Posting completeness, opening balances, classification, account mappings and source reconciliation."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "Monthly profit and loss",
+    "id": "financial-monthly-profit-and-loss",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Auto posting, mappings, costs and source reconciliation; current statements are not complete."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "Cash flow statement",
+    "id": "financial-cash-flow-statement",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Dedicated controlled workflow and reconciled classification."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "Budget management",
+    "id": "financial-budget-management",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Dedicated controlled workflow and reconciled classification."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "Credit notes",
+    "id": "financial-credit-notes",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Dedicated controlled workflow and reconciled classification."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "Waiver reports",
+    "id": "financial-waiver-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Dedicated controlled workflow and reconciled classification."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "Income by cashier",
+    "id": "financial-income-by-cashier",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Approved attribution and verified payer/bank/provider reconciliation; no inferred settlement."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "Departmental revenue",
+    "id": "financial-departmental-revenue",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Approved attribution and verified payer/bank/provider reconciliation; no inferred settlement."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "Patient outstanding balances",
+    "id": "financial-patient-outstanding-balances",
+    "module": "finance",
+    "endpoint": "POST /api/reporting/centre/invoice-balances/{generate,options,export}",
+    "dataSource": "billing_invoices, patients",
+    "filters": "search, inclusive from/to dates, invoiceFilter, patientFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "invoice-balances",
+      "records": 0,
+      "columns": [
+        {
+          "key": "invoice",
+          "label": "Invoice"
+        },
+        {
+          "key": "mrn",
+          "label": "MRN"
+        },
+        {
+          "key": "patient",
+          "label": "Patient"
+        },
+        {
+          "key": "status",
+          "label": "Invoice status"
+        },
+        {
+          "key": "balance",
+          "label": "Recorded balance",
+          "kind": "money"
+        },
+        {
+          "key": "createdAt",
+          "label": "Recorded invoice creation time"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134,
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 20766,
+      "xlsxRows": 14,
+      "xlsxBytes": 3482,
+      "csvBytes": 1039
+    },
+    "limitation": "Approved attribution and verified payer/bank/provider reconciliation; no inferred settlement."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "SHA receivables",
+    "id": "financial-sha-receivables",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Approved attribution and verified payer/bank/provider reconciliation; no inferred settlement."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "Private insurance receivables",
+    "id": "financial-private-insurance-receivables",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Approved attribution and verified payer/bank/provider reconciliation; no inferred settlement."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "M-Pesa reconciliation",
+    "id": "financial-m-pesa-reconciliation",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Approved attribution and verified payer/bank/provider reconciliation; no inferred settlement."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "Card payment reconciliation",
+    "id": "financial-card-payment-reconciliation",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Approved attribution and verified payer/bank/provider reconciliation; no inferred settlement."
+  },
+  {
+    "category": "FINANCIAL",
+    "name": "Refund reports",
+    "id": "financial-refund-reports",
+    "module": "finance",
+    "endpoint": "POST /api/reporting/centre/recorded-refunds/{generate,options,export}",
+    "dataSource": "billing_refunds, billing_invoices",
+    "filters": "search, inclusive from/to dates, staffFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "recorded-refunds",
+      "records": 0,
+      "columns": [
+        {
+          "key": "number",
+          "label": "Refund reference"
+        },
+        {
+          "key": "invoice",
+          "label": "Invoice"
+        },
+        {
+          "key": "method",
+          "label": "Recorded method"
+        },
+        {
+          "key": "amount",
+          "label": "Recorded amount",
+          "kind": "money"
+        },
+        {
+          "key": "actorId",
+          "label": "Recorded actor user ID"
+        },
+        {
+          "key": "createdAt",
+          "label": "Recorded time"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134,
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 20811,
+      "xlsxRows": 14,
+      "xlsxBytes": 3456,
+      "csvBytes": 974
+    },
+    "limitation": "Approved attribution and verified payer/bank/provider reconciliation; no inferred settlement."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "Stock usage",
+    "id": "stock-goods-stock-usage",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Complete movement/receipt/return ledger and report."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "Stock movements",
+    "id": "stock-goods-stock-movements",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Complete movement/receipt/return ledger and report."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "Goods received",
+    "id": "stock-goods-goods-received",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Complete movement/receipt/return ledger and report."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "Goods returned",
+    "id": "stock-goods-goods-returned",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Complete movement/receipt/return ledger and report."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "LPO summaries",
+    "id": "stock-goods-lpo-summaries",
+    "module": "procurement",
+    "endpoint": "POST /api/reporting/centre/purchase-orders/{generate,options,export}",
+    "dataSource": "purchase_orders, suppliers",
+    "filters": "search, status, inclusive from/to dates, supplierFilter, purchaseOrderFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "purchase-orders",
+      "records": 0,
+      "columns": [
+        {
+          "key": "number",
+          "label": "Purchase order"
+        },
+        {
+          "key": "supplier",
+          "label": "Supplier"
+        },
+        {
+          "key": "status",
+          "label": "Status"
+        },
+        {
+          "key": "expectedDelivery",
+          "label": "Expected delivery"
+        },
+        {
+          "key": "orderAmount",
+          "label": "Order value",
+          "kind": "money"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134,
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 19878,
+      "xlsxRows": 11,
+      "xlsxBytes": 3269,
+      "csvBytes": 625
+    },
+    "limitation": "Complete filtered/exportable report."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "Inward invoices",
+    "id": "stock-goods-inward-invoices",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Stock-linked invoice classification and matching."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "Outward invoices",
+    "id": "stock-goods-outward-invoices",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Stock-linked invoice classification and matching."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "Bin cards",
+    "id": "stock-goods-bin-cards",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Location-aware movement ledger, stocktake and transfers."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "Inventory by store",
+    "id": "stock-goods-inventory-by-store",
+    "module": "inventory",
+    "endpoint": "POST /api/reporting/centre/inventory-store/{generate,options,export}",
+    "dataSource": "inventory_items, facilities",
+    "filters": "search, status, inventoryItemFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "inventory-store",
+      "records": 35,
+      "columns": [
+        {
+          "key": "code",
+          "label": "Item code"
+        },
+        {
+          "key": "item",
+          "label": "Item"
+        },
+        {
+          "key": "category",
+          "label": "Category"
+        },
+        {
+          "key": "store",
+          "label": "Recorded location"
+        },
+        {
+          "key": "unit",
+          "label": "Unit"
+        },
+        {
+          "key": "quantity",
+          "label": "Current stock"
+        },
+        {
+          "key": "reorderLevel",
+          "label": "Reorder level"
+        },
+        {
+          "key": "status",
+          "label": "Status"
+        }
+      ],
+      "rows": [
+        {
+          "code": "CL-67d7ad25-0",
+          "item": "Synthetic presentation item 00",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 1,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-1",
+          "item": "Synthetic presentation item 01",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 2,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-2",
+          "item": "Synthetic presentation item 02",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 3,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-3",
+          "item": "Synthetic presentation item 03",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 4,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-4",
+          "item": "Synthetic presentation item 04",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 5,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-5",
+          "item": "Synthetic presentation item 05",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 6,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-6",
+          "item": "Synthetic presentation item 06",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 7,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-7",
+          "item": "Synthetic presentation item 07",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 8,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-8",
+          "item": "Synthetic presentation item 08",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 9,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-9",
+          "item": "Synthetic presentation item 09",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 10,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-10",
+          "item": "Synthetic presentation item 10",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 11,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-11",
+          "item": "Synthetic presentation item 11",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 12,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-12",
+          "item": "Synthetic presentation item 12",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 13,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-13",
+          "item": "Synthetic presentation item 13",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 14,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-14",
+          "item": "Synthetic presentation item 14",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 15,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-15",
+          "item": "Synthetic presentation item 15",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 16,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-16",
+          "item": "Synthetic presentation item 16",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 17,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-17",
+          "item": "Synthetic presentation item 17",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 18,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-18",
+          "item": "Synthetic presentation item 18",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 19,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-19",
+          "item": "Synthetic presentation item 19",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 20,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-20",
+          "item": "Synthetic presentation item 20",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 21,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-21",
+          "item": "Synthetic presentation item 21",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 22,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-22",
+          "item": "Synthetic presentation item 22",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 23,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-23",
+          "item": "Synthetic presentation item 23",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 24,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-24",
+          "item": "Synthetic presentation item 24",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 25,
+          "reorderLevel": null,
+          "status": "Active"
+        }
+      ],
+      "filters": {
+        "facilityId": 134
+      },
+      "pdfBytes": 121281,
+      "xlsxRows": 46,
+      "xlsxBytes": 4750,
+      "csvBytes": 5221
+    },
+    "limitation": "Complete safe grouping, historical/cost evidence, filters and export."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "Inventory by category",
+    "id": "stock-goods-inventory-by-category",
+    "module": "inventory",
+    "endpoint": "POST /api/reporting/centre/inventory-category/{generate,options,export}",
+    "dataSource": "inventory_items, facilities",
+    "filters": "search, status, inventoryItemFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "inventory-category",
+      "records": 35,
+      "columns": [
+        {
+          "key": "code",
+          "label": "Item code"
+        },
+        {
+          "key": "item",
+          "label": "Item"
+        },
+        {
+          "key": "category",
+          "label": "Category"
+        },
+        {
+          "key": "store",
+          "label": "Recorded location"
+        },
+        {
+          "key": "unit",
+          "label": "Unit"
+        },
+        {
+          "key": "quantity",
+          "label": "Current stock"
+        },
+        {
+          "key": "reorderLevel",
+          "label": "Reorder level"
+        },
+        {
+          "key": "status",
+          "label": "Status"
+        }
+      ],
+      "rows": [
+        {
+          "code": "CL-67d7ad25-0",
+          "item": "Synthetic presentation item 00",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 1,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-1",
+          "item": "Synthetic presentation item 01",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 2,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-2",
+          "item": "Synthetic presentation item 02",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 3,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-3",
+          "item": "Synthetic presentation item 03",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 4,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-4",
+          "item": "Synthetic presentation item 04",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 5,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-5",
+          "item": "Synthetic presentation item 05",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 6,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-6",
+          "item": "Synthetic presentation item 06",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 7,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-7",
+          "item": "Synthetic presentation item 07",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 8,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-8",
+          "item": "Synthetic presentation item 08",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 9,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-9",
+          "item": "Synthetic presentation item 09",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 10,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-10",
+          "item": "Synthetic presentation item 10",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 11,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-11",
+          "item": "Synthetic presentation item 11",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 12,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-12",
+          "item": "Synthetic presentation item 12",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 13,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-13",
+          "item": "Synthetic presentation item 13",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 14,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-14",
+          "item": "Synthetic presentation item 14",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 15,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-15",
+          "item": "Synthetic presentation item 15",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 16,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-16",
+          "item": "Synthetic presentation item 16",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 17,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-17",
+          "item": "Synthetic presentation item 17",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 18,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-18",
+          "item": "Synthetic presentation item 18",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 19,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-19",
+          "item": "Synthetic presentation item 19",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 20,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-20",
+          "item": "Synthetic presentation item 20",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 21,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-21",
+          "item": "Synthetic presentation item 21",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 22,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-22",
+          "item": "Synthetic presentation item 22",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 23,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-23",
+          "item": "Synthetic presentation item 23",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 24,
+          "reorderLevel": null,
+          "status": "Active"
+        },
+        {
+          "code": "CL-67d7ad25-24",
+          "item": "Synthetic presentation item 24",
+          "category": "Synthetic supplies",
+          "store": "Synthetic Main Store",
+          "unit": "Pieces",
+          "quantity": 25,
+          "reorderLevel": null,
+          "status": "Active"
+        }
+      ],
+      "filters": {
+        "facilityId": 134
+      },
+      "pdfBytes": 122166,
+      "xlsxRows": 46,
+      "xlsxBytes": 4754,
+      "csvBytes": 5221
+    },
+    "limitation": "Complete safe grouping, historical/cost evidence, filters and export."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "Expiry reports",
+    "id": "stock-goods-expiry-reports",
+    "module": "inventory",
+    "endpoint": "POST /api/reporting/centre/inventory-expiry/{generate,options,export}",
+    "dataSource": "inventory_batches, inventory_items, facilities",
+    "filters": "search, inclusive from/to dates, inventoryItemFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "inventory-expiry",
+      "records": 0,
+      "columns": [
+        {
+          "key": "code",
+          "label": "Item code"
+        },
+        {
+          "key": "item",
+          "label": "Item"
+        },
+        {
+          "key": "batch",
+          "label": "Batch"
+        },
+        {
+          "key": "expiry",
+          "label": "Recorded expiry date"
+        },
+        {
+          "key": "quantity",
+          "label": "Quantity remaining"
+        },
+        {
+          "key": "unit",
+          "label": "Unit"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134,
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 20829,
+      "xlsxRows": 11,
+      "xlsxBytes": 3323,
+      "csvBytes": 695
+    },
+    "limitation": "Complete safe grouping, historical/cost evidence, filters and export."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "Stock variance",
+    "id": "stock-goods-stock-variance",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Location-aware movement ledger, stocktake and transfers."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "Stock transfers",
+    "id": "stock-goods-stock-transfers",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Location-aware movement ledger, stocktake and transfers."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "Goods price lists",
+    "id": "stock-goods-goods-price-lists",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Complete safe grouping, historical/cost evidence, filters and export."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "Supplier reports",
+    "id": "stock-goods-supplier-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Complete safe grouping, historical/cost evidence, filters and export."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "Stock valuation",
+    "id": "stock-goods-stock-valuation",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Complete safe grouping, historical/cost evidence, filters and export."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "Asset register",
+    "id": "stock-goods-asset-register",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Mounted asset, movement and maintenance workflows."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "Asset tracking",
+    "id": "stock-goods-asset-tracking",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Mounted asset, movement and maintenance workflows."
+  },
+  {
+    "category": "STOCK / GOODS",
+    "name": "Asset maintenance",
+    "id": "stock-goods-asset-maintenance",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Mounted asset, movement and maintenance workflows."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "OPD attendance",
+    "id": "departmental-opd-opd-attendance",
+    "module": "opd",
+    "endpoint": "POST /api/reporting/centre/outpatient-encounters/{generate,options,export}",
+    "dataSource": "encounters, patients, departments, practitioners",
+    "filters": "search, status, inclusive from/to dates, patientFilter, departmentFilter, staffFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "outpatient-encounters",
+      "records": 0,
+      "columns": [
+        {
+          "key": "encounterId",
+          "label": "Encounter ID"
+        },
+        {
+          "key": "mrn",
+          "label": "MRN"
+        },
+        {
+          "key": "patient",
+          "label": "Patient"
+        },
+        {
+          "key": "startedAt",
+          "label": "Recorded start time"
+        },
+        {
+          "key": "status",
+          "label": "Recorded status"
+        },
+        {
+          "key": "department",
+          "label": "Department"
+        },
+        {
+          "key": "practitioner",
+          "label": "Practitioner"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134,
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 20169,
+      "xlsxRows": 13,
+      "xlsxBytes": 3455,
+      "csvBytes": 955
+    },
+    "limitation": "Defined report events, referral lifecycle, clinician attribution and exports."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Consultation reports",
+    "id": "departmental-opd-consultation-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Defined report events, referral lifecycle, clinician attribution and exports."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Diagnosis reports",
+    "id": "departmental-opd-diagnosis-reports",
+    "module": "opd",
+    "endpoint": "POST /api/reporting/centre/outpatient-diagnoses/{generate,options,export}",
+    "dataSource": "encounters, patients, departments, diagnoses",
+    "filters": "search, status, inclusive from/to dates, patientFilter, departmentFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "outpatient-diagnoses",
+      "records": 0,
+      "columns": [
+        {
+          "key": "encounterId",
+          "label": "Encounter ID"
+        },
+        {
+          "key": "mrn",
+          "label": "MRN"
+        },
+        {
+          "key": "patient",
+          "label": "Patient"
+        },
+        {
+          "key": "startedAt",
+          "label": "Recorded encounter start"
+        },
+        {
+          "key": "encounterProgress",
+          "label": "Recorded encounter progress"
+        },
+        {
+          "key": "encounterStatus",
+          "label": "Source encounter status"
+        },
+        {
+          "key": "department",
+          "label": "Department"
+        },
+        {
+          "key": "diagnosisId",
+          "label": "Diagnosis record ID"
+        },
+        {
+          "key": "diagnosisType",
+          "label": "Recorded diagnosis type"
+        },
+        {
+          "key": "diagnosisStatus",
+          "label": "Recorded diagnosis status"
+        },
+        {
+          "key": "diagnosedAt",
+          "label": "Recorded diagnosis time"
+        },
+        {
+          "key": "codingSystem",
+          "label": "Recorded coding system"
+        },
+        {
+          "key": "diagnosisCode",
+          "label": "Recorded diagnosis code"
+        },
+        {
+          "key": "diagnosisDisplay",
+          "label": "Recorded diagnosis display"
+        },
+        {
+          "key": "legacyIcd10Code",
+          "label": "Recorded ICD-10 code"
+        },
+        {
+          "key": "legacyIcd10Description",
+          "label": "Recorded ICD-10 description"
+        },
+        {
+          "key": "icd11Code",
+          "label": "Recorded ICD-11 code"
+        },
+        {
+          "key": "icd11Title",
+          "label": "Recorded ICD-11 title"
+        },
+        {
+          "key": "icd11Release",
+          "label": "Recorded ICD-11 release"
+        },
+        {
+          "key": "icd11FoundationUri",
+          "label": "Recorded ICD-11 foundation URI"
+        },
+        {
+          "key": "icd11LinearizationUri",
+          "label": "Recorded ICD-11 linearization URI"
+        },
+        {
+          "key": "diagnosisQuality",
+          "label": "Source record review"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134,
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 21811,
+      "xlsxRows": 15,
+      "xlsxBytes": 3909,
+      "csvBytes": 1928
+    },
+    "limitation": "Recorded encounter/diagnosis register only; deduplicated morbidity, verified MOH 705 definitions and facility acceptance remain outstanding."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Referral reports",
+    "id": "departmental-opd-referral-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Defined report events, referral lifecycle, clinician attribution and exports."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Doctor workload",
+    "id": "departmental-opd-doctor-workload",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Defined report events, referral lifecycle, clinician attribution and exports."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Current inpatient list",
+    "id": "departmental-inpatient-current-inpatient-list",
+    "module": "inpatient",
+    "endpoint": "POST /api/reporting/centre/current-inpatients/{generate,options,export}",
+    "dataSource": "admissions, patients, wards, beds",
+    "filters": "search, patientFilter, wardFilter, bedFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "current-inpatients",
+      "records": 0,
+      "columns": [
+        {
+          "key": "admissionId",
+          "label": "Admission ID"
+        },
+        {
+          "key": "mrn",
+          "label": "MRN"
+        },
+        {
+          "key": "patient",
+          "label": "Patient"
+        },
+        {
+          "key": "ward",
+          "label": "Ward"
+        },
+        {
+          "key": "bed",
+          "label": "Bed"
+        },
+        {
+          "key": "admissionDate",
+          "label": "Recorded admission time"
+        },
+        {
+          "key": "admissionType",
+          "label": "Admission type"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134
+      },
+      "pdfBytes": 19557,
+      "xlsxRows": 11,
+      "xlsxBytes": 3266,
+      "csvBytes": 600
+    },
+    "limitation": "Scoped detailed reports and reconciliation of billing; rate evidence and policy."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Admissions",
+    "id": "departmental-inpatient-admissions",
+    "module": "inpatient",
+    "endpoint": "POST /api/reporting/centre/inpatient-admissions/{generate,options,export}",
+    "dataSource": "admissions, patients, wards, beds",
+    "filters": "search, inclusive from/to dates, patientFilter, wardFilter, bedFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "inpatient-admissions",
+      "records": 0,
+      "columns": [
+        {
+          "key": "admissionId",
+          "label": "Admission ID"
+        },
+        {
+          "key": "mrn",
+          "label": "MRN"
+        },
+        {
+          "key": "patient",
+          "label": "Patient"
+        },
+        {
+          "key": "admissionDate",
+          "label": "Recorded admission time"
+        },
+        {
+          "key": "status",
+          "label": "Recorded status"
+        },
+        {
+          "key": "ward",
+          "label": "Recorded current ward"
+        },
+        {
+          "key": "bed",
+          "label": "Recorded current bed"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134,
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 20781,
+      "xlsxRows": 13,
+      "xlsxBytes": 3421,
+      "csvBytes": 918
+    },
+    "limitation": "Scoped detailed reports and reconciliation of billing; rate evidence and policy."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Discharges",
+    "id": "departmental-inpatient-discharges",
+    "module": "inpatient",
+    "endpoint": "POST /api/reporting/centre/inpatient-discharges/{generate,options,export}",
+    "dataSource": "admissions, patients, wards, beds",
+    "filters": "search, inclusive from/to dates, patientFilter, wardFilter, bedFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "inpatient-discharges",
+      "records": 0,
+      "columns": [
+        {
+          "key": "admissionId",
+          "label": "Admission ID"
+        },
+        {
+          "key": "mrn",
+          "label": "MRN"
+        },
+        {
+          "key": "patient",
+          "label": "Patient"
+        },
+        {
+          "key": "dischargeDate",
+          "label": "Recorded discharge time"
+        },
+        {
+          "key": "status",
+          "label": "Recorded admission status"
+        },
+        {
+          "key": "dischargeType",
+          "label": "Discharge type"
+        },
+        {
+          "key": "ward",
+          "label": "Recorded current ward"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134,
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 20061,
+      "xlsxRows": 13,
+      "xlsxBytes": 3420,
+      "csvBytes": 912
+    },
+    "limitation": "Scoped detailed reports and reconciliation of billing; rate evidence and policy."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Ward occupancy",
+    "id": "departmental-inpatient-ward-occupancy",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Scoped detailed reports and reconciliation of billing; rate evidence and policy."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Bed billing",
+    "id": "departmental-inpatient-bed-billing",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Scoped detailed reports and reconciliation of billing; rate evidence and policy."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Test reports",
+    "id": "departmental-laboratory-test-reports",
+    "module": "laboratory",
+    "endpoint": "POST /api/reporting/centre/laboratory-orders/{generate,options,export}",
+    "dataSource": "lab_orders, patients",
+    "filters": "search, status, inclusive from/to dates, labTestFilter, serviceFilter, patientFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "laboratory-orders",
+      "records": 0,
+      "columns": [
+        {
+          "key": "orderId",
+          "label": "Order ID"
+        },
+        {
+          "key": "mrn",
+          "label": "MRN"
+        },
+        {
+          "key": "patient",
+          "label": "Patient"
+        },
+        {
+          "key": "test",
+          "label": "Ordered test"
+        },
+        {
+          "key": "specimen",
+          "label": "Recorded specimen"
+        },
+        {
+          "key": "status",
+          "label": "Order status"
+        },
+        {
+          "key": "orderedAt",
+          "label": "Recorded order time"
+        },
+        {
+          "key": "completedAt",
+          "label": "Recorded completion time"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134,
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 20578,
+      "xlsxRows": 13,
+      "xlsxBytes": 3468,
+      "csvBytes": 983
+    },
+    "limitation": "Precise result/release and timing rules, grouped reports and safe exports."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Patient reports",
+    "id": "departmental-laboratory-patient-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Precise result/release and timing rules, grouped reports and safe exports."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Specimen reports",
+    "id": "departmental-laboratory-specimen-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Precise result/release and timing rules, grouped reports and safe exports."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Sample reports",
+    "id": "departmental-laboratory-sample-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Precise result/release and timing rules, grouped reports and safe exports."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Section reports",
+    "id": "departmental-laboratory-section-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Precise result/release and timing rules, grouped reports and safe exports."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Pending results",
+    "id": "departmental-laboratory-pending-results",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Precise result/release and timing rules, grouped reports and safe exports."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Released results",
+    "id": "departmental-laboratory-released-results",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Precise result/release and timing rules, grouped reports and safe exports."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Turnaround times",
+    "id": "departmental-laboratory-turnaround-times",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Precise result/release and timing rules, grouped reports and safe exports."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Imaging requests",
+    "id": "departmental-radiology-imaging-requests",
+    "module": "radiology",
+    "endpoint": "POST /api/reporting/centre/radiology-requests/{generate,options,export}",
+    "dataSource": "radiology_orders, patients",
+    "filters": "search, status, inclusive from/to dates, serviceFilter, patientFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "radiology-requests",
+      "records": 3,
+      "columns": [
+        {
+          "key": "requestId",
+          "label": "Request ID"
+        },
+        {
+          "key": "mrn",
+          "label": "MRN"
+        },
+        {
+          "key": "patient",
+          "label": "Patient"
+        },
+        {
+          "key": "procedure",
+          "label": "Requested procedure"
+        },
+        {
+          "key": "modality",
+          "label": "Modality"
+        },
+        {
+          "key": "status",
+          "label": "Recorded status"
+        },
+        {
+          "key": "requestedAt",
+          "label": "Recorded request time"
+        },
+        {
+          "key": "reportedAt",
+          "label": "Recorded report time"
+        }
+      ],
+      "rows": [
+        {
+          "requestId": 77,
+          "mrn": "CL-67d7ad25",
+          "patient": "Synthetic Consent Patient",
+          "procedure": "Synthetic post-activation imaging",
+          "modality": "X-Ray",
+          "status": "Reported",
+          "requestedAt": "2026-11-14 23:30:09.991883",
+          "reportedAt": "2026-11-14 23:30:10.024"
+        },
+        {
+          "requestId": 76,
+          "mrn": "CL-67d7ad25",
+          "patient": "Synthetic Consent Patient",
+          "procedure": "Synthetic exception procedure",
+          "modality": "X-Ray",
+          "status": "Reported",
+          "requestedAt": "2026-11-14 23:29:58.756596",
+          "reportedAt": "2026-11-14 23:30:09.814"
+        },
+        {
+          "requestId": 75,
+          "mrn": "CL-67d7ad25",
+          "patient": "Synthetic Consent Patient",
+          "procedure": "Synthetic procedure-specific imaging",
+          "modality": "CT",
+          "status": "Reported",
+          "requestedAt": "2026-11-14 23:29:58.756596",
+          "reportedAt": "2026-11-14 23:30:09.745"
+        }
+      ],
+      "filters": {
+        "facilityId": 134,
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 22751,
+      "xlsxRows": 16,
+      "xlsxBytes": 3740,
+      "csvBytes": 1465
+    },
+    "limitation": "Completed procedure definition, report grouping; reconciled finance for revenue."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Completed procedures",
+    "id": "departmental-radiology-completed-procedures",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Completed procedure definition, report grouping; reconciled finance for revenue."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Patient reports",
+    "id": "departmental-radiology-patient-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Completed procedure definition, report grouping; reconciled finance for revenue."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Radiology revenue",
+    "id": "departmental-radiology-radiology-revenue",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Completed procedure definition, report grouping; reconciled finance for revenue."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Prescriptions",
+    "id": "departmental-pharmacy-prescriptions",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Report filtering, full movement ledger and controlled returns."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Dispensing",
+    "id": "departmental-pharmacy-dispensing",
+    "module": "pharmacy",
+    "endpoint": "POST /api/reporting/centre/pharmacy-dispensations/{generate,options,export}",
+    "dataSource": "pharmacy_dispensations, patients",
+    "filters": "search, inclusive from/to dates, inventoryItemFilter, patientFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "pharmacy-dispensations",
+      "records": 0,
+      "columns": [
+        {
+          "key": "dispensationId",
+          "label": "Dispensation ID"
+        },
+        {
+          "key": "mrn",
+          "label": "MRN"
+        },
+        {
+          "key": "patient",
+          "label": "Patient"
+        },
+        {
+          "key": "itemCode",
+          "label": "Item code snapshot"
+        },
+        {
+          "key": "item",
+          "label": "Item name snapshot"
+        },
+        {
+          "key": "quantity",
+          "label": "Dispensed quantity"
+        },
+        {
+          "key": "unit",
+          "label": "Unit snapshot"
+        },
+        {
+          "key": "batch",
+          "label": "Recorded batch"
+        },
+        {
+          "key": "dispensedAt",
+          "label": "Recorded dispensation time"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134,
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 20689,
+      "xlsxRows": 14,
+      "xlsxBytes": 3537,
+      "csvBytes": 1135
+    },
+    "limitation": "Report filtering, full movement ledger and controlled returns."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Drug movement",
+    "id": "departmental-pharmacy-drug-movement",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Report filtering, full movement ledger and controlled returns."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Returns",
+    "id": "departmental-pharmacy-returns",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Report filtering, full movement ledger and controlled returns."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Stock and expiry",
+    "id": "departmental-pharmacy-stock-and-expiry",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Report filtering, full movement ledger and controlled returns."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Procedure lists",
+    "id": "departmental-theatre-procedure-lists",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Actual performed cases and utilization definitions."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Patient procedure reports",
+    "id": "departmental-theatre-patient-procedure-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Actual performed cases and utilization definitions."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Theatre utilization",
+    "id": "departmental-theatre-theatre-utilization",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Actual performed cases and utilization definitions."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "ANC",
+    "id": "departmental-maternity-mch-anc",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Validated grouped reports and privacy controls."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Deliveries",
+    "id": "departmental-maternity-mch-deliveries",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Validated grouped reports and privacy controls."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Postnatal",
+    "id": "departmental-maternity-mch-postnatal",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Validated grouped reports and privacy controls."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Child health",
+    "id": "departmental-maternity-mch-child-health",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Validated grouped reports and privacy controls."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Patient sessions",
+    "id": "departmental-dialysis-patient-sessions",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Clinician-verified session facts and reconciled billing; no inferred completion."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Treatment records",
+    "id": "departmental-dialysis-treatment-records",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Clinician-verified session facts and reconciled billing; no inferred completion."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Session billing",
+    "id": "departmental-dialysis-session-billing",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Clinician-verified session facts and reconciled billing; no inferred completion."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Waivers",
+    "id": "departmental-social-work-waivers",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Approved, confidential case and waiver workflows."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Counselling",
+    "id": "departmental-social-work-counselling",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Approved, confidential case and waiver workflows."
+  },
+  {
+    "category": "DEPARTMENTAL",
+    "name": "Patient support reports",
+    "id": "departmental-social-work-patient-support-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Approved, confidential case and waiver workflows."
+  },
+  {
+    "category": "RECORDS",
+    "name": "Birth reports",
+    "id": "records-birth-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Defined reporting data and relationships; cashier finance reconciliation where applicable."
+  },
+  {
+    "category": "RECORDS",
+    "name": "Death reports",
+    "id": "records-death-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Defined reporting data and relationships; cashier finance reconciliation where applicable."
+  },
+  {
+    "category": "RECORDS",
+    "name": "Current inpatient lists",
+    "id": "records-current-inpatient-lists",
+    "module": "inpatient",
+    "endpoint": "POST /api/reporting/centre/current-inpatients/{generate,options,export}",
+    "dataSource": "admissions, patients, wards, beds",
+    "filters": "search, patientFilter, wardFilter, bedFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "current-inpatients",
+      "records": 0,
+      "columns": [
+        {
+          "key": "admissionId",
+          "label": "Admission ID"
+        },
+        {
+          "key": "mrn",
+          "label": "MRN"
+        },
+        {
+          "key": "patient",
+          "label": "Patient"
+        },
+        {
+          "key": "ward",
+          "label": "Ward"
+        },
+        {
+          "key": "bed",
+          "label": "Bed"
+        },
+        {
+          "key": "admissionDate",
+          "label": "Recorded admission time"
+        },
+        {
+          "key": "admissionType",
+          "label": "Admission type"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134
+      },
+      "pdfBytes": 19557,
+      "xlsxRows": 11,
+      "xlsxBytes": 3266,
+      "csvBytes": 600
+    },
+    "limitation": "Defined reporting data and relationships; cashier finance reconciliation where applicable."
+  },
+  {
+    "category": "RECORDS",
+    "name": "Patient reports",
+    "id": "records-patient-reports",
+    "module": "registration",
+    "endpoint": "POST /api/reporting/centre/patient-registrations/{generate,options,export}",
+    "dataSource": "patients",
+    "filters": "search, inclusive from/to dates, patientFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "patient-registrations",
+      "records": 2,
+      "columns": [
+        {
+          "key": "mrn",
+          "label": "MRN"
+        },
+        {
+          "key": "patient",
+          "label": "Patient"
+        },
+        {
+          "key": "birthDate",
+          "label": "Recorded birth date"
+        },
+        {
+          "key": "gender",
+          "label": "Recorded gender"
+        },
+        {
+          "key": "createdAt",
+          "label": "Recorded creation time"
+        }
+      ],
+      "rows": [
+        {
+          "mrn": "CL2-67d7ad25",
+          "patient": "Synthetic Other Patient",
+          "birthDate": "2000-01-01",
+          "gender": "Other",
+          "createdAt": "2026-11-14 23:29:58.755782"
+        },
+        {
+          "mrn": "CL-67d7ad25",
+          "patient": "Synthetic Consent Patient",
+          "birthDate": "2000-01-01",
+          "gender": "Other",
+          "createdAt": "2026-11-14 23:29:58.754022"
+        }
+      ],
+      "filters": {
+        "facilityId": 134,
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 21264,
+      "xlsxRows": 15,
+      "xlsxBytes": 3556,
+      "csvBytes": 1156
+    },
+    "limitation": "Complete longitudinal records and governed patient-report definitions; the available view covers facility registrations only."
+  },
+  {
+    "category": "RECORDS",
+    "name": "Patient review reports",
+    "id": "records-patient-review-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Defined reporting data and relationships; cashier finance reconciliation where applicable."
+  },
+  {
+    "category": "RECORDS",
+    "name": "Unregistered patient reports",
+    "id": "records-unregistered-patient-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Defined reporting data and relationships; cashier finance reconciliation where applicable."
+  },
+  {
+    "category": "RECORDS",
+    "name": "Referral reports",
+    "id": "records-referral-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Defined reporting data and relationships; cashier finance reconciliation where applicable."
+  },
+  {
+    "category": "RECORDS",
+    "name": "OPD diagnosis reports",
+    "id": "records-opd-diagnosis-reports",
+    "module": "opd",
+    "endpoint": "POST /api/reporting/centre/outpatient-diagnoses/{generate,options,export}",
+    "dataSource": "encounters, patients, departments, diagnoses",
+    "filters": "search, status, inclusive from/to dates, patientFilter, departmentFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "outpatient-diagnoses",
+      "records": 0,
+      "columns": [
+        {
+          "key": "encounterId",
+          "label": "Encounter ID"
+        },
+        {
+          "key": "mrn",
+          "label": "MRN"
+        },
+        {
+          "key": "patient",
+          "label": "Patient"
+        },
+        {
+          "key": "startedAt",
+          "label": "Recorded encounter start"
+        },
+        {
+          "key": "encounterProgress",
+          "label": "Recorded encounter progress"
+        },
+        {
+          "key": "encounterStatus",
+          "label": "Source encounter status"
+        },
+        {
+          "key": "department",
+          "label": "Department"
+        },
+        {
+          "key": "diagnosisId",
+          "label": "Diagnosis record ID"
+        },
+        {
+          "key": "diagnosisType",
+          "label": "Recorded diagnosis type"
+        },
+        {
+          "key": "diagnosisStatus",
+          "label": "Recorded diagnosis status"
+        },
+        {
+          "key": "diagnosedAt",
+          "label": "Recorded diagnosis time"
+        },
+        {
+          "key": "codingSystem",
+          "label": "Recorded coding system"
+        },
+        {
+          "key": "diagnosisCode",
+          "label": "Recorded diagnosis code"
+        },
+        {
+          "key": "diagnosisDisplay",
+          "label": "Recorded diagnosis display"
+        },
+        {
+          "key": "legacyIcd10Code",
+          "label": "Recorded ICD-10 code"
+        },
+        {
+          "key": "legacyIcd10Description",
+          "label": "Recorded ICD-10 description"
+        },
+        {
+          "key": "icd11Code",
+          "label": "Recorded ICD-11 code"
+        },
+        {
+          "key": "icd11Title",
+          "label": "Recorded ICD-11 title"
+        },
+        {
+          "key": "icd11Release",
+          "label": "Recorded ICD-11 release"
+        },
+        {
+          "key": "icd11FoundationUri",
+          "label": "Recorded ICD-11 foundation URI"
+        },
+        {
+          "key": "icd11LinearizationUri",
+          "label": "Recorded ICD-11 linearization URI"
+        },
+        {
+          "key": "diagnosisQuality",
+          "label": "Source record review"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134,
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 21811,
+      "xlsxRows": 15,
+      "xlsxBytes": 3909,
+      "csvBytes": 1928
+    },
+    "limitation": "Recorded encounter/diagnosis register only; deduplicated morbidity, verified MOH 705 definitions and facility acceptance remain outstanding."
+  },
+  {
+    "category": "RECORDS",
+    "name": "IPD diagnosis reports",
+    "id": "records-ipd-diagnosis-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Defined reporting data and relationships; cashier finance reconciliation where applicable."
+  },
+  {
+    "category": "RECORDS",
+    "name": "Triage analysis",
+    "id": "records-triage-analysis",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Defined reporting data and relationships; cashier finance reconciliation where applicable."
+  },
+  {
+    "category": "RECORDS",
+    "name": "Doctors' workload",
+    "id": "records-doctors-workload",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Defined reporting data and relationships; cashier finance reconciliation where applicable."
+  },
+  {
+    "category": "RECORDS",
+    "name": "Nurses' workload",
+    "id": "records-nurses-workload",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Defined reporting data and relationships; cashier finance reconciliation where applicable."
+  },
+  {
+    "category": "RECORDS",
+    "name": "Cashier workload",
+    "id": "records-cashier-workload",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Defined reporting data and relationships; cashier finance reconciliation where applicable."
+  },
+  {
+    "category": "RECORDS",
+    "name": "Inpatient discharges",
+    "id": "records-inpatient-discharges",
+    "module": "inpatient",
+    "endpoint": "POST /api/reporting/centre/inpatient-discharges/{generate,options,export}",
+    "dataSource": "admissions, patients, wards, beds",
+    "filters": "search, inclusive from/to dates, patientFilter, wardFilter, bedFilter",
+    "formats": "PDF, XLSX, CSV",
+    "letterhead": "Common active facility renderer; Print PDF uses same path",
+    "status": "PARTIALLY FUNCTIONAL — tested implemented subset",
+    "runtimeEvidence": {
+      "id": "inpatient-discharges",
+      "records": 0,
+      "columns": [
+        {
+          "key": "admissionId",
+          "label": "Admission ID"
+        },
+        {
+          "key": "mrn",
+          "label": "MRN"
+        },
+        {
+          "key": "patient",
+          "label": "Patient"
+        },
+        {
+          "key": "dischargeDate",
+          "label": "Recorded discharge time"
+        },
+        {
+          "key": "status",
+          "label": "Recorded admission status"
+        },
+        {
+          "key": "dischargeType",
+          "label": "Discharge type"
+        },
+        {
+          "key": "ward",
+          "label": "Recorded current ward"
+        }
+      ],
+      "rows": [],
+      "filters": {
+        "facilityId": 134,
+        "from": "2026-01-01",
+        "to": "2026-12-31"
+      },
+      "pdfBytes": 20061,
+      "xlsxRows": 13,
+      "xlsxBytes": 3420,
+      "csvBytes": 912
+    },
+    "limitation": "Defined reporting data and relationships; cashier finance reconciliation where applicable."
+  },
+  {
+    "category": "RECORDS",
+    "name": "MOH 505-IDSR",
+    "id": "records-moh-505-idsr",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Current authoritative forms, indicator dictionaries, approved data mappings and submission process."
+  },
+  {
+    "category": "RECORDS",
+    "name": "MOH 705A",
+    "id": "records-moh-705a",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Current authoritative forms, indicator dictionaries, approved data mappings and submission process."
+  },
+  {
+    "category": "RECORDS",
+    "name": "MOH 705B",
+    "id": "records-moh-705b",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Current authoritative forms, indicator dictionaries, approved data mappings and submission process."
+  },
+  {
+    "category": "RECORDS",
+    "name": "MOH 717",
+    "id": "records-moh-717",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Current authoritative forms, indicator dictionaries, approved data mappings and submission process."
+  },
+  {
+    "category": "RECORDS",
+    "name": "MOH 301-IPD admissions",
+    "id": "records-moh-301-ipd-admissions",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Current authoritative forms, indicator dictionaries, approved data mappings and submission process."
+  },
+  {
+    "category": "RECORDS",
+    "name": "MOH 204-OPD register",
+    "id": "records-moh-204-opd-register",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Current authoritative forms, indicator dictionaries, approved data mappings and submission process."
+  },
+  {
+    "category": "RECORDS",
+    "name": "MOH 240 laboratory and radiology reports",
+    "id": "records-moh-240-laboratory-and-radiology-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Current authoritative forms, indicator dictionaries, approved data mappings and submission process."
+  },
+  {
+    "category": "RECORDS",
+    "name": "MOH financial reports",
+    "id": "records-moh-financial-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Current authoritative forms, indicator dictionaries, approved data mappings and submission process."
+  },
+  {
+    "category": "HR",
+    "name": "Employee list",
+    "id": "hr-employee-list",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Employment register and HR-authorized report."
+  },
+  {
+    "category": "HR",
+    "name": "Employee summaries",
+    "id": "hr-employee-summaries",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Employment register and HR-authorized report."
+  },
+  {
+    "category": "HR",
+    "name": "Salary summaries",
+    "id": "hr-salary-summaries",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Payroll and approved current-year HR/KRA and secure payment policies."
+  },
+  {
+    "category": "HR",
+    "name": "Individual payslips",
+    "id": "hr-individual-payslips",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Payroll and approved current-year HR/KRA and secure payment policies."
+  },
+  {
+    "category": "HR",
+    "name": "All payslips",
+    "id": "hr-all-payslips",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Payroll and approved current-year HR/KRA and secure payment policies."
+  },
+  {
+    "category": "HR",
+    "name": "Attendance",
+    "id": "hr-attendance",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Payroll and approved current-year HR/KRA and secure payment policies."
+  },
+  {
+    "category": "HR",
+    "name": "Overtime",
+    "id": "hr-overtime",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Payroll and approved current-year HR/KRA and secure payment policies."
+  },
+  {
+    "category": "HR",
+    "name": "Leave reports",
+    "id": "hr-leave-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Payroll and approved current-year HR/KRA and secure payment policies."
+  },
+  {
+    "category": "HR",
+    "name": "Monthly deductions",
+    "id": "hr-monthly-deductions",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Payroll and approved current-year HR/KRA and secure payment policies."
+  },
+  {
+    "category": "HR",
+    "name": "Monthly bank summaries",
+    "id": "hr-monthly-bank-summaries",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Payroll and approved current-year HR/KRA and secure payment policies."
+  },
+  {
+    "category": "HR",
+    "name": "Individual bank summaries",
+    "id": "hr-individual-bank-summaries",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Payroll and approved current-year HR/KRA and secure payment policies."
+  },
+  {
+    "category": "HR",
+    "name": "P9A reports",
+    "id": "hr-p9a-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Payroll and approved current-year HR/KRA and secure payment policies."
+  },
+  {
+    "category": "HR",
+    "name": "P10 reports",
+    "id": "hr-p10-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Payroll and approved current-year HR/KRA and secure payment policies."
+  },
+  {
+    "category": "HR",
+    "name": "P10A reports",
+    "id": "hr-p10a-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Payroll and approved current-year HR/KRA and secure payment policies."
+  },
+  {
+    "category": "HR",
+    "name": "Locum reports",
+    "id": "hr-locum-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Payroll and approved current-year HR/KRA and secure payment policies."
+  },
+  {
+    "category": "ACTIVITY",
+    "name": "System user list",
+    "id": "activity-system-user-list",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Durable complete logs, server filtering/pagination, specific access policy and exports."
+  },
+  {
+    "category": "ACTIVITY",
+    "name": "Queue reports",
+    "id": "activity-queue-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Durable complete logs, server filtering/pagination, specific access policy and exports."
+  },
+  {
+    "category": "ACTIVITY",
+    "name": "Complete activity logs",
+    "id": "activity-complete-activity-logs",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Durable complete logs, server filtering/pagination, specific access policy and exports."
+  },
+  {
+    "category": "ACTIVITY",
+    "name": "Activity logs by user",
+    "id": "activity-activity-logs-by-user",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Durable complete logs, server filtering/pagination, specific access policy and exports."
+  },
+  {
+    "category": "ACTIVITY",
+    "name": "Failed login reports",
+    "id": "activity-failed-login-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Durable complete logs, server filtering/pagination, specific access policy and exports."
+  },
+  {
+    "category": "ACTIVITY",
+    "name": "Patient record access logs",
+    "id": "activity-patient-record-access-logs",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Durable complete logs, server filtering/pagination, specific access policy and exports."
+  },
+  {
+    "category": "ACTIVITY",
+    "name": "Financial approval logs",
+    "id": "activity-financial-approval-logs",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Durable complete logs, server filtering/pagination, specific access policy and exports."
+  },
+  {
+    "category": "ACTIVITY",
+    "name": "SMS reports",
+    "id": "activity-sms-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Authorized provider and verified delivery events."
+  },
+  {
+    "category": "ACTIVITY",
+    "name": "Notification delivery reports",
+    "id": "activity-notification-delivery-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Authorized provider and verified delivery events."
+  },
+  {
+    "category": "ACTIVITY",
+    "name": "Messages reports",
+    "id": "activity-messages-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Message/delivery data and report definitions."
+  },
+  {
+    "category": "ACTIVITY",
+    "name": "Custom administrative reports",
+    "id": "activity-custom-administrative-reports",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Governed report definitions or durable job-run failure records."
+  },
+  {
+    "category": "ACTIVITY",
+    "name": "Background job failures",
+    "id": "activity-background-job-failures",
+    "module": "Unavailable",
+    "endpoint": "NONE",
+    "dataSource": "No integrated workflow",
+    "filters": "NONE",
+    "formats": "NONE",
+    "letterhead": "Unavailable",
+    "status": "MISSING BACKEND / INTEGRATED WORKFLOW",
+    "runtimeEvidence": "NOT RUN / unavailable",
+    "limitation": "Governed report definitions or durable job-run failure records."
+  }
+]

@@ -1,3 +1,4 @@
+import { RadiologyConsentPanel } from '../RadiologyConsentPanel.tsx';
 import { FormField, PrimaryButton, SecondaryButton } from '../ui/controls.tsx';
 import { AlertBanner, ErrorState } from '../ui/feedback.tsx';
 import { Modal } from '../ui/overlays.tsx';
@@ -493,6 +494,11 @@ export const RadiologyModule: React.FC = () => {
                     Save Imaging Report
                   </button>
                 </div>
+                <RadiologyConsentPanel
+                  key={selectedOrder.id}
+                  orderId={selectedOrder.id}
+                  patientId={selectedOrder.patientId}
+                />
               </div>
             </div>
           ) : (

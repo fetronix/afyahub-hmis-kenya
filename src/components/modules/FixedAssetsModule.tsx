@@ -595,7 +595,7 @@ export const FixedAssetsModule: React.FC = () => {
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-semibold">Register valuation report</h3>
               <SecondaryButton onClick={() => window.print()}>
-                <Printer size={15} /> Print
+                <Printer size={15} /> Print working register (no letterhead)
               </SecondaryButton>
             </div>
             <DataTable className="table-quiet">

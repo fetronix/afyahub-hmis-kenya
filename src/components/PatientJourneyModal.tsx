@@ -1,3 +1,4 @@
+import { PatientDocumentsPanel } from './PatientDocumentsPanel.tsx';
 import React, { useState, useEffect } from 'react';
 import { useHmis } from '../context/HmisContext.tsx';
 import { api } from '../api/client.ts';
@@ -64,7 +65,15 @@ const PatientJourneyContent: React.FC = () => {
     status: 'loading' | 'ready' | 'error';
   } | null>(null);
   const [activeTab, setActiveTab] = useState<
-    'timeline' | 'vitals' | 'diagnoses' | 'meds' | 'labs' | 'billing' | 'consent' | 'fhir'
+    | 'timeline'
+    | 'vitals'
+    | 'diagnoses'
+    | 'meds'
+    | 'labs'
+    | 'billing'
+    | 'consent'
+    | 'documents'
+    | 'fhir'
   >('timeline');
   const patientId = selectedPatient?.id;
   const facilityId = currentFacility?.id;
@@ -208,6 +217,7 @@ const PatientJourneyContent: React.FC = () => {
               <span>Export FHIR</span>
             </button>
             <button
+              aria-label="Close patient record"
               onClick={() => setIsJourneyModalOpen(false)}
               className="p-1.5 text-slate-400 hover:text-slate-700 rounded-md hover:bg-slate-200 transition-colors"
             >
@@ -258,6 +268,7 @@ const PatientJourneyContent: React.FC = () => {
             { id: 'labs', label: `Lab Investigations (${labOrders.length})` },
             { id: 'billing', label: `Financial Invoices (${invoices.length})` },
             { id: 'consent', label: 'Consent & Allergies' },
+            { id: 'documents', label: 'Consent & Signed Documents' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -647,6 +658,9 @@ const PatientJourneyContent: React.FC = () => {
                 />
               )}
 
+              {activeTab === 'documents' && (
+                <PatientDocumentsPanel patientId={selectedPatient.id} />
+              )}
               {/* FHIR SCHEMA TAB */}
               {activeTab === 'fhir' && (
                 <div className="space-y-3">

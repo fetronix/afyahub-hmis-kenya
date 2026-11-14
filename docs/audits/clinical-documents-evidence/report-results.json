@@ -1,0 +1,1417 @@
+[
+  {
+    "id": "patient-registrations",
+    "records": 2,
+    "columns": [
+      {
+        "key": "mrn",
+        "label": "MRN"
+      },
+      {
+        "key": "patient",
+        "label": "Patient"
+      },
+      {
+        "key": "birthDate",
+        "label": "Recorded birth date"
+      },
+      {
+        "key": "gender",
+        "label": "Recorded gender"
+      },
+      {
+        "key": "createdAt",
+        "label": "Recorded creation time"
+      }
+    ],
+    "rows": [
+      {
+        "mrn": "CL2-67d7ad25",
+        "patient": "Synthetic Other Patient",
+        "birthDate": "2000-01-01",
+        "gender": "Other",
+        "createdAt": "2026-11-14 23:29:58.755782"
+      },
+      {
+        "mrn": "CL-67d7ad25",
+        "patient": "Synthetic Consent Patient",
+        "birthDate": "2000-01-01",
+        "gender": "Other",
+        "createdAt": "2026-11-14 23:29:58.754022"
+      }
+    ],
+    "filters": {
+      "facilityId": 134,
+      "from": "2026-01-01",
+      "to": "2026-12-31"
+    },
+    "pdfBytes": 21264,
+    "xlsxRows": 15,
+    "xlsxBytes": 3556,
+    "csvBytes": 1156
+  },
+  {
+    "id": "inventory-expiry",
+    "records": 0,
+    "columns": [
+      {
+        "key": "code",
+        "label": "Item code"
+      },
+      {
+        "key": "item",
+        "label": "Item"
+      },
+      {
+        "key": "batch",
+        "label": "Batch"
+      },
+      {
+        "key": "expiry",
+        "label": "Recorded expiry date"
+      },
+      {
+        "key": "quantity",
+        "label": "Quantity remaining"
+      },
+      {
+        "key": "unit",
+        "label": "Unit"
+      }
+    ],
+    "rows": [],
+    "filters": {
+      "facilityId": 134,
+      "from": "2026-01-01",
+      "to": "2026-12-31"
+    },
+    "pdfBytes": 20829,
+    "xlsxRows": 11,
+    "xlsxBytes": 3323,
+    "csvBytes": 695
+  },
+  {
+    "id": "outpatient-encounters",
+    "records": 0,
+    "columns": [
+      {
+        "key": "encounterId",
+        "label": "Encounter ID"
+      },
+      {
+        "key": "mrn",
+        "label": "MRN"
+      },
+      {
+        "key": "patient",
+        "label": "Patient"
+      },
+      {
+        "key": "startedAt",
+        "label": "Recorded start time"
+      },
+      {
+        "key": "status",
+        "label": "Recorded status"
+      },
+      {
+        "key": "department",
+        "label": "Department"
+      },
+      {
+        "key": "practitioner",
+        "label": "Practitioner"
+      }
+    ],
+    "rows": [],
+    "filters": {
+      "facilityId": 134,
+      "from": "2026-01-01",
+      "to": "2026-12-31"
+    },
+    "pdfBytes": 20169,
+    "xlsxRows": 13,
+    "xlsxBytes": 3455,
+    "csvBytes": 955
+  },
+  {
+    "id": "outpatient-diagnoses",
+    "records": 0,
+    "columns": [
+      {
+        "key": "encounterId",
+        "label": "Encounter ID"
+      },
+      {
+        "key": "mrn",
+        "label": "MRN"
+      },
+      {
+        "key": "patient",
+        "label": "Patient"
+      },
+      {
+        "key": "startedAt",
+        "label": "Recorded encounter start"
+      },
+      {
+        "key": "encounterProgress",
+        "label": "Recorded encounter progress"
+      },
+      {
+        "key": "encounterStatus",
+        "label": "Source encounter status"
+      },
+      {
+        "key": "department",
+        "label": "Department"
+      },
+      {
+        "key": "diagnosisId",
+        "label": "Diagnosis record ID"
+      },
+      {
+        "key": "diagnosisType",
+        "label": "Recorded diagnosis type"
+      },
+      {
+        "key": "diagnosisStatus",
+        "label": "Recorded diagnosis status"
+      },
+      {
+        "key": "diagnosedAt",
+        "label": "Recorded diagnosis time"
+      },
+      {
+        "key": "codingSystem",
+        "label": "Recorded coding system"
+      },
+      {
+        "key": "diagnosisCode",
+        "label": "Recorded diagnosis code"
+      },
+      {
+        "key": "diagnosisDisplay",
+        "label": "Recorded diagnosis display"
+      },
+      {
+        "key": "legacyIcd10Code",
+        "label": "Recorded ICD-10 code"
+      },
+      {
+        "key": "legacyIcd10Description",
+        "label": "Recorded ICD-10 description"
+      },
+      {
+        "key": "icd11Code",
+        "label": "Recorded ICD-11 code"
+      },
+      {
+        "key": "icd11Title",
+        "label": "Recorded ICD-11 title"
+      },
+      {
+        "key": "icd11Release",
+        "label": "Recorded ICD-11 release"
+      },
+      {
+        "key": "icd11FoundationUri",
+        "label": "Recorded ICD-11 foundation URI"
+      },
+      {
+        "key": "icd11LinearizationUri",
+        "label": "Recorded ICD-11 linearization URI"
+      },
+      {
+        "key": "diagnosisQuality",
+        "label": "Source record review"
+      }
+    ],
+    "rows": [],
+    "filters": {
+      "facilityId": 134,
+      "from": "2026-01-01",
+      "to": "2026-12-31"
+    },
+    "pdfBytes": 21811,
+    "xlsxRows": 15,
+    "xlsxBytes": 3909,
+    "csvBytes": 1928
+  },
+  {
+    "id": "inpatient-admissions",
+    "records": 0,
+    "columns": [
+      {
+        "key": "admissionId",
+        "label": "Admission ID"
+      },
+      {
+        "key": "mrn",
+        "label": "MRN"
+      },
+      {
+        "key": "patient",
+        "label": "Patient"
+      },
+      {
+        "key": "admissionDate",
+        "label": "Recorded admission time"
+      },
+      {
+        "key": "status",
+        "label": "Recorded status"
+      },
+      {
+        "key": "ward",
+        "label": "Recorded current ward"
+      },
+      {
+        "key": "bed",
+        "label": "Recorded current bed"
+      }
+    ],
+    "rows": [],
+    "filters": {
+      "facilityId": 134,
+      "from": "2026-01-01",
+      "to": "2026-12-31"
+    },
+    "pdfBytes": 20781,
+    "xlsxRows": 13,
+    "xlsxBytes": 3421,
+    "csvBytes": 918
+  },
+  {
+    "id": "inpatient-discharges",
+    "records": 0,
+    "columns": [
+      {
+        "key": "admissionId",
+        "label": "Admission ID"
+      },
+      {
+        "key": "mrn",
+        "label": "MRN"
+      },
+      {
+        "key": "patient",
+        "label": "Patient"
+      },
+      {
+        "key": "dischargeDate",
+        "label": "Recorded discharge time"
+      },
+      {
+        "key": "status",
+        "label": "Recorded admission status"
+      },
+      {
+        "key": "dischargeType",
+        "label": "Discharge type"
+      },
+      {
+        "key": "ward",
+        "label": "Recorded current ward"
+      }
+    ],
+    "rows": [],
+    "filters": {
+      "facilityId": 134,
+      "from": "2026-01-01",
+      "to": "2026-12-31"
+    },
+    "pdfBytes": 20061,
+    "xlsxRows": 13,
+    "xlsxBytes": 3420,
+    "csvBytes": 912
+  },
+  {
+    "id": "laboratory-orders",
+    "records": 0,
+    "columns": [
+      {
+        "key": "orderId",
+        "label": "Order ID"
+      },
+      {
+        "key": "mrn",
+        "label": "MRN"
+      },
+      {
+        "key": "patient",
+        "label": "Patient"
+      },
+      {
+        "key": "test",
+        "label": "Ordered test"
+      },
+      {
+        "key": "specimen",
+        "label": "Recorded specimen"
+      },
+      {
+        "key": "status",
+        "label": "Order status"
+      },
+      {
+        "key": "orderedAt",
+        "label": "Recorded order time"
+      },
+      {
+        "key": "completedAt",
+        "label": "Recorded completion time"
+      }
+    ],
+    "rows": [],
+    "filters": {
+      "facilityId": 134,
+      "from": "2026-01-01",
+      "to": "2026-12-31"
+    },
+    "pdfBytes": 20578,
+    "xlsxRows": 13,
+    "xlsxBytes": 3468,
+    "csvBytes": 983
+  },
+  {
+    "id": "radiology-requests",
+    "records": 3,
+    "columns": [
+      {
+        "key": "requestId",
+        "label": "Request ID"
+      },
+      {
+        "key": "mrn",
+        "label": "MRN"
+      },
+      {
+        "key": "patient",
+        "label": "Patient"
+      },
+      {
+        "key": "procedure",
+        "label": "Requested procedure"
+      },
+      {
+        "key": "modality",
+        "label": "Modality"
+      },
+      {
+        "key": "status",
+        "label": "Recorded status"
+      },
+      {
+        "key": "requestedAt",
+        "label": "Recorded request time"
+      },
+      {
+        "key": "reportedAt",
+        "label": "Recorded report time"
+      }
+    ],
+    "rows": [
+      {
+        "requestId": 77,
+        "mrn": "CL-67d7ad25",
+        "patient": "Synthetic Consent Patient",
+        "procedure": "Synthetic post-activation imaging",
+        "modality": "X-Ray",
+        "status": "Reported",
+        "requestedAt": "2026-11-14 23:30:09.991883",
+        "reportedAt": "2026-11-14 23:30:10.024"
+      },
+      {
+        "requestId": 76,
+        "mrn": "CL-67d7ad25",
+        "patient": "Synthetic Consent Patient",
+        "procedure": "Synthetic exception procedure",
+        "modality": "X-Ray",
+        "status": "Reported",
+        "requestedAt": "2026-11-14 23:29:58.756596",
+        "reportedAt": "2026-11-14 23:30:09.814"
+      },
+      {
+        "requestId": 75,
+        "mrn": "CL-67d7ad25",
+        "patient": "Synthetic Consent Patient",
+        "procedure": "Synthetic procedure-specific imaging",
+        "modality": "CT",
+        "status": "Reported",
+        "requestedAt": "2026-11-14 23:29:58.756596",
+        "reportedAt": "2026-11-14 23:30:09.745"
+      }
+    ],
+    "filters": {
+      "facilityId": 134,
+      "from": "2026-01-01",
+      "to": "2026-12-31"
+    },
+    "pdfBytes": 22751,
+    "xlsxRows": 16,
+    "xlsxBytes": 3740,
+    "csvBytes": 1465
+  },
+  {
+    "id": "pharmacy-dispensations",
+    "records": 0,
+    "columns": [
+      {
+        "key": "dispensationId",
+        "label": "Dispensation ID"
+      },
+      {
+        "key": "mrn",
+        "label": "MRN"
+      },
+      {
+        "key": "patient",
+        "label": "Patient"
+      },
+      {
+        "key": "itemCode",
+        "label": "Item code snapshot"
+      },
+      {
+        "key": "item",
+        "label": "Item name snapshot"
+      },
+      {
+        "key": "quantity",
+        "label": "Dispensed quantity"
+      },
+      {
+        "key": "unit",
+        "label": "Unit snapshot"
+      },
+      {
+        "key": "batch",
+        "label": "Recorded batch"
+      },
+      {
+        "key": "dispensedAt",
+        "label": "Recorded dispensation time"
+      }
+    ],
+    "rows": [],
+    "filters": {
+      "facilityId": 134,
+      "from": "2026-01-01",
+      "to": "2026-12-31"
+    },
+    "pdfBytes": 20689,
+    "xlsxRows": 14,
+    "xlsxBytes": 3537,
+    "csvBytes": 1135
+  },
+  {
+    "id": "cashier-receipts",
+    "records": 0,
+    "columns": [
+      {
+        "key": "recordedDate",
+        "label": "Recorded payment date"
+      },
+      {
+        "key": "cashier",
+        "label": "Recorded cashier name"
+      },
+      {
+        "key": "method",
+        "label": "Recorded method"
+      },
+      {
+        "key": "receiptCount",
+        "label": "Receipts"
+      },
+      {
+        "key": "amount",
+        "label": "Known recorded amount",
+        "kind": "money"
+      },
+      {
+        "key": "unknownAmounts",
+        "label": "Invalid / unknown amounts"
+      }
+    ],
+    "rows": [],
+    "filters": {
+      "facilityId": 134,
+      "from": "2026-01-01",
+      "to": "2026-12-31"
+    },
+    "pdfBytes": 21215,
+    "xlsxRows": 14,
+    "xlsxBytes": 3520,
+    "csvBytes": 1134
+  },
+  {
+    "id": "recorded-refunds",
+    "records": 0,
+    "columns": [
+      {
+        "key": "number",
+        "label": "Refund reference"
+      },
+      {
+        "key": "invoice",
+        "label": "Invoice"
+      },
+      {
+        "key": "method",
+        "label": "Recorded method"
+      },
+      {
+        "key": "amount",
+        "label": "Recorded amount",
+        "kind": "money"
+      },
+      {
+        "key": "actorId",
+        "label": "Recorded actor user ID"
+      },
+      {
+        "key": "createdAt",
+        "label": "Recorded time"
+      }
+    ],
+    "rows": [],
+    "filters": {
+      "facilityId": 134,
+      "from": "2026-01-01",
+      "to": "2026-12-31"
+    },
+    "pdfBytes": 20811,
+    "xlsxRows": 14,
+    "xlsxBytes": 3456,
+    "csvBytes": 974
+  },
+  {
+    "id": "invoice-balances",
+    "records": 0,
+    "columns": [
+      {
+        "key": "invoice",
+        "label": "Invoice"
+      },
+      {
+        "key": "mrn",
+        "label": "MRN"
+      },
+      {
+        "key": "patient",
+        "label": "Patient"
+      },
+      {
+        "key": "status",
+        "label": "Invoice status"
+      },
+      {
+        "key": "balance",
+        "label": "Recorded balance",
+        "kind": "money"
+      },
+      {
+        "key": "createdAt",
+        "label": "Recorded invoice creation time"
+      }
+    ],
+    "rows": [],
+    "filters": {
+      "facilityId": 134,
+      "from": "2026-01-01",
+      "to": "2026-12-31"
+    },
+    "pdfBytes": 20766,
+    "xlsxRows": 14,
+    "xlsxBytes": 3482,
+    "csvBytes": 1039
+  },
+  {
+    "id": "ledger-trial-movements",
+    "records": 0,
+    "columns": [
+      {
+        "key": "code",
+        "label": "Account code"
+      },
+      {
+        "key": "account",
+        "label": "Account"
+      },
+      {
+        "key": "type",
+        "label": "Account type"
+      },
+      {
+        "key": "debits",
+        "label": "Posted debits",
+        "kind": "money"
+      },
+      {
+        "key": "credits",
+        "label": "Posted credits",
+        "kind": "money"
+      },
+      {
+        "key": "netDebit",
+        "label": "Net debit movement",
+        "kind": "money"
+      },
+      {
+        "key": "netCredit",
+        "label": "Net credit movement",
+        "kind": "money"
+      }
+    ],
+    "rows": [],
+    "filters": {
+      "facilityId": 134,
+      "from": "2026-01-01",
+      "to": "2026-12-31"
+    },
+    "pdfBytes": 21699,
+    "xlsxRows": 16,
+    "xlsxBytes": 3596,
+    "csvBytes": 1286
+  },
+  {
+    "id": "ledger-income",
+    "records": 0,
+    "columns": [
+      {
+        "key": "code",
+        "label": "Account code"
+      },
+      {
+        "key": "account",
+        "label": "Account"
+      },
+      {
+        "key": "type",
+        "label": "Account type"
+      },
+      {
+        "key": "normalAmount",
+        "label": "Posted net in category direction",
+        "kind": "money"
+      }
+    ],
+    "rows": [],
+    "filters": {
+      "facilityId": 134,
+      "from": "2026-01-01",
+      "to": "2026-12-31"
+    },
+    "pdfBytes": 22038,
+    "xlsxRows": 17,
+    "xlsxBytes": 3594,
+    "csvBytes": 1305
+  },
+  {
+    "id": "ledger-balance-sheet",
+    "records": 0,
+    "columns": [
+      {
+        "key": "code",
+        "label": "Account code"
+      },
+      {
+        "key": "account",
+        "label": "Account"
+      },
+      {
+        "key": "type",
+        "label": "Account type"
+      },
+      {
+        "key": "normalAmount",
+        "label": "Posted net in category direction",
+        "kind": "money"
+      }
+    ],
+    "rows": [],
+    "filters": {
+      "facilityId": 134,
+      "to": "2026-12-31"
+    },
+    "pdfBytes": 21546,
+    "xlsxRows": 17,
+    "xlsxBytes": 3615,
+    "csvBytes": 1361
+  },
+  {
+    "id": "inventory-category",
+    "records": 35,
+    "columns": [
+      {
+        "key": "code",
+        "label": "Item code"
+      },
+      {
+        "key": "item",
+        "label": "Item"
+      },
+      {
+        "key": "category",
+        "label": "Category"
+      },
+      {
+        "key": "store",
+        "label": "Recorded location"
+      },
+      {
+        "key": "unit",
+        "label": "Unit"
+      },
+      {
+        "key": "quantity",
+        "label": "Current stock"
+      },
+      {
+        "key": "reorderLevel",
+        "label": "Reorder level"
+      },
+      {
+        "key": "status",
+        "label": "Status"
+      }
+    ],
+    "rows": [
+      {
+        "code": "CL-67d7ad25-0",
+        "item": "Synthetic presentation item 00",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 1,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-1",
+        "item": "Synthetic presentation item 01",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 2,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-2",
+        "item": "Synthetic presentation item 02",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 3,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-3",
+        "item": "Synthetic presentation item 03",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 4,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-4",
+        "item": "Synthetic presentation item 04",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 5,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-5",
+        "item": "Synthetic presentation item 05",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 6,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-6",
+        "item": "Synthetic presentation item 06",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 7,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-7",
+        "item": "Synthetic presentation item 07",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 8,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-8",
+        "item": "Synthetic presentation item 08",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 9,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-9",
+        "item": "Synthetic presentation item 09",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 10,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-10",
+        "item": "Synthetic presentation item 10",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 11,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-11",
+        "item": "Synthetic presentation item 11",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 12,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-12",
+        "item": "Synthetic presentation item 12",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 13,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-13",
+        "item": "Synthetic presentation item 13",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 14,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-14",
+        "item": "Synthetic presentation item 14",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 15,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-15",
+        "item": "Synthetic presentation item 15",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 16,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-16",
+        "item": "Synthetic presentation item 16",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 17,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-17",
+        "item": "Synthetic presentation item 17",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 18,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-18",
+        "item": "Synthetic presentation item 18",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 19,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-19",
+        "item": "Synthetic presentation item 19",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 20,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-20",
+        "item": "Synthetic presentation item 20",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 21,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-21",
+        "item": "Synthetic presentation item 21",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 22,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-22",
+        "item": "Synthetic presentation item 22",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 23,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-23",
+        "item": "Synthetic presentation item 23",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 24,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-24",
+        "item": "Synthetic presentation item 24",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 25,
+        "reorderLevel": null,
+        "status": "Active"
+      }
+    ],
+    "filters": {
+      "facilityId": 134
+    },
+    "pdfBytes": 122166,
+    "xlsxRows": 46,
+    "xlsxBytes": 4754,
+    "csvBytes": 5221
+  },
+  {
+    "id": "inventory-store",
+    "records": 35,
+    "columns": [
+      {
+        "key": "code",
+        "label": "Item code"
+      },
+      {
+        "key": "item",
+        "label": "Item"
+      },
+      {
+        "key": "category",
+        "label": "Category"
+      },
+      {
+        "key": "store",
+        "label": "Recorded location"
+      },
+      {
+        "key": "unit",
+        "label": "Unit"
+      },
+      {
+        "key": "quantity",
+        "label": "Current stock"
+      },
+      {
+        "key": "reorderLevel",
+        "label": "Reorder level"
+      },
+      {
+        "key": "status",
+        "label": "Status"
+      }
+    ],
+    "rows": [
+      {
+        "code": "CL-67d7ad25-0",
+        "item": "Synthetic presentation item 00",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 1,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-1",
+        "item": "Synthetic presentation item 01",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 2,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-2",
+        "item": "Synthetic presentation item 02",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 3,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-3",
+        "item": "Synthetic presentation item 03",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 4,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-4",
+        "item": "Synthetic presentation item 04",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 5,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-5",
+        "item": "Synthetic presentation item 05",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 6,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-6",
+        "item": "Synthetic presentation item 06",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 7,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-7",
+        "item": "Synthetic presentation item 07",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 8,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-8",
+        "item": "Synthetic presentation item 08",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 9,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-9",
+        "item": "Synthetic presentation item 09",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 10,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-10",
+        "item": "Synthetic presentation item 10",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 11,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-11",
+        "item": "Synthetic presentation item 11",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 12,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-12",
+        "item": "Synthetic presentation item 12",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 13,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-13",
+        "item": "Synthetic presentation item 13",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 14,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-14",
+        "item": "Synthetic presentation item 14",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 15,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-15",
+        "item": "Synthetic presentation item 15",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 16,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-16",
+        "item": "Synthetic presentation item 16",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 17,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-17",
+        "item": "Synthetic presentation item 17",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 18,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-18",
+        "item": "Synthetic presentation item 18",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 19,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-19",
+        "item": "Synthetic presentation item 19",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 20,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-20",
+        "item": "Synthetic presentation item 20",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 21,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-21",
+        "item": "Synthetic presentation item 21",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 22,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-22",
+        "item": "Synthetic presentation item 22",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 23,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-23",
+        "item": "Synthetic presentation item 23",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 24,
+        "reorderLevel": null,
+        "status": "Active"
+      },
+      {
+        "code": "CL-67d7ad25-24",
+        "item": "Synthetic presentation item 24",
+        "category": "Synthetic supplies",
+        "store": "Synthetic Main Store",
+        "unit": "Pieces",
+        "quantity": 25,
+        "reorderLevel": null,
+        "status": "Active"
+      }
+    ],
+    "filters": {
+      "facilityId": 134
+    },
+    "pdfBytes": 121281,
+    "xlsxRows": 46,
+    "xlsxBytes": 4750,
+    "csvBytes": 5221
+  },
+  {
+    "id": "purchase-orders",
+    "records": 0,
+    "columns": [
+      {
+        "key": "number",
+        "label": "Purchase order"
+      },
+      {
+        "key": "supplier",
+        "label": "Supplier"
+      },
+      {
+        "key": "status",
+        "label": "Status"
+      },
+      {
+        "key": "expectedDelivery",
+        "label": "Expected delivery"
+      },
+      {
+        "key": "orderAmount",
+        "label": "Order value",
+        "kind": "money"
+      }
+    ],
+    "rows": [],
+    "filters": {
+      "facilityId": 134,
+      "from": "2026-01-01",
+      "to": "2026-12-31"
+    },
+    "pdfBytes": 19878,
+    "xlsxRows": 11,
+    "xlsxBytes": 3269,
+    "csvBytes": 625
+  },
+  {
+    "id": "current-inpatients",
+    "records": 0,
+    "columns": [
+      {
+        "key": "admissionId",
+        "label": "Admission ID"
+      },
+      {
+        "key": "mrn",
+        "label": "MRN"
+      },
+      {
+        "key": "patient",
+        "label": "Patient"
+      },
+      {
+        "key": "ward",
+        "label": "Ward"
+      },
+      {
+        "key": "bed",
+        "label": "Bed"
+      },
+      {
+        "key": "admissionDate",
+        "label": "Recorded admission time"
+      },
+      {
+        "key": "admissionType",
+        "label": "Admission type"
+      }
+    ],
+    "rows": [],
+    "filters": {
+      "facilityId": 134
+    },
+    "pdfBytes": 19557,
+    "xlsxRows": 11,
+    "xlsxBytes": 3266,
+    "csvBytes": 600
+  }
+]

@@ -1,3 +1,4 @@
+import { ClinicalDocumentReport } from './ClinicalDocumentReport.tsx';
 import React, { useMemo, useState } from 'react';
 import {
   Activity,
@@ -175,6 +176,19 @@ export const ReportCentre: React.FC = () => {
             'This document requires the finance module plus reports read/export, billing, clinical and patient read permissions.',
         };
       return { label: 'Existing document', allowed: true };
+    }
+    if (report.workflow) {
+      const module = report.workflow === 'discharge' ? 'inpatient' : report.workflow;
+      const allowed =
+        moduleEnabled(module) &&
+        has('reports.read', 'reports.export', 'patients.read', `${module}.read`);
+      return {
+        label: allowed ? 'Existing document' : 'Access required',
+        allowed,
+        reason: allowed
+          ? undefined
+          : 'Report read/export, patient read and the enabled source-domain read permission are required.',
+      };
     }
     return { label: 'Unavailable', allowed: false, reason: report.dependency };
   }
@@ -437,6 +451,13 @@ export const ReportCentre: React.FC = () => {
                   ) : availability(selected.report).allowed &&
                     selected.report.workflow === 'invoice' ? (
                     <InvoiceDocument key={scopeKey} facilityId={currentFacility.id} />
+                  ) : availability(selected.report).allowed &&
+                    selected.report.workflow &&
+                    selected.report.workflow !== 'invoice' ? (
+                    <ClinicalDocumentReport
+                      key={`${scopeKey}:${selected.report.id}`}
+                      workflow={selected.report.workflow}
+                    />
                   ) : (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
                       <div className="flex items-center gap-2 font-semibold">

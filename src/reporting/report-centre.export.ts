@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import * as fontkit from 'fontkit';
-import PDFDocument from 'pdfkit';
+import { renderDocument, type LetterheadForRender } from '../documents/render.ts';
 import writeXlsxFile, { type SheetData } from 'write-excel-file/node';
 import { REPORT_ENGINES, type ReportExport, type ReportResult } from './report-centre.types.ts';
 import { reportFilterSummary, reportValue } from './report-centre.format.ts';
@@ -85,7 +85,7 @@ function validateText(strings: string[], format: Format): void {
       ) {
         throw new ReportCentreError(
           'REPORT_PDF_UNSUPPORTED_TEXT',
-          'A character in this report cannot be rendered reliably in PDF. Use Excel or print instead.',
+          'A character in this report cannot be rendered reliably in PDF. Use Excel or CSV instead.',
           422,
         );
       }
@@ -93,35 +93,42 @@ function validateText(strings: string[], format: Format): void {
   }
 }
 
-async function pdf(result: ReportResult, data: ReturnType<typeof content>): Promise<Buffer> {
-  const doc = new PDFDocument({
-    size: 'A4',
-    margin: 42,
-    info: { Title: result.title, Author: 'JaliCare HMIS' },
-  });
-  const chunks: Buffer[] = [];
-  const output = new Promise<Buffer>((resolve, reject) => {
-    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
-    doc.on('error', reject);
-  });
-  doc.font(reportFont().path).fillColor('#0f766e').fontSize(11).text(data.metadata[0]);
-  doc.fillColor('#0f172a').fontSize(17).text(data.metadata[1]);
-  doc.moveDown(0.4).fontSize(9);
-  data.metadata.slice(2).forEach((line) => doc.text(line));
-  doc.moveDown();
-  if (data.rows.length === 0) doc.text('No records match the selected filters.');
-  data.rows.forEach((row, index) => {
-    doc
-      .fillColor('#0f766e')
-      .fontSize(10)
-      .text(`Record ${index + 1}`);
-    doc.fillColor('#0f172a').fontSize(9);
-    row.forEach((value, columnIndex) => doc.text(`${data.headers[columnIndex]}: ${value}`));
-    doc.moveDown(0.6);
-  });
-  doc.end();
-  return output;
+async function pdf(
+  result: ReportResult,
+  data: ReturnType<typeof content>,
+  letterhead: LetterheadForRender | null,
+): Promise<Buffer> {
+  const rendered = await renderDocument(
+    {
+      kind: 'REPORTING_CENTRE',
+      title: result.title,
+      documentNumber: `REPORT-${result.reportId}`,
+      issuedAt: result.generatedAt,
+      facility: {
+        name: result.facilityName,
+        code: String(result.facilityId),
+        registryCode: null,
+        address: null,
+        county: null,
+        phone: null,
+        email: null,
+      },
+      leftFields: [],
+      rightFields: [],
+      sections: [
+        { heading: 'Report scope and totals', body: data.metadata.slice(2).join('\n') },
+        ...(data.rows.length
+          ? data.rows.map((row, index) => ({
+              heading: `Record ${index + 1}`,
+              body: row.map((value, i) => `${data.headers[i]}: ${value}`).join('\n'),
+            }))
+          : [{ heading: 'Results', body: 'No records match the selected filters.' }]),
+      ],
+      brandingNote: letterhead?.label ?? 'No active facility letterhead configured — plain report',
+    },
+    letterhead,
+  );
+  return rendered.bytes;
 }
 
 async function excel(data: ReturnType<typeof content>): Promise<Buffer> {
@@ -149,11 +156,19 @@ function csv(data: ReturnType<typeof content>): Buffer {
 }
 
 /** Exports the full filtered set up to the service's enforced limit. */
-export async function exportReport(result: ReportResult, format: Format): Promise<ReportExport> {
+export async function exportReport(
+  result: ReportResult,
+  format: Format,
+  letterhead: LetterheadForRender | null = null,
+): Promise<ReportExport> {
   const data = content(result);
   validateText([...data.metadata, ...data.headers, ...data.rows.flat()], format);
   const bytes =
-    format === 'pdf' ? await pdf(result, data) : format === 'xlsx' ? await excel(data) : csv(data);
+    format === 'pdf'
+      ? await pdf(result, data, letterhead)
+      : format === 'xlsx'
+        ? await excel(data)
+        : csv(data);
   return {
     filename: `jalicare-${result.reportId}-${result.generatedAt.slice(0, 10)}.${format}`,
     contentType:

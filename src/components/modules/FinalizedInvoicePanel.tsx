@@ -183,13 +183,9 @@ export const FinalizedInvoicePanel: React.FC<{ invoiceId: number; reportCentre?:
     try {
       await api.recordInvoicePrintAccess(invoiceId, reportCentre ? facilityId : undefined);
       if (version !== scopeVersion.current) return;
-      document.body.classList.add('print-finalized-invoice');
-      window.addEventListener(
-        'afterprint',
-        () => document.body.classList.remove('print-finalized-invoice'),
-        { once: true },
-      );
-      window.print();
+      const blob = await documentClient.invoice(invoiceId);
+      if (version !== scopeVersion.current) return;
+      openBlob(blob);
     } catch {
       if (version === scopeVersion.current)
         setError('Printing could not be authorized and audited.');

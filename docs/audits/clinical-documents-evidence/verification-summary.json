@@ -1,0 +1,91 @@
+{
+  "syntheticOnly": true,
+  "productionAccess": false,
+  "baseline": "4947c6885e8553295e2804d54161e8874fe7facd",
+  "branch": "arena/e088f11d-afyahub-hmis-kenya",
+  "database": {
+    "filesPassed": 9,
+    "testsPassed": 139
+  },
+  "focused": {
+    "filesPassed": 10,
+    "testsPassed": 61
+  },
+  "browser": {
+    "checksPassed": 180,
+    "uncaughtErrors": [],
+    "evidence": "results.json"
+  },
+  "exportInspection": {
+    "checksPassed": 1012,
+    "engines": 19,
+    "evidence": "export-inspection.json"
+  },
+  "commands": [
+    {
+      "command": "npm run typecheck",
+      "result": "PASS"
+    },
+    {
+      "command": "npm run build",
+      "result": "PASS"
+    },
+    {
+      "command": "npm run build:server",
+      "result": "PASS"
+    },
+    {
+      "command": "targeted prettier --check (changed TS/TSX and non-evidence JSON)",
+      "result": "PASS"
+    },
+    {
+      "command": "targeted eslint (changed TS/TSX): 0 errors, 8 warnings",
+      "result": "PASS"
+    },
+    {
+      "command": "git -c core.whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol diff --cached --check (preserve original exported CSV CRLF)",
+      "result": "PASS"
+    }
+  ],
+  "omitted": [
+    "full repository test suite",
+    "coverage",
+    "whole-repository lint",
+    "production access / migration / deployment",
+    "desktop Excel and native cross-browser PDF print UAT",
+    "malware service, load and penetration testing"
+  ],
+  "sourceSha256": {
+    "drizzle/0100_patient_signed_documents.sql": "ceebc5dfef40444f2f458001d418cab567162110dc8f4b6152ae2036bcc3cb26",
+    "scripts/clinical-documents-acceptance.ts": "8d120765c5ba3a134a562c3ca0977dead5bf8f518c963297e300fe50c08634ce",
+    "scripts/clinical-report-catalogue.ts": "72f3cdc2b92407137af0ce60946fcab7de3a99021c7ab22bfa9e8b3ed23b30ad",
+    "src/api/patient-documents.client.ts": "fec40fdf980d9e5f50df42803c488b677a5d466f247be77083b149c8c4e2b1e4",
+    "src/app.ts": "9a7285ba0193d7736b67d16487d1b8766710bb5190d6b3ffecff0545a93ce9be",
+    "src/components/PatientDocumentsPanel.tsx": "aacd6a9100654562cad34e9840ff3226fe69e42b1287188a14c573d16a3af230",
+    "src/components/PatientJourneyModal.tsx": "1937cfc5134884e5a206292199267aff95cded215c3de2d44b49c69897b103dd",
+    "src/components/RadiologyConsentPanel.tsx": "371c22aaf38e53bcc4465a3e0dc85b96036e10e2d47394838cacd8f3b24cd069",
+    "src/components/modules/FinalizedInvoicePanel.tsx": "ebef5ecb1137a0b78bd2a183e104a15134bdfb2bb06015fa07bbe58c6659572a",
+    "src/components/modules/FixedAssetsModule.tsx": "4a8655d2f14d24fc4a12ceaa526acc72c800ebabfa53f1d0b8024a38d88ba57b",
+    "src/components/modules/RadiologyModule.tsx": "53d13cc05264049dedf35d491e0730e7e7f679e8e5878210730d7ff834536c2f",
+    "src/components/modules/report-centre/ClinicalDocumentReport.tsx": "a9d5f346828e9d1b11513bb6e953851ba101573f4550e769f20f93839fd44e41",
+    "src/components/modules/report-centre/ReportCentre.tsx": "564b558cd796cce5ae45138c62f85ada77865e12f5237a852b62741afd428bc1",
+    "src/components/modules/report-centre/ReportWorkbench.tsx": "84282423fcfcec844fe2fbe6e555a1956853de3c7e35493a4a8c7720ae5bc01d",
+    "src/components/portal/PortalApp.tsx": "53120d302c72feb7afee06fabea185ca5547d4dd3a47555da0818a7d3f1f6bbd",
+    "src/documents/document-model.ts": "9f3cacf90791c3eeededf4a588ce5c4db7662049c1dc54b1ddadfa1912f981fc",
+    "src/documents/patient-documents.routes.ts": "382c6ebe5c166f3c33a30dc8b2614ff4e8c5512b6c1f0d3a464331cb2e19d280",
+    "src/documents/patient-documents.service.ts": "7374fc1824a5e4e3335ce9329f2c5c8ac1de53896ed3039782cc775f2a4531c4",
+    "src/documents/patient-file-validation.ts": "ecd098c07f82e8cffccd49ba0de9189e9fb671b08fdecc7e0612fd26d8b31989",
+    "src/portal/portal-auth.service.ts": "3ccdb0fbaf8be409ae130d924935366b4e0a89f074c8bd9d33f617513b5bc720",
+    "src/reporting/report-catalogue.ts": "f3ba139eefa7ca00fbf90348064425383a81555afeae2ba8a790950a96acf856",
+    "src/reporting/report-centre.export.ts": "055086d9503c23763ee20b1c35efbcdfe43f79af5663541d87c6d174b21541b5",
+    "src/routes/domains/report-centre.routes.ts": "722db979a2caf9d465d95f77d2b750daa8eec3a09a614dc4ef42e06a53e918a4",
+    "src/routes/radiology.routes.ts": "d358cf779fa93222f14c02bbfb6ab2cf5380adf4da0bdd13f258c5769a505970",
+    "src/seeds/permissions.ts": "3d35717867bf767c4fc9edd65119f56b2d42fe06eed7a4fd895435c188dc3e96",
+    "src/tests/integration/patient-signed-documents.db.spec.ts": "5d1035c8aa5c131d0d7c5ad575281b7863d198630a0e3ef4b7c7be0dc9f631bb",
+    "src/tests/integration/report-centre-operational.db.spec.ts": "1c2f4bd93550bfe5a9cd10455079883e434da5d69f042c9cefd945ea6e66a4f9",
+    "src/tests/vitest/clinical-document-report-ui.spec.tsx": "40182dc50e32f7f0d158e010d74da1a5b9d800a63708e7a03e185b0af3b6f90f",
+    "src/tests/vitest/patient-documents-ui.spec.tsx": "a25c62c3ad0dad3578eb9305f450009da3ac3a20ce46f8330d56835dc8fcec20",
+    "src/tests/vitest/report-centre-invoice-ui.spec.tsx": "d6910d7feb58ce3df0df19998c848065eefaeead475d977662462237455ca7ed",
+    "src/tests/vitest/report-centre-ui.spec.tsx": "3e17675fc79b82089bb44c7896aaaf753042f1a832658c559c8b2fecd89006f4"
+  }
+}

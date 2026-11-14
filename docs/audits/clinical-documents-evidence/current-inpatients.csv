@@ -1,0 +1,11 @@
+﻿"JaliCare HMIS — Reporting Centre"
+"Current inpatient list"
+"Facility: Synthetic clinical presentation facility"
+"Generated (UTC): 2026-11-14T23:30:14.058Z"
+"Records: 0"
+"No additional filters"
+"Note: A live snapshot of records marked Admitted; it is not a historical admission or discharge register."
+"Note: Admission times are shown as recorded; historical timezone and manually corrected times require review."
+"Note: Data is a live snapshot and may change between pages or when regenerated."
+
+"Admission ID","MRN","Patient","Ward","Bed","Recorded admission time","Admission type"

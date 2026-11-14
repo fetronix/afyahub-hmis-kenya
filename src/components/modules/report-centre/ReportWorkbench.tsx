@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
-import { flushSync } from 'react-dom';
+import { openBlob } from '../../../api/clients/branding.client.ts';
 import {
   ChevronLeft,
   ChevronRight,
@@ -130,17 +130,10 @@ export const ReportWorkbench: React.FC<{
     setBusy(true);
     setError('');
     try {
-      const next = await reportCentreApi.generate(id, result.filters, 'print');
+      const exported = await reportCentreApi.export(id, result.filters, 'pdf');
       if (requestVersion !== version.current) return;
-      // Render the newly audited page synchronously before opening the print dialog.
-      flushSync(() => setResult(next));
-      document.body.classList.add('print-report-centre');
-      window.addEventListener(
-        'afterprint',
-        () => document.body.classList.remove('print-report-centre'),
-        { once: true },
-      );
-      window.print();
+      const bytes = Uint8Array.from(atob(exported.base64), (character) => character.charCodeAt(0));
+      openBlob(new Blob([bytes], { type: 'application/pdf' }));
     } catch (reason) {
       document.body.classList.remove('print-report-centre');
       if (requestVersion === version.current)
@@ -460,7 +453,7 @@ export const ReportWorkbench: React.FC<{
                   disabled={busy}
                   onClick={() => void printPage()}
                 >
-                  <Printer className="h-4 w-4" /> Print page
+                  <Printer className="h-4 w-4" /> Print PDF
                 </button>
                 <button
                   type="button"
@@ -495,8 +488,8 @@ export const ReportWorkbench: React.FC<{
           </div>
           {canExport && (
             <p className="text-xs text-slate-500 report-no-print">
-              PDF, Excel and CSV include all matching records, up to 1,000; print contains the
-              current page.
+              PDF, Excel, CSV and Print PDF include all matching records, up to 1,000. Print PDF
+              opens the facility-rendered document in the PDF viewer.
             </p>
           )}
           <section

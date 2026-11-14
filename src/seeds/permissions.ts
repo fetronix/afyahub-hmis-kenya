@@ -403,6 +403,48 @@ const PERMISSIONS = [
      ========================================================== */
 
   {
+    code: 'patients.documents.read',
+    name: 'Read signed patient documents',
+    module: 'patients',
+    description:
+      'Read signed patient documents within the authorized facility; explicit assignment required.',
+  },
+  {
+    code: 'patients.documents.upload',
+    name: 'Upload signed patient documents',
+    module: 'patients',
+    description:
+      'Upload signed patient documents within the authorized facility; explicit assignment required.',
+  },
+  {
+    code: 'patients.documents.release',
+    name: 'Release patient documents to portal',
+    module: 'patients',
+    description:
+      'Release patient documents to portal within the authorized facility; explicit assignment required.',
+  },
+  {
+    code: 'radiology.consent.verify',
+    name: 'Verify procedure-specific consent',
+    module: 'radiology',
+    description:
+      'Verify procedure-specific consent within the authorized facility; explicit assignment required.',
+  },
+  {
+    code: 'radiology.consent.exception',
+    name: 'Authorize procedure consent exception',
+    module: 'radiology',
+    description:
+      'Authorize procedure consent exception within the authorized facility; explicit assignment required.',
+  },
+  {
+    code: 'radiology.consent.policy',
+    name: 'Manage facility radiology consent policy',
+    module: 'radiology',
+    description:
+      'Manage facility radiology consent policy within the authorized facility; explicit assignment required.',
+  },
+  {
     code: 'patients.read',
     name: 'View Patients',
     module: 'patients',
