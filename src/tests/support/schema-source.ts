@@ -60,3 +60,176 @@ export function schemaSource(): string {
 
   return text;
 }
+
+/**
+ * One domain module, as a searchable string.
+ *
+ * `schemaSource()` concatenates the barrel and every module, which is right
+ * for "does this declaration exist anywhere". It is wrong for "assert
+ * something about the block of tables that starts at `export const X`": a
+ * slice needs both ends to come from the same file, and the barrel is
+ * concatenated first, so a boundary marker in the barrel resolves *before*
+ * the table it is meant to follow.
+ *
+ * This reads one module on its own. The name is the file stem — `maternity`,
+ * `billing`, `platform` — matching `src/db/schema/<name>.ts`.
+ */
+export function schemaModule(name: string): string {
+  return readFileSync(resolve(ROOT, `src/db/schema/${name}.ts`), 'utf8');
+}
+
+/**
+ * The query barrel plus every `src/db/queries/*.ts` module, concatenated.
+ *
+ * Same reason as `schemaSource()`: a query function can now live in the
+ * barrel or in any module beside it, and a suite that reads only the barrel
+ * fails the moment the function it asserts on moves.
+ *
+ * What this still is: a text assertion. It proves a call site exists, not
+ * that it does the right thing. The behavioural specs are the ones that
+ * run the query.
+ */
+export function queriesSource(): string {
+  let text = readFileSync(resolve(ROOT, 'src/db/queries.ts'), 'utf8');
+
+  const modulesDir = resolve(ROOT, 'src/db/queries');
+
+  let modules: string[] = [];
+
+  try {
+    modules = readdirSync(modulesDir)
+      .filter((file) => file.endsWith('.ts'))
+      .sort();
+  } catch {
+    return text;
+  }
+
+  for (const file of modules) {
+    text += `\n${readFileSync(resolve(modulesDir, file), 'utf8')}`;
+  }
+
+  return text;
+}
+
+/**
+ * One function's source, from its declaration to its closing brace.
+ *
+ * `queriesSource()` concatenates modules, so slicing to the *next*
+ * `export async function` can run past the end of a file and pick up a
+ * neighbouring function's body. That turns a negative assertion into a
+ * silent pass. Brace matching keeps the slice inside the function.
+ */
+export function functionBody(source: string, name: string): string {
+  const patterns = [`export async function ${name}(`, `export function ${name}(`];
+
+  let start = -1;
+
+  for (const pattern of patterns) {
+    start = source.indexOf(pattern);
+    if (start !== -1) break;
+  }
+
+  if (start === -1) return '';
+
+  let depth = 0;
+  let opened = false;
+
+  for (let i = start; i < source.length; i += 1) {
+    const char = source[i];
+
+    if (char === '{') {
+      depth += 1;
+      opened = true;
+    } else if (char === '}') {
+      depth -= 1;
+      if (opened && depth === 0) return source.slice(start, i + 1);
+    }
+  }
+
+  return source.slice(start);
+}
+
+/**
+ * The server shell plus every route module, concatenated.
+ *
+ * `src/app.ts` used to register every route inline. The routes now live in
+ * `src/routes/domains/` and are mounted by `src/routes/index.ts`, so "is this
+ * route registered?" is a question about the pair, not about one file.
+ *
+ * This is still a text assertion. It proves a route is declared; the specs
+ * that actually issue a request are the ones that prove it works.
+ */
+export function appSource(options: { stripComments?: boolean } = {}): string {
+  const files = ['src/app.ts', 'src/routes/index.ts'];
+
+  const domainsDir = resolve(ROOT, 'src/routes/domains');
+
+  try {
+    for (const file of readdirSync(domainsDir)
+      .filter((f) => f.endsWith('.ts'))
+      .sort()) {
+      files.push(`src/routes/domains/${file}`);
+    }
+  } catch {
+    /* No domains directory: app.ts is self-contained. */
+  }
+
+  const text = files.map((file) => readFileSync(resolve(ROOT, file), 'utf8')).join('\n');
+
+  /*
+   * Some suites assert that a phrase is *absent*. A phrase in a comment is
+   * not a call site, so those suites strip comments first - the same thing
+   * they did with their own `code()` helper before the routes moved.
+   */
+  if (options.stripComments) {
+    return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  }
+
+  return text;
+}
+
+function concatBarrelAndDir(
+  entryPath: string,
+  dirPath: string,
+  extensions: string[] = ['.ts'],
+): string {
+  let text = readFileSync(resolve(ROOT, entryPath), 'utf8');
+
+  try {
+    const files = readdirSync(resolve(ROOT, dirPath))
+      .filter((file) => extensions.some((ext) => file.endsWith(ext)))
+      .sort();
+
+    for (const file of files) {
+      text += `\n${readFileSync(resolve(ROOT, dirPath, file), 'utf8')}`;
+    }
+  } catch {
+    return text;
+  }
+
+  return text;
+}
+
+export function maternityModuleSource(): string {
+  return concatBarrelAndDir(
+    'src/components/modules/MaternityModule.tsx',
+    'src/components/modules/maternity',
+    ['.ts', '.tsx'],
+  );
+}
+
+export function apiClientSource(): string {
+  return concatBarrelAndDir('src/api/client.ts', 'src/api/clients');
+}
+
+export function platformRoutesSource(): string {
+  return concatBarrelAndDir('src/routes/platform.routes.ts', 'src/routes/platform');
+}
+
+export function maternityServiceSource(): string {
+  return concatBarrelAndDir('src/maternity/maternity.service.ts', 'src/maternity/services');
+}
+
+export function staffRolesServiceSource(): string {
+  return concatBarrelAndDir('src/auth/staff-roles.service.ts', 'src/auth/staff-roles');
+}

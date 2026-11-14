@@ -109,7 +109,7 @@ export function createCorsMiddleware(env: Record<string, string | undefined> = p
     },
     credentials: false,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type', 'Accept'],
+    allowedHeaders: ['Authorization', 'Content-Type', 'Accept', 'Idempotency-Key'],
     exposedHeaders: [],
     maxAge: 600,
   });

@@ -97,6 +97,9 @@ export const facilities = pgTable(
 
     address: text('address'),
 
+    // Optional facility override; NULL inherits the tenant's configured timezone.
+    timezone: text('timezone'),
+
     phone: text('phone'),
 
     email: text('email'),
@@ -122,6 +125,13 @@ export const facilities = pgTable(
       'configuration',
       'audit',
     ]),
+
+    hiddenModules: jsonb('hidden_modules').$type<string[]>().default([]).notNull(),
+
+    clinicalProtocols: jsonb('clinical_protocols')
+      .$type<Record<string, unknown>>()
+      .default({})
+      .notNull(),
 
     isActive: boolean('is_active').default(true),
 

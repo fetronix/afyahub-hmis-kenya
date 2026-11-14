@@ -1,0 +1,11 @@
+{
+  "baselineFiles": 1415,
+  "changedExistingFiles": [
+    "src/budget-planning/planning.routes.ts",
+    "src/budget-planning/planning.service.ts",
+    "src/components/modules/planning/PlanningImport.tsx",
+    "src/tests/budget-planning.db.spec.ts"
+  ],
+  "missingBaselineFiles": [],
+  "note": "Pre-existing dirty/untracked work preserved. No Git reset/clean/commit/push."
+}

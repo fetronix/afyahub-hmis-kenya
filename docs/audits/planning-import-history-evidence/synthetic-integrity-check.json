@@ -1,0 +1,10 @@
+{
+  "syntheticOnly": true,
+  "notActualIncident": true,
+  "sourceHashesVerifiedBeforeAndAfter": true,
+  "batch1RemainsCancelled": true,
+  "onlyBatch2StatusChangedToUploaded": true,
+  "batchCountUnchanged": true,
+  "originalPlanningEventsUnchanged": true,
+  "plansUnchanged": true
+}

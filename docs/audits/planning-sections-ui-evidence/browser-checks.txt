@@ -1,0 +1,42 @@
+PASS Real authenticated facility planner navigates to Budget & Procurement Planning
+PASS Stationery excludes imported monthly branding items
+PASS Stationery paginates after section classification, not before it
+PASS Stationery OPD filter displays 133 imported records
+PASS Stationery DENTAL filter displays 40 imported records
+PASS Stationery OTHER filter displays 59 imported records
+PASS Case-insensitive search preserves both imported cotton-wool source rows
+PASS Stationery next page displays a different source-record page
+PASS Stationery View opens a genuinely read-only record
+PASS Year filter selects only 2027 plans
+PASS Stationery & Consumables: browser Create saves twelve quantities and server-calculated annual cost
+PASS Stationery & Consumables: View has no save action
+PASS Stationery & Consumables: browser Edit and Save persist prices, January/December changes and untouched months
+PASS Stationery & Consumables: browser Delete soft-removes the eligible draft and refreshes the table
+PASS Dedicated Branding table excludes stationery without requiring a manual category selection
+PASS Branding View exposes all twelve saved monthly quantities
+PASS Branding: browser Create saves twelve quantities and server-calculated annual cost
+PASS Branding: View has no save action
+PASS Branding: browser Edit and Save persist prices, January/December changes and untouched months
+PASS Branding inline edit under February filter retains January–December data
+PASS Branding: browser Delete soft-removes the eligible draft and refreshes the table
+PASS Uniform table is separate from monthly Branding
+PASS Uniform search locates the imported polo projection
+PASS Uniform View shows balances, buying costs, staff, per-staff quantities and contribution assumptions read-only
+PASS Uniform category filter retains the searched imported projection
+PASS Uniform browser Create applies the configured opening-balance and contribution calculation
+PASS Uniform browser Edit and Save persist all five requested inputs and recalculate net budget
+PASS Uniform browser Delete removes the draft from active results
+PASS All three browser deletions are retained as audited inactive records
+PASS Stationery & Consumables: captured actual browser POST, PATCH and DELETE success responses
+PASS Branding: captured actual browser POST, PATCH and DELETE success responses
+PASS Staff Uniform Projections: captured actual browser POST, PATCH and DELETE success responses
+PASS Read-only user can view Stationery & Consumables without edit/delete actions
+PASS Read-only user cannot create in Stationery & Consumables
+PASS Read-only user can view Branding without edit/delete actions
+PASS Read-only user cannot create in Branding
+PASS Read-only user can view Staff Uniform Projections without edit/delete actions
+PASS Read-only user cannot create in Staff Uniform Projections
+PASS Mobile Branding has no document-level horizontal overflow
+PASS No browser runtime errors
+PASS Only expected pre-login session 401 and read-only dashboard RBAC 403 responses; no planning API errors
+CHECKS 41 PASSED true ERRORS 0

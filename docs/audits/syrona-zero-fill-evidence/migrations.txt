@@ -1,0 +1,239 @@
+
+==============================================
+JaliCare HMIS — migration runner
+==============================================
+Target   : jalicare_test@127.0.0.1:55439/syrona_zero_fill_final_synthetic_test
+Folder   : /home/user/afyahub-hmis-kenya/drizzle
+Journal  : /home/user/afyahub-hmis-kenya/drizzle/meta/_journal.json
+Mode     : APPLY
+Tracking : absent
+Public   : 0 table(s)
+Recorded : 0 migration(s)
+Pending  : 97
+
+Plan:
+  • 0000_new_vertigo  (122 statement(s))
+  • 0001_unknown_gambit  (176 statement(s))
+  • 0002_friendly_lady_deathstrike  (126 statement(s))
+  • 0003_facility_subscription_billing  (27 statement(s))
+  • 0004_facility_rbac_overrides  (1 statement(s))
+  • 0005_facility_service_tariffs  (9 statement(s))
+  • 0006_patient_guardian_and_optional_phone  (5 statement(s))
+  • 0007_lab_order_clinical_details  (1 statement(s))
+  • 0008_lab_result_verification_state  (7 statement(s))
+  • 0009_billing_provenance_and_inpatient  (19 statement(s))
+  • 0010_mobile_money_settlement  (1 statement(s))
+  • 0011_insurance_claims_workflow  (1 statement(s))
+  • 0012_dha_integration_audit  (1 statement(s))
+  • 0013_dha_service_mappings  (1 statement(s))
+  • 0014_professional_verification  (1 statement(s))
+  • 0015_maternity_mch  (1 statement(s))
+  • 0016_postnatal_immunisation  (1 statement(s))
+  • 0017_consent_allergy_audit_integrity  (14 statement(s))
+  • 0018_patient_portal  (1 statement(s))
+  • 0019_service_tariff_billing_key  (3 statement(s))
+  • 0020_billing_charge_attempts  (4 statement(s))
+  • 0021_service_tariff_links  (9 statement(s))
+  • 0022_bed_day_charge_attempts  (5 statement(s))
+  • 0023_normalise_county_subcounty  (12 statement(s))
+  • 0024_sha_eclaims_and_benefits  (37 statement(s))
+  • 0025_private_insurance_multi_payer  (27 statement(s))
+  • 0026_sha_hie_workflows_and_fhir_ig  (12 statement(s))
+  • 0027_dialysis_accounting_icd11_booking_bank  (109 statement(s))
+  • 0028_payment_banking_hub  (23 statement(s))
+  • 0029_payer_integration_hub  (10 statement(s))
+  • 0030_procurement_workflow  (16 statement(s))
+  • 0031_theatre_scheduling  (11 statement(s))
+  • 0032_inpatient_active_admission_guards  (3 statement(s))
+  • 0033_lab_accession_safety  (2 statement(s))
+  • 0034_pharmacy_workflow_safety  (7 statement(s))
+  • 0035_shared_lab_specimens  (8 statement(s))
+  • 0036_refund_receipt_safety  (8 statement(s))
+  • 0037_finalized_invoices  (18 statement(s))
+  • 0038_payment_request_identity  (9 statement(s))
+  • 0039_payment_request_cancellation  (5 statement(s))
+  • 0040_claim_dispatch_safety  (9 statement(s))
+  • 0041_billing_ledger_postings  (11 statement(s))
+  • 0042_facility_tariff_imports  (4 statement(s))
+  • 0043_notification_centre  (5 statement(s))
+  • 0044_master_service_catalogue  (27 statement(s))
+  • 0045_catalogue_scope_and_completion  (10 statement(s))
+  • 0046_billing_service_occurrence  (2 statement(s))
+  • 0047_clinical_service_selection  (6 statement(s))
+  • 0048_consultation_review_state  (1 statement(s))
+  • 0049_radiology_request_idempotency  (1 statement(s))
+  • 0050_encounter_request_idempotency  (1 statement(s))
+  • 0051_lab_clinical_exception  (1 statement(s))
+  • 0052_lab_order_specimen_provenance  (1 statement(s))
+  • 0053_facility_owned_services  (10 statement(s))
+  • 0054_lab_facility_service  (1 statement(s))
+  • 0055_delivery_facility_service  (1 statement(s))
+  • 0056_admission_and_retry_identity  (2 statement(s))
+  • 0057_lab_service_scope  (1 statement(s))
+  • 0058_charge_attempt_diagnosis  (1 statement(s))
+  • 0059_lab_service_code_snapshot  (1 statement(s))
+  • 0060_pharmacy_inventory_price_snapshots  (12 statement(s))
+  • 0061_inventory_price_revision  (3 statement(s))
+  • 0062_inpatient_bed_occupancy_billing  (27 statement(s))
+  • 0063_inpatient_bed_billing_work  (4 statement(s))
+  • 0064_staff_appointment_lifecycle  (15 statement(s))
+  • 0065_inpatient_policy_and_admission_evidence  (6 statement(s))
+  • 0066_ward_default_bed_price_evidence  (7 statement(s))
+  • 0067_facility_integration_vault  (2 statement(s))
+  • 0068_integration_credential_revocation  (2 statement(s))
+  • 0069_payment_settlement_recovery  (7 statement(s))
+  • 0070_journal_facility_scope_guards  (8 statement(s))
+  • 0071_nullable_benefit_estimates  (1 statement(s))
+  • 0072_independent_refund_review  (11 statement(s))
+  • 0073_inventory_receipt_retry_identity  (5 statement(s))
+  • 0074_workforce  (53 statement(s))
+  • 0075_fixed_assets  (1 statement(s))
+  • 0076_procurement_chain  (15 statement(s))
+  • 0077_inventory_control  (11 statement(s))
+  • 0078_approval_policies  (3 statement(s))
+  • 0079_inventory_accounting  (8 statement(s))
+  • 0080_procurement_matching  (15 statement(s))
+  • 0081_bank_reconciliation_approval  (1 statement(s))
+  • 0082_fixed_asset_impairment_revaluation_tax  (1 statement(s))
+  • 0083_payroll_form_profiles  (1 statement(s))
+  • 0084_dialysis_session_billing  (1 statement(s))
+  • 0085_dialysis_service_category  (1 statement(s))
+  • 0086_public_health_report_corrections  (5 statement(s))
+  • 0087_claim_dispatch_reconciliation  (9 statement(s))
+  • 0088_claim_invoice_finalization  (1 statement(s))
+  • 0089_facility_letterheads  (14 statement(s))
+  • 0090_letterhead_pdf_documents  (6 statement(s))
+  • 0091_verified_bank_payments  (10 statement(s))
+  • 0092_bank_refund_evidence  (8 statement(s))
+  • 0093_payroll_completion_controls  (9 statement(s))
+  • 0094_payroll_configuration_readiness  (6 statement(s))
+  • 0095_budget_procurement_planning  (2 statement(s))
+  • 0096_planning_source_row_identity  (1 statement(s))
+
+! Destructive statements in this set:
+  - 0002_friendly_lady_deathstrike #10  DROP CONSTRAINT
+    ALTER TABLE "patients" DROP CONSTRAINT "patients_facility_id_facilities_id_fk";
+  - 0002_friendly_lady_deathstrike #126  DROP COLUMN
+    ALTER TABLE "patients" DROP COLUMN "facility_id";
+  - 0080_procurement_matching #1  DROP CONSTRAINT (IF EXISTS — a no-op when absent)
+    ALTER TABLE inventory_movements
+  - 0085_dialysis_service_category #1  DROP CONSTRAINT (IF EXISTS — a no-op when absent)
+    ALTER TABLE facility_services DROP CONSTRAINT IF EXISTS facility_services_category_check;
+  - 0086_public_health_report_corrections #2  DROP CONSTRAINT (IF EXISTS — a no-op when absent)
+    ALTER TABLE public_health_reports
+  - 0087_claim_dispatch_reconciliation #2  DROP CONSTRAINT (IF EXISTS — a no-op when absent)
+    ALTER TABLE insurance_claim_dispatch_reconciliations
+  - 0087_claim_dispatch_reconciliation #4  DROP CONSTRAINT (IF EXISTS — a no-op when absent)
+    ALTER TABLE insurance_claim_dispatch_reconciliations
+  - 0087_claim_dispatch_reconciliation #6  DROP CONSTRAINT (IF EXISTS — a no-op when absent)
+    ALTER TABLE insurance_claim_dispatch_reconciliations
+  - 0088_claim_invoice_finalization #1  DROP CONSTRAINT (IF EXISTS — a no-op when absent)
+    ALTER TABLE sha_eclaims
+  - 0090_letterhead_pdf_documents #2  DROP CONSTRAINT (IF EXISTS — a no-op when absent)
+    ALTER TABLE facility_letterheads
+  - 0090_letterhead_pdf_documents #3  DROP CONSTRAINT (IF EXISTS — a no-op when absent)
+    ALTER TABLE facility_letterheads
+  ✔ 0000_new_vertigo
+  ✔ 0001_unknown_gambit
+  ✔ 0002_friendly_lady_deathstrike
+  ✔ 0003_facility_subscription_billing
+  ✔ 0004_facility_rbac_overrides
+  ✔ 0005_facility_service_tariffs
+  ✔ 0006_patient_guardian_and_optional_phone
+  ✔ 0007_lab_order_clinical_details
+  ✔ 0008_lab_result_verification_state
+  ✔ 0009_billing_provenance_and_inpatient
+  ✔ 0010_mobile_money_settlement
+  ✔ 0011_insurance_claims_workflow
+  ✔ 0012_dha_integration_audit
+  ✔ 0013_dha_service_mappings
+  ✔ 0014_professional_verification
+  ✔ 0015_maternity_mch
+  ✔ 0016_postnatal_immunisation
+  ✔ 0017_consent_allergy_audit_integrity
+  ✔ 0018_patient_portal
+  ✔ 0019_service_tariff_billing_key
+  ✔ 0020_billing_charge_attempts
+  ✔ 0021_service_tariff_links
+  ✔ 0022_bed_day_charge_attempts
+  ✔ 0023_normalise_county_subcounty
+  ✔ 0024_sha_eclaims_and_benefits
+  ✔ 0025_private_insurance_multi_payer
+  ✔ 0026_sha_hie_workflows_and_fhir_ig
+  ✔ 0027_dialysis_accounting_icd11_booking_bank
+  ✔ 0028_payment_banking_hub
+  ✔ 0029_payer_integration_hub
+  ✔ 0030_procurement_workflow
+  ✔ 0031_theatre_scheduling
+  ✔ 0032_inpatient_active_admission_guards
+  ✔ 0033_lab_accession_safety
+  ✔ 0034_pharmacy_workflow_safety
+  ✔ 0035_shared_lab_specimens
+  ✔ 0036_refund_receipt_safety
+  ✔ 0037_finalized_invoices
+  ✔ 0038_payment_request_identity
+  ✔ 0039_payment_request_cancellation
+  ✔ 0040_claim_dispatch_safety
+  ✔ 0041_billing_ledger_postings
+  ✔ 0042_facility_tariff_imports
+  ✔ 0043_notification_centre
+  ✔ 0044_master_service_catalogue
+  ✔ 0045_catalogue_scope_and_completion
+  ✔ 0046_billing_service_occurrence
+  ✔ 0047_clinical_service_selection
+  ✔ 0048_consultation_review_state
+  ✔ 0049_radiology_request_idempotency
+  ✔ 0050_encounter_request_idempotency
+  ✔ 0051_lab_clinical_exception
+  ✔ 0052_lab_order_specimen_provenance
+  ✔ 0053_facility_owned_services
+  ✔ 0054_lab_facility_service
+  ✔ 0055_delivery_facility_service
+  ✔ 0056_admission_and_retry_identity
+  ✔ 0057_lab_service_scope
+  ✔ 0058_charge_attempt_diagnosis
+  ✔ 0059_lab_service_code_snapshot
+  ✔ 0060_pharmacy_inventory_price_snapshots
+  ✔ 0061_inventory_price_revision
+  ✔ 0062_inpatient_bed_occupancy_billing
+  ✔ 0063_inpatient_bed_billing_work
+  ✔ 0064_staff_appointment_lifecycle
+  ✔ 0065_inpatient_policy_and_admission_evidence
+  ✔ 0066_ward_default_bed_price_evidence
+  ✔ 0067_facility_integration_vault
+  ✔ 0068_integration_credential_revocation
+  ✔ 0069_payment_settlement_recovery
+  ✔ 0070_journal_facility_scope_guards
+  ✔ 0071_nullable_benefit_estimates
+  ✔ 0072_independent_refund_review
+  ✔ 0073_inventory_receipt_retry_identity
+  ✔ 0074_workforce
+  ✔ 0075_fixed_assets
+  ✔ 0076_procurement_chain
+  ✔ 0077_inventory_control
+  ✔ 0078_approval_policies
+  ✔ 0079_inventory_accounting
+  ✔ 0080_procurement_matching
+  ✔ 0081_bank_reconciliation_approval
+  ✔ 0082_fixed_asset_impairment_revaluation_tax
+  ✔ 0083_payroll_form_profiles
+  ✔ 0084_dialysis_session_billing
+  ✔ 0085_dialysis_service_category
+  ✔ 0086_public_health_report_corrections
+  ✔ 0087_claim_dispatch_reconciliation
+  ✔ 0088_claim_invoice_finalization
+  ✔ 0089_facility_letterheads
+  ✔ 0090_letterhead_pdf_documents
+  ✔ 0091_verified_bank_payments
+  ✔ 0092_bank_refund_evidence
+  ✔ 0093_payroll_completion_controls
+  ✔ 0094_payroll_configuration_readiness
+  ✔ 0095_budget_procurement_planning
+  ✔ 0096_planning_source_row_identity
+
+==============================================
+✔ Applied 97 migration(s).
+==============================================
+
+Next: npm run db:status
+

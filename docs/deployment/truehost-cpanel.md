@@ -4,11 +4,11 @@ Practical guide for cPanel **Setup Node.js App** on Truehost.
 
 **Placeholders used in this document**
 
-| Placeholder | Meaning |
-|---|---|
-| `<cpanel-user>` | your cPanel account name |
-| `<app-root>` | the application root set in Setup Node.js App |
-| `<domain>` | the domain the site answers on |
+| Placeholder        | Meaning                                           |
+| ------------------ | ------------------------------------------------- |
+| `<cpanel-user>`    | your cPanel account name                          |
+| `<app-root>`       | the application root set in Setup Node.js App     |
+| `<domain>`         | the domain the site answers on                    |
 | `<local-checkout>` | where you build the artifacts on your own machine |
 
 The installation this guide was written against ran
@@ -23,14 +23,14 @@ cPanel's environment panel.
 
 ## 0. What was wrong, in one page
 
-| Symptom on the host | Cause | Fixed by |
-|---|---|---|
-| `npm start` did nothing / "Application is not responding" | `start` was `node server.ts`; cPanel runs plain `node`, which cannot execute TypeScript | `npm start` is now `node build/server.js` |
-| `pthread_create: Resource temporarily unavailable`, exit 134 on `npm run db:status` | every maintenance command started `tsx`, which boots an esbuild service beside Node | commands run a pre-built `.js` bundle through `node scripts/run-script.mjs` when one exists |
-| production process used far more memory than the app needs | `src/app.ts` imported `vite` at the top of the file, so every production process loaded Vite and its whole tree | Vite is now `await import('vite')` **inside** the development branch |
-| `No __drizzle_migrations table found` after a `--dry-run` | the runner created the `drizzle` schema and tracking table **before** checking `--dry-run` | dry run exits before any write |
-| status said PENDING while the runner skipped the migration | status matched on timestamp only; the runner matched on hash **or** timestamp | both call one classifier (`scripts/migration-journal.ts`) |
-| blank page in production, API fine | static path was resolved relative to the process working directory, and a missing build was not reported | absolute `STATIC_DIR`, explicit "No client build found" error, SPA fallback that excludes `/api` |
+| Symptom on the host                                                                 | Cause                                                                                                           | Fixed by                                                                                         |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `npm start` did nothing / "Application is not responding"                           | `start` was `node server.ts`; cPanel runs plain `node`, which cannot execute TypeScript                         | `npm start` is now `node build/server.js`                                                        |
+| `pthread_create: Resource temporarily unavailable`, exit 134 on `npm run db:status` | every maintenance command started `tsx`, which boots an esbuild service beside Node                             | commands run a pre-built `.js` bundle through `node scripts/run-script.mjs` when one exists      |
+| production process used far more memory than the app needs                          | `src/app.ts` imported `vite` at the top of the file, so every production process loaded Vite and its whole tree | Vite is now `await import('vite')` **inside** the development branch                             |
+| `No __drizzle_migrations table found` after a `--dry-run`                           | the runner created the `drizzle` schema and tracking table **before** checking `--dry-run`                      | dry run exits before any write                                                                   |
+| status said PENDING while the runner skipped the migration                          | status matched on timestamp only; the runner matched on hash **or** timestamp                                   | both call one classifier (`scripts/migration-journal.ts`)                                        |
+| blank page in production, API fine                                                  | static path was resolved relative to the process working directory, and a missing build was not reported        | absolute `STATIC_DIR`, explicit "No client build found" error, SPA fallback that excludes `/api` |
 
 The `pthread_create` failure is **not** something this code can override.
 A Node process on a shared account is limited by the account's RLIMIT_NPROC
@@ -51,7 +51,20 @@ npm ci
 npm run lint
 npm test
 npm run build:deploy
+npm run deploy:verify
 ```
+
+`npm run deploy:verify` is the last line of the checklist promoted to a
+command. It checks the folder you are about to upload and refuses when:
+
+- a bundle or `dist/index.html` is missing or empty;
+- `build/server.js` still imports from `./src/` (a TypeScript-era shim);
+- `npm start` does not point at `build/server.js`;
+- a file in `drizzle/` has no journal entry, or the journal names a file that
+  is not there — the two states that make the migration runner either skip
+  real migrations or refuse to run at all.
+
+It reads files and prints findings. It does not upload, connect or write.
 
 `npm run build:deploy` does three things:
 
@@ -108,10 +121,26 @@ account's inode limit.
 cPanel → **Setup Node.js App** → your application → **Run NPM Install**.
 That runs `npm install --production` in the application root.
 
-`esbuild` is a **devDependency**, so it is not installed in production mode.
-That is correct: the bundles were already built locally. `npm start` needs
-only the runtime dependencies (`express`, `pg`, `drizzle-orm`, `argon2`,
-`helmet`, `dotenv`, …), all of which are in `dependencies`.
+Everything needed only to _build_ the application — `vite`, `react`,
+`react-dom`, `@vitejs/plugin-react`, `@tailwindcss/vite`, `lucide-react`,
+`esbuild`, `typescript`, `tsx` — is a **devDependency** and is not installed in
+production mode. That is correct: the bundles were already built locally.
+`npm start` needs only the runtime dependencies (`express`, `pg`, `drizzle-orm`,
+`argon2`, `helmet`, `dotenv`, …), all of which are in `dependencies`.
+
+This was not always so. React and Vite used to sit in `dependencies`, so a
+production install pulled the entire browser toolchain onto the account —
+several hundred megabytes and tens of thousands of files, which is exactly the
+inode and disk pressure §2 and §12 describe. They were moved, and the result
+was measured rather than assumed: a production install is **166 packages**
+against **517** for a full install, and the server was started from that
+production-only tree with the database reachable — `/api/health` and
+`/api/ready` both `200`.
+
+The consequence to know about: `build/server.js` is production-only. Started
+without `NODE_ENV=production` it tries to launch the Vite dev server, which is
+no longer installed. It now says so in those words instead of
+`ERR_MODULE_NOT_FOUND: Cannot find package 'vite'`.
 
 If cPanel reports that `argon2` failed to compile, the account is missing a
 build toolchain. Ask Truehost support to enable the `node-gyp` prerequisites
@@ -124,13 +153,13 @@ hosting limitation, not an application change.
 
 **Setup Node.js App → Edit**
 
-| Field | Value |
-|---|---|
-| Node.js version | `24` (or the highest offered) |
-| Application mode | `production` |
-| Application root | `jalicare` |
-| Application URL | `jalicare.co.ke` |
-| Application startup file | `build/server.js` |
+| Field                    | Value                         |
+| ------------------------ | ----------------------------- |
+| Node.js version          | `24` (or the highest offered) |
+| Application mode         | `production`                  |
+| Application root         | `jalicare`                    |
+| Application URL          | `jalicare.co.ke`              |
+| Application startup file | `build/server.js`             |
 
 The startup file is `build/server.js`, **not** `server.ts` and not
 `server.js` at the root. cPanel starts it with `node`, so it must be
@@ -147,25 +176,39 @@ key off it.
 Set these in cPanel → Setup Node.js App → **Environment variables**. Never
 put them in a file that is committed.
 
-| Variable | Value / note |
-|---|---|
-| `SQL_HOST` | `localhost` |
-| `SQL_PORT` | `5432` |
-| `SQL_DB_NAME` | the database from cPanel → PostgreSQL Databases |
-| `SQL_ADMIN_USER` | the database user, including cPanel's `<cpanel-user>_` prefix |
-| `SQL_ADMIN_PASSWORD` | the password you set in cPanel |
-| `SQL_SSL` | `false` for a database on the same host |
-| `SQL_SSL_REJECT_UNAUTHORIZED` | `true` |
-| `APP_BASE_URL` | `https://jalicare.co.ke` |
-| `DEFAULT_TIMEZONE` | `Africa/Nairobi` |
-| `TZ` | `Africa/Nairobi` |
-| `TRUST_PROXY` | `true` — the app sits behind cPanel's proxy |
-| `DHA_MODE` | `mock` until DHA approval; `sandbox` needs credentials |
-| `PORT` | **do not set.** cPanel injects it. |
-| `STATIC_DIR` | only if `dist/` is not beside `build/` |
+| Variable                      | Value / note                                                                                            |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `SQL_HOST`                    | `localhost`                                                                                             |
+| `SQL_PORT`                    | `5432`                                                                                                  |
+| `SQL_DB_NAME`                 | the database from cPanel → PostgreSQL Databases                                                         |
+| `SQL_ADMIN_USER`              | the database user, including cPanel's `<cpanel-user>_` prefix                                           |
+| `SQL_ADMIN_PASSWORD`          | the password you set in cPanel                                                                          |
+| `SQL_SSL`                     | `false` for a database on the same host                                                                 |
+| `SQL_SSL_REJECT_UNAUTHORIZED` | `true`                                                                                                  |
+| `APP_BASE_URL`                | `https://jalicare.co.ke`                                                                                |
+| `DEFAULT_TIMEZONE`            | `Africa/Nairobi` — applied at startup to `process.env.TZ`, so it governs every date the process formats |
+| `TZ`                          | `Africa/Nairobi` — the host-level equivalent; `DEFAULT_TIMEZONE` wins when both are set                 |
+| `TRUST_PROXY`                 | `true` — the app sits behind cPanel's proxy                                                             |
+| `DHA_MODE`                    | `mock` until DHA approval; `sandbox` needs credentials                                                  |
+| `PORT`                        | **do not set.** cPanel injects it.                                                                      |
+| `STATIC_DIR`                  | only if `dist/` is not beside `build/`                                                                  |
 
 Setting `TRUST_PROXY=false` behind cPanel makes every request look like it
 came from the proxy, and one busy client rate-limits the whole facility.
+
+**Timezone.** The application writes `DEFAULT_TIMEZONE` into `process.env.TZ`
+at startup (`src/config/timezone.ts`) and logs which zone it used:
+
+```
+Timezone: Africa/Nairobi (from DEFAULT_TIMEZONE)
+```
+
+Set one of the two variables, not neither: with neither set the process
+inherits the host's zone, and a shared cPanel account is frequently UTC, which
+makes every printed timestamp three hours off the clock on the wall. The value
+is checked with the same `Intl` parser that formats dates. A typo such as
+`Africa/Nairobia` is rejected with a warning naming the value, and the host zone
+is kept — it does not crash the server, and it is not silently accepted.
 
 `PORT`: if you hard-code it, the app ignores the port the proxy is waiting
 on and the site shows "Application is not responding" while the log says it
@@ -201,13 +244,13 @@ curl -s -o /dev/null -w '%{http_code}\n' https://jalicare.co.ke/dashboard
 
 Expected:
 
-| Request | Expected |
-|---|---|
-| `/` | `200`, `text/html` |
-| `/api/health` | `200`, JSON with `"status":"healthy"` |
-| `/dashboard` (a client route) | `200`, `text/html` — the SPA fallback |
+| Request                                           | Expected                                                                              |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `/`                                               | `200`, `text/html`                                                                    |
+| `/api/health`                                     | `200`, JSON with `"status":"healthy"`                                                 |
+| `/dashboard` (a client route)                     | `200`, `text/html` — the SPA fallback                                                 |
 | an asset from the HTML, e.g. `/assets/index-*.js` | `200`, `application/javascript`, `cache-control: public, max-age=31536000, immutable` |
-| `/api/does-not-exist` | JSON, not HTML |
+| `/api/does-not-exist`                             | JSON, not HTML                                                                        |
 
 In a browser: open the site, sign in, hard-refresh once (Ctrl+F5) so the old
 service worker or cached bundle is dropped.
@@ -244,11 +287,11 @@ A first run on a fresh database therefore still says
 
 ### Reading the preflight verdict
 
-| Verdict | Meaning |
-|---|---|
-| `READY` | No blocking issue. A migration is appropriate. |
-| `READY WITH WARNINGS` | Read every warning: destructive SQL, drift, no backup. |
-| `NOT READY` | Do not migrate. Usually: **unmanaged database** (tables but no history) or **no verified backup**. |
+| Verdict               | Meaning                                                                                            |
+| --------------------- | -------------------------------------------------------------------------------------------------- |
+| `READY`               | No blocking issue. A migration is appropriate.                                                     |
+| `READY WITH WARNINGS` | Read every warning: destructive SQL, drift, no backup.                                             |
+| `NOT READY`           | Do not migrate. Usually: **unmanaged database** (tables but no history) or **no verified backup**. |
 
 ### History that does not match this journal
 
@@ -294,46 +337,42 @@ not something a script may guess.
 
 ## 9. Backup and restore
 
-### Dump (SSH)
+### Backup and recovery gate
 
-```bash
-cd <app-root>
-pg_dump -Fc -f jalicare-$(date +%F-%H%M).dump "$SQL_DB_NAME"
-ls -lh jalicare-*.dump        # a 0-byte file is not a backup
-```
+Backups contain sensitive health data. A designated operator must take an
+approved, consistent pre-migration backup to **access-controlled, encrypted
+storage outside the repository and application directory**. Never put a dump
+in Git, a Docker build context, a public web root, a CI artifact or chat.
+Record its source, timestamp, access controls, retention and integrity evidence.
+For PostgreSQL, a custom-format `pg_dump` can be appropriate when used with the
+facility's approved credentials and backup procedure; `pg_restore --list` only
+checks that an archive can be listed, not that it can be recovered.
 
-`pg_dump -Fc` is a custom-format archive: it restores selectively and is not
-truncated by a text-mode transfer.
+Before authorizing an upgrade, restore the actual backup into a newly created,
+isolated, empty **non-production** database under an approved procedure. Verify
+the target identity first, keep external integrations disabled, and compare the
+migration ledger and representative clinical, financial and audit records
+without exposing patient information. Record the result and recovery time.
+A successful restore drill and an approved recovery plan are required; a
+nonzero file size is not proof of a usable backup.
 
-### Dump (no SSH)
+**Never test recovery by restoring over the live database.** `pg_restore --clean`
+can drop existing objects and destroy newer data. Any production recovery,
+failover or replacement requires a separate, authorized incident plan, a
+verified backup of the current state and explicit operator approval.
 
-cPanel → **phpPgAdmin** → your database → **Export** → format *Custom*.
-Download the result. Still check the size.
+### Backup presence check before migrating
 
-### Restore
-
-```bash
-pg_restore --clean --if-exists -d "$SQL_DB_NAME" jalicare-2026-10-22-1200.dump
-```
-
-`--clean --if-exists` drops the objects the dump contains before recreating
-them. On the live database this destroys current data: restore only to fix a
-known-bad migration, and keep the pre-restore dump.
-
-### Verify a backup before migrating
-
-```bash
-npm run db:preflight -- --backup=jalicare-2026-10-22-1200.dump
-```
-
-A missing or empty file is blocking, and the preflight will not call the
-target ready.
+`npm run db:preflight -- --backup=<absolute-protected-backup-path>` can check
+that a file is present and non-empty. This check does **not** verify that the
+archive is complete, restorable, encrypted or current. It cannot replace the
+isolated recovery drill and operator review described above.
 
 ---
 
 ## 10. Applying a migration
 
-Only after the preflight says ready and the backup exists:
+Only after the preflight is reviewed, the actual backup has been restored and checked in isolation, and the migration/recovery plan has been approved:
 
 ```bash
 npm run db:migrate -- --yes
@@ -351,12 +390,16 @@ schema. That is on purpose: a restart must never change patient data.
 
 ---
 
-## 11. Permission seeding
+## 11. Administrator bootstrap and permission seeding
 
 ```bash
+npm run db:bootstrap-admin                  # creates the global SUPER_ADMIN
 npm run db:seed:permissions -- --dry-run    # print every planned write
 npm run db:seed:permissions -- --yes        # write
 ```
+
+Run the bootstrap first: the permission seed refuses to grant anything until the global
+`SUPER_ADMIN` role exists. See [README §4](../../README.md#quick-start).
 
 What it does: inserts missing permission codes, refreshes the
 name/module/description of existing ones, and grants the seeded codes to
@@ -379,11 +422,11 @@ an account-level limit — `RLIMIT_NPROC`, a cgroup pids limit, or memory.
 
 What this repository now does to reduce it:
 
-* maintenance commands run a pre-built `.js` bundle with plain `node`
+- maintenance commands run a pre-built `.js` bundle with plain `node`
   (no TypeScript loader, no esbuild service);
-* production never imports Vite;
-* the server binds once and starts no worker threads;
-* nothing is compiled on the host.
+- production never imports Vite;
+- the server binds once and starts no worker threads;
+- nothing is compiled on the host.
 
 What it cannot do: raise the account's limits.
 
@@ -412,6 +455,8 @@ those commands to serve traffic.
 
 - [ ] `npm ci && npm run lint && npm test` pass locally
 - [ ] `npm run build:deploy` produced `dist/` **and** `build/server.js`
+- [ ] `npm run deploy:verify` reports no blocking finding (a warning about
+      dependencies or disk use is worth reading, not a blocker)
 - [ ] `build/server.js` starts locally: `NODE_ENV=production PORT=4600 node build/server.js`
 - [ ] `build/`, `dist/`, `drizzle/`, `package.json`, `package-lock.json` uploaded
 - [ ] cPanel startup file is `build/server.js`
@@ -420,23 +465,23 @@ those commands to serve traffic.
 - [ ] application restarted, log shows `listening on http://0.0.0.0:<port>`
 - [ ] `/`, `/api/health`, a client route and one asset all return 200
 - [ ] `npm run db:preflight` says READY (or every warning is understood)
-- [ ] a verified backup exists and has a non-zero size
+- [ ] an approved, protected backup has been restored and checked in an isolated non-production environment
 - [ ] migration applied with approval, then `npm run db:status` is clean
 
 ---
 
-## 14. Rolling back
+## 14. Rollback and recovery
 
-```bash
-# 1. previous bundle
-mv build build.failed
-mv build.previous build
-# cPanel -> Restart
+Keep the previous application bundle in protected storage and record its exact
+revision before deployment. An application rollback is appropriate only when
+that version is compatible with the current schema and the authorized owner
+has assessed transactions made after the change.
 
-# 2. database, from the dump taken before the migration
-pg_restore --clean --if-exists -d "$SQL_DB_NAME" jalicare-<timestamp>.dump
-```
-
-Keep the previous `build/` and `dist/` on the server before each deploy
-(`mv build build.previous && mv dist dist.previous`). They cost a few MB and
-turn a rollback into a file move.
+A database restore is a separate, potentially destructive incident operation,
+not a routine second step in rolling back application code. Do not restore over
+production merely to test recovery. If recovery is necessary, the authorized
+database owner must confirm the exact source and target, preserve a new backup
+of the current state, assess data loss and follow a separately approved plan.
+Restore and verify the backup in isolation first. See the
+[hospital-readiness gate](../audits/hospital-readiness-2026-11-03.md) for the
+outstanding requirements.

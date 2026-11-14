@@ -1,0 +1,43 @@
+{
+  "branch": "arena/e088f11d-afyahub-hmis-kenya",
+  "head": "0111b5502e1a8d8a21faf53845360122275727df",
+  "syntheticOnly": true,
+  "originalWorkbookAvailable": false,
+  "checks": {
+    "freshMigrationCount": 96,
+    "testsPassed": 91,
+    "testSuitesPassed": 6,
+    "testsSkipped": 0,
+    "browserChecksPassed": 24,
+    "browserRuntimeErrors": 0,
+    "normalTypecheckExit": 0,
+    "lintExit": 0,
+    "lintErrors": 0,
+    "lintWarnings": 106,
+    "formatCheckExit": 0,
+    "clientBuildExit": 0,
+    "serverBuildExit": 0,
+    "serverOutputs": 8,
+    "pdfPagesChecked": 2
+  },
+  "preservation": {
+    "initialStatusEntries": 678,
+    "baselineMissing": [],
+    "baselineChangedIntegrationFiles": [
+      "src/components/modules/AccountingModule.tsx",
+      "src/components/modules/accounting/AccountingNavigation.tsx",
+      "src/documents/document-model.ts",
+      "drizzle/meta/_journal.json",
+      "package-lock.json",
+      "package.json",
+      "scripts/build-server.mjs",
+      "src/db/schema.ts",
+      "src/routes/index.ts",
+      "src/seeds/permissions.ts",
+      "tsconfig.json"
+    ],
+    "existingTestsEdited": false,
+    "committed": false,
+    "pushed": false
+  }
+}

@@ -10,7 +10,7 @@
 
 import { createHash, randomBytes } from 'node:crypto';
 
-import { and, eq, isNull, lt, sql } from 'drizzle-orm';
+import { and, eq, gt, isNull, lt, sql } from 'drizzle-orm';
 
 import { db } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
@@ -118,107 +118,149 @@ export async function portalLogin(
   const valid = await verifyPassword(password, account.passwordHash);
 
   if (!valid) {
-    const attempts = account.failedLoginAttempts + 1;
-    const lockedUntil =
-      attempts >= MAX_FAILED_LOGINS ? new Date(Date.now() + LOGIN_LOCK_MINUTES * 60 * 1000) : null;
+    // Count against the current row, not the stale pre-verification read.
+    // The transaction must commit before we return the generic error.
+    await db.transaction(async (tx) => {
+      const [current] = await tx
+        .select()
+        .from(schema.patientPortalAccounts)
+        .where(eq(schema.patientPortalAccounts.id, account.id))
+        .for('update');
 
-    await db
-      .update(schema.patientPortalAccounts)
-      .set({
-        failedLoginAttempts: lockedUntil ? 0 : attempts,
-        lockedUntil,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.patientPortalAccounts.id, account.id));
+      if (
+        !current ||
+        current.passwordHash !== account.passwordHash ||
+        current.securityVersion !== account.securityVersion
+      )
+        return;
+
+      const now = new Date();
+      // An additional wrong guess must never clear or shorten an active lock.
+      if (current.lockedUntil && current.lockedUntil.getTime() > now.getTime()) return;
+
+      const attempts = current.failedLoginAttempts + 1;
+      const lockedUntil =
+        attempts >= MAX_FAILED_LOGINS
+          ? new Date(now.getTime() + LOGIN_LOCK_MINUTES * 60 * 1000)
+          : null;
+      await tx
+        .update(schema.patientPortalAccounts)
+        .set({
+          failedLoginAttempts: lockedUntil ? 0 : attempts,
+          lockedUntil,
+          updatedAt: now,
+        })
+        .where(eq(schema.patientPortalAccounts.id, current.id));
+    });
 
     throw generic;
   }
 
-  if (account.lockedUntil && account.lockedUntil.getTime() > Date.now()) {
-    /*
-     * A correct password does not unlock the account. The lock exists
-     * because someone was guessing; the patient is told to wait or ask
-     * the facility, and nothing about the record is returned.
-     */
-    throw new PortalError(
-      'Too many failed attempts. Try again in a few minutes, or contact the facility.',
-      429,
-      'ACCOUNT_LOCKED',
-    );
-  }
+  // Re-read under the same lock used for failed attempts. A valid password
+  // checked before a concurrent lock, password change or security update
+  // cannot use the stale account state to create a session.
+  return db.transaction(async (tx) => {
+    const [current] = await tx
+      .select()
+      .from(schema.patientPortalAccounts)
+      .where(eq(schema.patientPortalAccounts.id, account.id))
+      .for('update');
 
-  if (account.status === 'REVOKED') {
-    throw new PortalError(
-      'This account no longer has access. Contact the facility for help.',
-      403,
-      'ACCOUNT_REVOKED',
-    );
-  }
+    if (
+      !current ||
+      current.passwordHash !== account.passwordHash ||
+      current.securityVersion !== account.securityVersion
+    )
+      throw generic;
 
-  if (account.status === 'SUSPENDED') {
-    throw new PortalError(
-      'This account is suspended. Contact the facility to restore it.',
-      403,
-      'ACCOUNT_SUSPENDED',
-    );
-  }
+    if (current.lockedUntil && current.lockedUntil.getTime() > Date.now()) {
+      throw new PortalError(
+        'Too many failed attempts. Try again in a few minutes, or contact the facility.',
+        429,
+        'ACCOUNT_LOCKED',
+      );
+    }
 
-  if (account.status === 'PENDING_VERIFICATION') {
-    throw new PortalError(
-      'This account still needs a staff member to verify your identity. Visit the reception desk.',
-      403,
-      'ACCOUNT_PENDING_VERIFICATION',
-    );
-  }
+    if (current.status === 'REVOKED') {
+      throw new PortalError(
+        'This account no longer has access. Contact the facility for help.',
+        403,
+        'ACCOUNT_REVOKED',
+      );
+    }
 
-  if (account.failedLoginAttempts !== 0 || account.lockedUntil) {
-    await db
+    if (current.status === 'SUSPENDED') {
+      throw new PortalError(
+        'This account is suspended. Contact the facility to restore it.',
+        403,
+        'ACCOUNT_SUSPENDED',
+      );
+    }
+
+    if (current.status === 'PENDING_VERIFICATION') {
+      throw new PortalError(
+        'This account still needs a staff member to verify your identity. Visit the reception desk.',
+        403,
+        'ACCOUNT_PENDING_VERIFICATION',
+      );
+    }
+
+    if (current.failedLoginAttempts !== 0 || current.lockedUntil) {
+      await tx
+        .update(schema.patientPortalAccounts)
+        .set({ failedLoginAttempts: 0, lockedUntil: null })
+        .where(eq(schema.patientPortalAccounts.id, current.id));
+    }
+
+    const [patient] = await tx
+      .select({
+        firstName: schema.patients.firstName,
+        lastName: schema.patients.lastName,
+      })
+      .from(schema.patients)
+      .where(
+        and(
+          eq(schema.patients.id, current.patientId),
+          eq(schema.patients.tenantId, current.tenantId),
+        ),
+      )
+      .limit(1);
+
+    if (!patient) throw generic;
+
+    const sessionToken = randomBytes(48).toString('base64url');
+    const expiresAt = new Date(Date.now() + PATIENT_SESSION_HOURS * 60 * 60 * 1000);
+
+    await tx.insert(schema.patientPortalSessions).values({
+      accountId: current.id,
+      sessionTokenHash: hashSessionToken(sessionToken),
+      ipAddress: request?.ipAddress ?? null,
+      userAgent: request?.userAgent ?? null,
+      expiresAt,
+    });
+
+    await tx
       .update(schema.patientPortalAccounts)
-      .set({ failedLoginAttempts: 0, lockedUntil: null })
-      .where(eq(schema.patientPortalAccounts.id, account.id));
-  }
+      .set({ lastLoginAt: new Date() })
+      .where(eq(schema.patientPortalAccounts.id, current.id));
 
-  const [patient] = await db
-    .select({
-      firstName: schema.patients.firstName,
-      lastName: schema.patients.lastName,
-    })
-    .from(schema.patients)
-    .where(eq(schema.patients.id, account.patientId))
-    .limit(1);
-
-  const sessionToken = randomBytes(48).toString('base64url');
-  const expiresAt = new Date(Date.now() + PATIENT_SESSION_HOURS * 60 * 60 * 1000);
-
-  await db.insert(schema.patientPortalSessions).values({
-    accountId: account.id,
-    sessionTokenHash: hashSessionToken(sessionToken),
-    ipAddress: request?.ipAddress ?? null,
-    userAgent: request?.userAgent ?? null,
-    expiresAt,
+    return {
+      sessionToken,
+      expiresAt,
+      account: {
+        id: current.id,
+        tenantId: current.tenantId,
+        facilityId: current.facilityId,
+        patientId: current.patientId,
+        loginIdentifier: current.loginIdentifier,
+        loginType: current.loginType,
+        status: current.status,
+        securityVersion: current.securityVersion,
+      },
+      firstName: patient.firstName,
+      lastName: patient.lastName,
+    };
   });
-
-  await db
-    .update(schema.patientPortalAccounts)
-    .set({ lastLoginAt: new Date() })
-    .where(eq(schema.patientPortalAccounts.id, account.id));
-
-  return {
-    sessionToken,
-    expiresAt,
-    account: {
-      id: account.id,
-      tenantId: account.tenantId,
-      facilityId: account.facilityId,
-      patientId: account.patientId,
-      loginIdentifier: account.loginIdentifier,
-      loginType: account.loginType,
-      status: account.status,
-      securityVersion: account.securityVersion,
-    },
-    firstName: patient?.firstName ?? '',
-    lastName: patient?.lastName ?? '',
-  };
 }
 
 /* ============================================================
@@ -368,19 +410,76 @@ export async function changePortalPassword(
 
   const passwordHash = await hashPassword(String(newPassword));
 
-  await db
-    .update(schema.patientPortalAccounts)
-    .set({
-      passwordHash,
-      mustChangePassword: false,
-      securityVersion: sql`${schema.patientPortalAccounts.securityVersion} + 1`,
-      updatedAt: new Date(),
-    })
-    .where(eq(schema.patientPortalAccounts.id, account.id));
+  return db.transaction(async (tx) => {
+    // Login locks this same account before creating a session. Recheck the
+    // password version and the requesting session after acquiring the lock.
+    const [current] = await tx
+      .select()
+      .from(schema.patientPortalAccounts)
+      .where(eq(schema.patientPortalAccounts.id, account.id))
+      .for('update');
+    if (
+      !current ||
+      current.status !== 'ACTIVE' ||
+      current.passwordHash !== account.passwordHash ||
+      current.securityVersion !== account.securityVersion
+    ) {
+      throw new PortalError('The account changed. Sign in again.', 401, 'SESSION_CHANGED');
+    }
 
-  const sessionsRevoked = await revokeAllPortalSessions(account.id, 'Password changed');
+    const [activeSession] = await tx
+      .select({ id: schema.patientPortalSessions.id })
+      .from(schema.patientPortalSessions)
+      .where(
+        and(
+          eq(schema.patientPortalSessions.id, session.sessionId),
+          eq(schema.patientPortalSessions.accountId, current.id),
+          isNull(schema.patientPortalSessions.revokedAt),
+          gt(schema.patientPortalSessions.expiresAt, new Date()),
+        ),
+      )
+      .limit(1)
+      .for('update');
+    if (!activeSession) {
+      throw new PortalError(
+        'The session is no longer active. Sign in again.',
+        401,
+        'SESSION_CHANGED',
+      );
+    }
 
-  return { sessionsRevoked };
+    await tx
+      .update(schema.patientPortalAccounts)
+      .set({
+        passwordHash,
+        mustChangePassword: false,
+        securityVersion: sql`${schema.patientPortalAccounts.securityVersion} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.patientPortalAccounts.id, current.id));
+
+    const revoked = await tx
+      .update(schema.patientPortalSessions)
+      .set({ revokedAt: new Date(), revokeReason: 'Password changed' })
+      .where(
+        and(
+          eq(schema.patientPortalSessions.accountId, current.id),
+          isNull(schema.patientPortalSessions.revokedAt),
+        ),
+      )
+      .returning({ id: schema.patientPortalSessions.id });
+
+    await tx.insert(schema.auditLogs).values({
+      tenantId: current.tenantId,
+      facilityId: current.facilityId,
+      userId: null,
+      action: 'UPDATE',
+      resource: 'PatientPortalAccount',
+      resourceId: String(current.id),
+      details: 'Patient changed portal password and revoked sessions',
+    });
+    return { sessionsRevoked: revoked.length };
+  });
 }
 
 /* ============================================================

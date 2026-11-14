@@ -1,0 +1,38 @@
+
+ RUN  v5.0.5 /home/user/afyahub-hmis-kenya
+
+ ✓ src/tests/budget-planning.db.spec.ts (29 tests) 9844ms
+   ✓ synthetic budget planning database workflows (29)
+     ✓ imports only after hash-matched explicit confirmation and is idempotent 632ms
+     ✓ supports skip and explicit update merge modes 691ms
+     ✓ retains cancelled sources and blocks duplicate upload without implicitly reopening or importing 376ms
+     ✓ requires explicit authorized retry, locks concurrent retries, preserves evidence and forces fresh preview without changing plans 489ms
+     ✓ issues filtered branded PDF and Excel; retains exact reprint bytes and history 309ms
+     ✓ paginates and sorts large plans without paginating report totals 623ms
+     ✓ exports YoY issued rows and category/item/branding selections consistently 411ms
+     ✓ processes a synthetic 232-item stationery workload plus separate branding and uniform blocks 1908ms
+     ✓ imports duplicate CSV source rows, audits defaults and supports year/facility-scoped HTTP CRUD 436ms
+     ✓ persists all 241 official source rows only in the disposable test facility and exports reproducible reports 2773ms
+ ✓ src/tests/vitest/planning-sections-ui.spec.tsx (7 tests) 2704ms
+   ✓ dedicated planning viewing/editing sections (4)
+     ✓ shows Branding directly in a mixed plan and paginates after partitioning the full scoped result 709ms
+     ✓ has distinct Stationery, Branding and Uniform navigation and clears incompatible unit/search filters 645ms
+     ✓ exposes independent View, Edit and Delete on draft monthly records and a true read-only detail form 671ms
+     ✓ does not expose mutation actions to a read-only user in any of the three sections 672ms
+ ✓ src/tests/syrona-zero-fill.spec.ts (10 tests) 1986ms
+   ✓ zero-fill literal CSV and Excel preview policy (9)
+     ✓ still rejects invalid numbers and formula-like mapped inputs 495ms
+     ✓ zero-fills uniform inputs while still requiring an explicit balance rule 385ms
+ ✓ src/tests/budget-planning.spec.ts (20 tests) 680ms
+ ✓ src/tests/vitest/planning-import-history-ui.spec.tsx (7 tests) 535ms
+ ✓ src/tests/vitest/planning-zero-fill-ui.spec.tsx (4 tests) 287ms
+ ✓ src/tests/syrona-reconciliation.spec.ts (5 tests) 302ms
+
+ Test Files  7 passed (7)
+      Tests  82 passed (82)
+   Start at  11:18:19
+   Duration  22.10s (tests 77%, environment 9%, import 7%, setup 4%, transform 2%)
+
+    Isolate  7 workers spawned · ~379ms startup each (spawn + environment, per file)
+             at least ~2.28s faster with isolate: false — reuses workers across files instead of one per file
+

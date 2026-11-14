@@ -1,0 +1,5 @@
+{
+  "baselineFiles": 1348,
+  "changedOrMissing": [],
+  "scope": "SHA256 comparison of all pre-existing files inventoried before current reconciliation work; no Git reset, staging, commit, push or migration performed"
+}

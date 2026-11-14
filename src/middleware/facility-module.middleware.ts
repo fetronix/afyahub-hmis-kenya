@@ -1,4 +1,4 @@
-﻿import type { NextFunction, Response } from 'express';
+import type { NextFunction, Response } from 'express';
 import type { AuthRequest } from '../auth/auth.middleware.ts';
 import { ScopeAccessError, resolveFacilityScope } from '../auth/scope.service.ts';
 import * as queries from '../db/queries.ts';
@@ -6,17 +6,22 @@ import * as queries from '../db/queries.ts';
 export type FacilityModuleId =
   | 'registration'
   | 'reception'
+  | 'website_booking'
   | 'opd'
   | 'inpatient'
   | 'maternity'
   | 'theatre'
+  | 'dialysis'
   | 'specialty'
   | 'laboratory'
   | 'radiology'
   | 'pharmacy'
   | 'inventory'
+  | 'hr'
+  | 'payroll'
   | 'procurement'
   | 'finance'
+  | 'accounting'
   | 'insurance'
   | 'public_health'
   | 'analytics'
