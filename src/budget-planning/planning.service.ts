@@ -17,6 +17,7 @@ import {
   type UniformInput,
 } from './calculations.ts';
 import { parseWorkbook, previewWorkbook, type Mapping } from './workbook.ts';
+import { verifiedStationeryMapping } from './stationery-mapping.ts';
 import {
   resolveImportDestination,
   importReviewCounts,
@@ -722,6 +723,7 @@ export async function upload(s: PlanningScope, bytes: Buffer, filename: string, 
     );
     return {
       ...row,
+      verifiedMapping: verifiedStationeryMapping(book, hash),
       sheets: book.sheets.map((sh) => ({
         name: sh.name,
         rows: sh.rows.length,
@@ -746,6 +748,10 @@ export async function inspectBatch(s: PlanningScope, batchId: unknown) {
   return {
     id: r.id,
     status: r.status,
+    verifiedMapping: verifiedStationeryMapping(
+      book,
+      createHash('sha256').update(r.source_bytes).digest('hex'),
+    ),
     sheets: book.sheets.map((sh) => ({
       name: sh.name,
       rows: sh.rows.length,

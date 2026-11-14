@@ -294,7 +294,9 @@ export function PlanningImport({
           <p className="text-xs">
             Worksheets:{' '}
             {batch.sheets.map((s: PlanningRow) => `${s.name} (${s.rows} rows)`).join(', ')}. Source
-            row numbers below are 1-based. Map quantity columns, never the neighbouring
+            row numbers below are 1-based parsed record positions, including headings, totals and
+            blank records; they are not item serial numbers from column A. Quoted newlines inside a
+            CSV cell do not start a new record. Map quantity columns, never the neighbouring
             projected-cost columns. Preserve the source category label in each row block.
           </p>
           <fieldset disabled={busy} className="space-y-4">
@@ -464,6 +466,49 @@ export function PlanningImport({
                   </div>
                 </details>
               ))}
+            {batch.verifiedMapping && (
+              <section
+                aria-label="Verified stationery source mapping"
+                className="rounded border border-brand-300 p-3 text-sm space-y-2"
+              >
+                <h4 className="font-semibold">Verified stationery CSV mapping available</h4>
+                <p>
+                  Exact reviewed source SHA256: {batch.verifiedMapping.sourceSha256}. 296 source
+                  records, 232 item rows; 64 non-item records excluded. Original category spelling
+                  is preserved. This only fills local mapping fields; it does not preview or import.
+                </p>
+                <ul>
+                  {batch.verifiedMapping.mappings.map((m: Mapping) => (
+                    <li key={m.category}>
+                      {m.category}: rows {m.startRow}–{m.endRow} ({m.endRow - m.startRow + 1} items)
+                    </li>
+                  ))}
+                </ul>
+                <p>
+                  Description B · Unit C · Base price D · Monthly quantities
+                  F,H,J,L,N,P,R,T,V,X,Z,AB. Inflated price E and projected costs
+                  G,I,K,M,O,Q,S,U,W,Y,AA,AC are excluded.
+                </p>
+                <button
+                  className={quiet}
+                  disabled={mappings.length > 0}
+                  onClick={() => {
+                    setMappings(structuredClone(batch.verifiedMapping.mappings));
+                    setPreview(null);
+                    setReviewedRequest(null);
+                    setSettings((v) => ({ ...v, confirm: false }));
+                  }}
+                >
+                  Use verified stationery mappings
+                </button>
+                {mappings.length > 0 && (
+                  <p>
+                    Existing mapping blocks are not overwritten. Remove them first if you want to
+                    use the verified mappings.
+                  </p>
+                )}
+              </section>
+            )}
             {mappings.map((mapping, n) => (
               <fieldset key={n} className="rounded-lg border border-hair p-3 space-y-3">
                 <legend className="text-sm font-semibold">Source block {n + 1}</legend>

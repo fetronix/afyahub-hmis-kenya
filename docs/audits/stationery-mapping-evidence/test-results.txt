@@ -1,0 +1,35 @@
+
+ RUN  v5.0.5 /home/user/afyahub-hmis-kenya
+
+[vitest] PostgreSQL not reachable at 127.0.0.1:5432 — database specs will be skipped.
+ ✓ src/tests/vitest/planning-import-destination-ui.spec.tsx (8 tests) 2899ms
+   ✓ explicit destination workflow (8)
+     ✓ loads all eligible authenticated-facility pages and displays full plan identity independently of parent navigation 385ms
+     ✓ automatically populates and locks the selected target assumptions 304ms
+     ✓ sends selected destination ID, version and assumptions to server preview and shows bound review summary 387ms
+     ✓ switches deliberately to new draft, reveals editable fields, warns about existing year plans and requires additional-plan authorization 635ms
+     ✓ invalidates the preview when destination, merge behavior or new-plan assumptions change 423ms
+     ✓ uses the exact preview request snapshot and hash for confirmation (mocked API only; no import executed) 358ms
+ ✓ src/tests/vitest/planning-sections-ui.spec.tsx (7 tests) 2833ms
+   ✓ dedicated planning viewing/editing sections (4)
+     ✓ shows Branding directly in a mixed plan and paginates after partitioning the full scoped result 792ms
+     ✓ has distinct Stationery, Branding and Uniform navigation and clears incompatible unit/search filters 645ms
+     ✓ exposes independent View, Edit and Delete on draft monthly records and a true read-only detail form 730ms
+     ✓ does not expose mutation actions to a read-only user in any of the three sections 660ms
+ ✓ src/tests/vitest/planning-import-history-ui.spec.tsx (7 tests) 786ms
+   ✓ cancelled planning import history (7)
+     ✓ loads all facility/year draft target pages independently of the filtered parent navigation list 372ms
+ ✓ src/tests/vitest/stationery-mapping-ui.spec.tsx (3 tests) 1302ms
+   ✓ fills only local mapping fields and preserves destination, category spelling, source ranges and columns 634ms
+   ✓ does not overwrite an existing incomplete manual mapping 346ms
+   ✓ offers no automatic mapping when the server did not verify the source 321ms
+ ✓ src/tests/stationery-mapping.spec.ts (13 tests) 996ms
+ ✓ src/tests/stationery-mapping-api.spec.ts (1 test) 97ms
+
+ Test Files  6 passed (6)
+      Tests  39 passed (39)
+   Start at  12:33:11
+   Duration  14.47s (tests 66%, environment 21%, setup 6%, import 4%, transform 3%)
+
+    Isolate  6 workers spawned · ~601ms startup each (spawn + environment, per file)
+             at least ~3.00s faster with isolate: false — reuses workers across files instead of one per file
