@@ -334,6 +334,23 @@ export const AccountingModule: React.FC<{ onOpenPayroll?: (tab: PayrollTabId) =>
                 ))}
             </nav>
           )}
+          {section === 'reports' && !can('accounting.equity.read') && (
+            <section
+              aria-label="Partners’ Equity Statement access"
+              className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-slate-800"
+            >
+              <h3 className="font-semibold">Partners’ Equity Statement — access required</h3>
+              <p>
+                This account cannot open partner equity statements. Ask an authorized facility
+                administrator to review your finance role’s <code>accounting.equity.read</code>
+                permission for this facility, then sign out and sign in again.
+              </p>
+              <p className="mt-1 text-xs">
+                Viewing also requires <code>accounting.read</code>. Preparation, review, approval
+                and export require separate permissions; no access has been granted automatically.
+              </p>
+            </section>
+          )}
           {view === 'partnerEquity' && (
             <PartnerEquityWorkspace
               key={`${currentFacility.id}:${authenticatedUser?.id}`}

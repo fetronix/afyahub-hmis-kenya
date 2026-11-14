@@ -134,7 +134,7 @@ export const ACCOUNTING_SECTIONS = [
   {
     id: 'reports',
     title: 'Financial Reports',
-    description: 'Trial balance and financial statements based on posted journals only.',
+    description: 'Posted-ledger reports and separately prepared partner equity statements.',
     icon: ChartNoAxesCombined,
     views: [
       { id: 'trial', label: 'Trial Balance' },

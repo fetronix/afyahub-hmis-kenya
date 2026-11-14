@@ -1,0 +1,34 @@
+RUN  v5.0.5 <repository>
+
+[vitest] PostgreSQL not reachable at 127.0.0.1:5432 — database specs will be skipped.
+ ✓ src/tests/vitest/accounting-workspace-ui.spec.tsx (11 tests) 4328ms
+   ✓ Accounting & Finance modular workspace (11)
+     ✓ starts with API-backed summary, not an endless mixed workflow screen 441ms
+     ✓ opens setup directly, then periods and existing payroll mapping checks 343ms
+     ✓ keeps account creation, period open and close on their existing API methods 1458ms
+     ✓ keeps manual journal and controlled reversal payloads and idempotency keys 862ms
+     ✓ links every payroll destination and the existing bank module without duplicate implementations 327ms
+ ✓ src/tests/vitest/partner-equity-ui.spec.tsx (12 tests) 4027ms
+   ✓ retrieves the saved period without writes; preserves all original names/rows and six KPIs 561ms
+   ✓ recalculates all chart/table values immediately and saves to the existing statement revision only on explicit save 458ms
+   ✓ edits all permitted input rows, preserves null dashes and supports negative typing without executing formulas 721ms
+   ✓ shows/hides five charts and presents the unchanged statement without editing controls 305ms
+   ✓ exports all three saved formats and disables exports for unsaved edits 392ms
+   ✓ requires explicit partner saving and never exposes permanent deletion 346ms
+   ✓ previews carry-forward and requires confirmation before any write 427ms
+ ✓ src/tests/vitest/budget-navigation-ui.spec.tsx (10 tests) 10464ms
+   ✓ Budgeting navigation relocation — existing modules, unchanged data contracts (10)
+     ✓ opens the existing saved financial draft from the new parent with no duplicate procurement entry 2310ms
+     ✓ keeps formula editing, saved revisions and exports on the existing financial API 2547ms
+     ✓ keeps procurement and supporting planning accessible without the financial tab or a second dataset 2324ms
+     ✓ restores direct links and refresh/remount without changing saved data or selecting a facility from the URL 1628ms
+     ✓ retains read-only and export permission gates for authorized planning readers 1505ms
+ ✓ src/tests/vitest/partner-equity-visibility.spec.tsx (4 tests) 417ms
+
+ Test Files  4 passed (4)
+      Tests  37 passed (37)
+   Start at  21:55:16
+   Duration  12.84s (tests 80%, environment 14%, import 3%, setup 3%, transform 1%)
+
+    Isolate  4 workers spawned · ~945ms startup each (spawn + environment, per file)
+             at least ~945ms faster with isolate: false — reuses workers across files instead of one per file

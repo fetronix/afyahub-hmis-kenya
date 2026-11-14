@@ -1,0 +1,14 @@
+PASS Disposable database has all three equity tables
+PASS Secure platform bootstrap in disposable database only
+PASS Actual production Express server is ready with PostgreSQL
+PASS Accounting-only login shows diagnostic, not an unauthorized equity entry
+PASS Unauthorized screen makes no equity data requests
+PASS Authenticated real workspace retrieves scoped statements over HTTP
+PASS Opening the actual screen does not create source statements
+PASS Actual SPA renders all fourteen persisted statement rows
+PASS Explicit browser creation persists the exact screenshot result in PostgreSQL
+PASS Read-only real login cannot prepare or export
+PASS Read-only real screen renders values rather than editable inputs
+PASS Fresh real session state after page reload retrieves the saved statement
+PASS No uncaught frontend runtime errors in actual authenticated workflows
+PASS All real equity HTTP requests succeeded

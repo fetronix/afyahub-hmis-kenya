@@ -1,0 +1,147 @@
+> jalicare-hmis@0.1.0 db:status:all
+> node scripts/run-script.mjs migration-status --expect-all
+
+[run-script] migration-status: build/scripts/migration-status.js (node)
+
+==============================================
+Migration status (read-only)
+==============================================
+Target: visibility_test@127.0.0.1:55443/equity_visibility_synthetic_test
+
+journal: 100 migrations, tracking table: "drizzle"."__drizzle_migrations"
+
+  ✓ 0000_new_vertigo
+  ✓ 0001_unknown_gambit
+  ✓ 0002_friendly_lady_deathstrike
+  ✓ 0003_facility_subscription_billing
+  ✓ 0004_facility_rbac_overrides
+  ✓ 0005_facility_service_tariffs
+  ✓ 0006_patient_guardian_and_optional_phone
+  ✓ 0007_lab_order_clinical_details
+  ✓ 0008_lab_result_verification_state
+  ✓ 0009_billing_provenance_and_inpatient
+  ✓ 0010_mobile_money_settlement
+  ✓ 0011_insurance_claims_workflow
+  ✓ 0012_dha_integration_audit
+  ✓ 0013_dha_service_mappings
+  ✓ 0014_professional_verification
+  ✓ 0015_maternity_mch
+  ✓ 0016_postnatal_immunisation
+  ✓ 0017_consent_allergy_audit_integrity
+  ✓ 0018_patient_portal
+  ✓ 0019_service_tariff_billing_key
+  ✓ 0020_billing_charge_attempts
+  ✓ 0021_service_tariff_links
+  ✓ 0022_bed_day_charge_attempts
+  ✓ 0023_normalise_county_subcounty
+  ✓ 0024_sha_eclaims_and_benefits
+  ✓ 0025_private_insurance_multi_payer
+  ✓ 0026_sha_hie_workflows_and_fhir_ig
+  ✓ 0027_dialysis_accounting_icd11_booking_bank
+  ✓ 0028_payment_banking_hub
+  ✓ 0029_payer_integration_hub
+  ✓ 0030_procurement_workflow
+  ✓ 0031_theatre_scheduling
+  ✓ 0032_inpatient_active_admission_guards
+  ✓ 0033_lab_accession_safety
+  ✓ 0034_pharmacy_workflow_safety
+  ✓ 0035_shared_lab_specimens
+  ✓ 0036_refund_receipt_safety
+  ✓ 0037_finalized_invoices
+  ✓ 0038_payment_request_identity
+  ✓ 0039_payment_request_cancellation
+  ✓ 0040_claim_dispatch_safety
+  ✓ 0041_billing_ledger_postings
+  ✓ 0042_facility_tariff_imports
+  ✓ 0043_notification_centre
+  ✓ 0044_master_service_catalogue
+  ✓ 0045_catalogue_scope_and_completion
+  ✓ 0046_billing_service_occurrence
+  ✓ 0047_clinical_service_selection
+  ✓ 0048_consultation_review_state
+  ✓ 0049_radiology_request_idempotency
+  ✓ 0050_encounter_request_idempotency
+  ✓ 0051_lab_clinical_exception
+  ✓ 0052_lab_order_specimen_provenance
+  ✓ 0053_facility_owned_services
+  ✓ 0054_lab_facility_service
+  ✓ 0055_delivery_facility_service
+  ✓ 0056_admission_and_retry_identity
+  ✓ 0057_lab_service_scope
+  ✓ 0058_charge_attempt_diagnosis
+  ✓ 0059_lab_service_code_snapshot
+  ✓ 0060_pharmacy_inventory_price_snapshots
+  ✓ 0061_inventory_price_revision
+  ✓ 0062_inpatient_bed_occupancy_billing
+  ✓ 0063_inpatient_bed_billing_work
+  ✓ 0064_staff_appointment_lifecycle
+  ✓ 0065_inpatient_policy_and_admission_evidence
+  ✓ 0066_ward_default_bed_price_evidence
+  ✓ 0067_facility_integration_vault
+  ✓ 0068_integration_credential_revocation
+  ✓ 0069_payment_settlement_recovery
+  ✓ 0070_journal_facility_scope_guards
+  ✓ 0071_nullable_benefit_estimates
+  ✓ 0072_independent_refund_review
+  ✓ 0073_inventory_receipt_retry_identity
+  ✓ 0074_workforce
+  ✓ 0075_fixed_assets
+  ✓ 0076_procurement_chain
+  ✓ 0077_inventory_control
+  ✓ 0078_approval_policies
+  ✓ 0079_inventory_accounting
+  ✓ 0080_procurement_matching
+  ✓ 0081_bank_reconciliation_approval
+  ✓ 0082_fixed_asset_impairment_revaluation_tax
+  ✓ 0083_payroll_form_profiles
+  ✓ 0084_dialysis_session_billing
+  ✓ 0085_dialysis_service_category
+  ✓ 0086_public_health_report_corrections
+  ✓ 0087_claim_dispatch_reconciliation
+  ✓ 0088_claim_invoice_finalization
+  ✓ 0089_facility_letterheads
+  ✓ 0090_letterhead_pdf_documents
+  ✓ 0091_verified_bank_payments
+  ✓ 0092_bank_refund_evidence
+  ✓ 0093_payroll_completion_controls
+  ✓ 0094_payroll_configuration_readiness
+  ✓ 0095_budget_procurement_planning
+  ✓ 0096_planning_source_row_identity
+  ✓ 0097_controlled_planning_reset
+  ✓ 0098_annual_financial_budget
+  ✓ 0099_partner_equity_statements
+
+All migrations in the journal are applied.
+
+Structures required by migrations 0009, 0012 and 0013
+----------------------------------------------
+  ✓ table admission_transfers
+  ✓ table nursing_notes
+  ✓ table dha_api_calls
+  ✓ table dha_service_mappings
+  ✓ sequence billing_invoice_number_seq
+  ✓ column billing_items.source_type
+  ✓ column billing_items.source_id
+  ✓ column billing_items.idempotency_key
+  ✓ column billing_invoices.voided_at
+  ✓ column billing_invoices.void_reason
+  ✓ column admissions.discharged_by
+  ✓ column admissions.discharge_disposition
+  ✓ column patients.dha_client_registry_id
+  ✓ column patients.dha_eligibility_status
+  ✓ column patients.dha_eligibility_checked_at
+  ✓ column patients.dha_eligibility_schemes
+  ✓ unique billing_items_idempotency_key_unique on billing_items
+  ✓ index billing_items_source_idx on billing_items
+  ✓ index billing_invoices_facility_status_idx on billing_invoices
+  ✓ index admission_transfers_admission_idx on admission_transfers
+  ✓ index nursing_notes_admission_idx on nursing_notes
+  ✓ index nursing_notes_patient_idx on nursing_notes
+  ✓ index dha_api_calls_facility_idx on dha_api_calls
+  ✓ index dha_api_calls_operation_idx on dha_api_calls
+  ✓ unique dha_service_mappings_facility_area_idx on dha_service_mappings
+  ✓ index dha_service_mappings_tenant_idx on dha_service_mappings
+
+==============================================
+READY — every migration is applied and 0009 is intact.
+==============================================
