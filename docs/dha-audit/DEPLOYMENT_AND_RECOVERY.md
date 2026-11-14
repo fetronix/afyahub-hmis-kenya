@@ -1,6 +1,6 @@
 # Deployment and Recovery
 
-**Status of this document:** a verified *template*. The repository contains no
+**Status of this document:** a verified _template_. The repository contains no
 deployment automation, no backup job and no restore runbook. Nothing here was
 executed, because no database or hosting environment was available to this audit.
 
@@ -11,24 +11,24 @@ operations — not as evidence that it has been.
 
 ## 1. What the application actually needs
 
-| Component | Requirement | Source |
-|---|---|---|
-| Node.js | 20+ (ESM, `tsx` in development) | `package.json`, `server.ts` |
-| PostgreSQL | 14+ recommended; JSONB, partial indexes, `gen_random_uuid` not required | `src/db/schema.ts` |
-| Environment | See §2 | `src/config/env.ts`, `.env.example` |
-| Build artefact | `dist/` from `vite build` | `npm run build` |
-| Process | One Node process serving the API and static build | `server.ts` |
-| TLS | **Must be terminated in front of the app**; the app serves no TLS | absence verified |
+| Component      | Requirement                                                             | Source                              |
+| -------------- | ----------------------------------------------------------------------- | ----------------------------------- |
+| Node.js        | 20+ (ESM, `tsx` in development)                                         | `package.json`, `server.ts`         |
+| PostgreSQL     | 14+ recommended; JSONB, partial indexes, `gen_random_uuid` not required | `src/db/schema.ts`                  |
+| Environment    | See §2                                                                  | `src/config/env.ts`, `.env.example` |
+| Build artefact | `dist/` from `vite build`                                               | `npm run build`                     |
+| Process        | One Node process serving the API and static build                       | `server.ts`                         |
+| TLS            | **Must be terminated in front of the app**; the app serves no TLS       | absence verified                    |
 
 ### Platform support, stated honestly
 
-| Platform | Support |
-|---|---|
-| Web browser (desktop) | **Yes** — the product is a responsive web application |
-| Web browser (mobile) | Responsive layout; not tested on a device in this audit |
-| Windows / Linux / macOS | The *server* runs on any of them under Node |
-| Native iOS / Android app | **No** — no mobile project exists |
-| Desktop application | **No** — no Electron/Tauri project exists |
+| Platform                 | Support                                                 |
+| ------------------------ | ------------------------------------------------------- |
+| Web browser (desktop)    | **Yes** — the product is a responsive web application   |
+| Web browser (mobile)     | Responsive layout; not tested on a device in this audit |
+| Windows / Linux / macOS  | The _server_ runs on any of them under Node             |
+| Native iOS / Android app | **No** — no mobile project exists                       |
+| Desktop application      | **No** — no Electron/Tauri project exists               |
 
 The DHA classification "hybrid" can describe a browser front end plus a
 self-hosted server. It must not be described as native mobile or desktop software.
@@ -83,6 +83,7 @@ npm ci
 npm run build
 npm run db:status        # confirm which migrations are pending
 npm run db:migrate       # only after reading README §10
+npm run db:bootstrap-admin  # ADMIN_USERNAME / ADMIN_EMAIL / ADMIN_PASSWORD
 npm run db:seed:permissions
 npm start
 ```
@@ -131,14 +132,14 @@ pg_restore --list /backups/jalicare-$(date +%F).dump > /dev/null
 
 Retention and access:
 
-| Item | Minimum |
-|---|---|
-| Frequency | Nightly, plus before every migration |
-| Retention | 30 daily, 12 monthly (adjust to the facility's policy) |
-| Encryption | At rest, on the storage volume; encrypted in transit if remote |
-| Access | Backup operators only; no application role can read the backup store |
-| Off-site | At least one copy outside the primary host |
-| Verification | Weekly `pg_restore --list`; restore drill quarterly |
+| Item         | Minimum                                                              |
+| ------------ | -------------------------------------------------------------------- |
+| Frequency    | Nightly, plus before every migration                                 |
+| Retention    | 30 daily, 12 monthly (adjust to the facility's policy)               |
+| Encryption   | At rest, on the storage volume; encrypted in transit if remote       |
+| Access       | Backup operators only; no application role can read the backup store |
+| Off-site     | At least one copy outside the primary host                           |
+| Verification | Weekly `pg_restore --list`; restore drill quarterly                  |
 
 Backups contain personal health data. They are in scope for the DPIA and for the
 ODPC registration. They must not be copied to a developer laptop.
@@ -168,10 +169,10 @@ Record: date, backup file, row counts, time to restore, and who performed it.
 **None are defined in the repository.** The organisation must set them, because
 they are a clinical and contractual decision, not a technical default:
 
-| Objective | Value | Owner |
-|---|---|---|
-| RPO (acceptable data loss) | *to be set* | Facility + operations |
-| RTO (acceptable downtime) | *to be set* | Facility + operations |
+| Objective                  | Value       | Owner                 |
+| -------------------------- | ----------- | --------------------- |
+| RPO (acceptable data loss) | _to be set_ | Facility + operations |
+| RTO (acceptable downtime)  | _to be set_ | Facility + operations |
 
 A hospital running a maternity unit and a cashier should not accept a 24-hour RPO
 by default. This audit will not invent one.
@@ -180,15 +181,15 @@ by default. This audit will not invent one.
 
 ## 7. Monitoring that should exist
 
-| Signal | Why |
-|---|---|
-| Process up | The app is the front door |
-| 5xx rate | Reveals a broken query or integration |
-| Login failures per account | Lockout is implemented; repeated failures are an attack signal |
-| `FACILITY_MODULE_DISABLED` rate | A module switched off by accident looks like an outage |
-| DHA call failures | The readiness endpoint already reports them; alert on BLOCKED |
-| Backup success | An untested backup is a rumour |
-| Disk space on the database volume | PostgreSQL stops accepting writes when full |
+| Signal                            | Why                                                            |
+| --------------------------------- | -------------------------------------------------------------- |
+| Process up                        | The app is the front door                                      |
+| 5xx rate                          | Reveals a broken query or integration                          |
+| Login failures per account        | Lockout is implemented; repeated failures are an attack signal |
+| `FACILITY_MODULE_DISABLED` rate   | A module switched off by accident looks like an outage         |
+| DHA call failures                 | The readiness endpoint already reports them; alert on BLOCKED  |
+| Backup success                    | An untested backup is a rumour                                 |
+| Disk space on the database volume | PostgreSQL stops accepting writes when full                    |
 
 None of these are configured in the repository.
 

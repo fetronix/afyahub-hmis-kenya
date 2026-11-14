@@ -1,0 +1,44 @@
+{
+  "checks": [
+    "Real authenticated browser login",
+    "Section Planning Dashboard",
+    "Section Annual Plans",
+    "Section Stationery & Consumables",
+    "Section Branding & Uniform Projections",
+    "Section Planning Periods",
+    "Section CSV / Excel Import & History",
+    "Section Reports",
+    "Section Audit History",
+    "Negative price rejected in browser without committing",
+    "Draft item created with twelve quantities",
+    "Filtered edit loads all twelve months",
+    "Filtered update preserves unselected months",
+    "Inline price edit preserves all months under a month filter and refreshes totals",
+    "Draft item soft removal",
+    "Uniform authoritative opening balance and half-contribution calculation",
+    "Draft uniform soft removal",
+    "Branded report generation",
+    "Authorized PDF and Excel downloads",
+    "Production-bundled .xls worker and editable source mapping preview",
+    "Confirmation stays disabled until explicit review",
+    "Explicit preview-confirm import through browser",
+    "CSV duplicate names and missing/dash inputs preview as two distinct zero-filled source rows",
+    "CSV zero-fill duplicate import explicitly confirmed through browser",
+    "Mobile layout has no document-level horizontal overflow",
+    "No browser runtime errors",
+    "Only expected unauthenticated-session and negative-input HTTP errors"
+  ],
+  "errors": [],
+  "failures": [
+    {
+      "phase": "login",
+      "status": 401,
+      "path": "/api/auth/session"
+    },
+    {
+      "phase": "item CRUD",
+      "status": 400,
+      "path": "/api/budget-planning/plans/1/items"
+    }
+  ]
+}

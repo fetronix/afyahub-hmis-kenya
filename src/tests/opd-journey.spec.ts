@@ -6,7 +6,7 @@ import {
   radiologyChargeRequest,
   tariffCodeCandidates,
 } from '../billing/service-charges.ts';
-import { schemaSource } from './support/schema-source.ts';
+import { schemaSource, queriesSource, appSource } from './support/schema-source.ts';
 
 import { describe, expect, it } from 'vitest';
 
@@ -16,14 +16,6 @@ const root = resolve(here, '../..');
 
 function source(path: string): string {
   return readFileSync(resolve(root, path), 'utf8');
-}
-
-function squashed(haystack: string): string {
-  return haystack.replace(/\s+/g, '');
-}
-
-function containsCode(haystack: string, needle: string): boolean {
-  return squashed(haystack).includes(squashed(needle));
 }
 
 function escapeRegExp(value: string): string {
@@ -44,7 +36,7 @@ function routeBody(file: string, method: string, path: string): string | null {
   /* Routes now live on either `app` or a mounted router; stop at whichever
      handler declaration comes next. */
   const end = Math.min(
-    ...['\n  app.', '\n  router.'].map((marker) => {
+    ...['\n  app.', '\n  router.', '\napp.', '\nrouter.'].map((marker) => {
       const found = file.indexOf(marker, start);
 
       return found >= 0 ? found : Number.POSITIVE_INFINITY;
@@ -77,7 +69,7 @@ describe('The outpatient journey — contract tests', () => {
     ).toBe(JSON.stringify(['DRUG-PARACETAMOL', 'PARACETAMOL', 'DRUG']));
   });
 
-  it('2. THE LAB BATCH IS BILLED', async () => {
+  it('2. LAB ORDERS WAIT FOR VERIFIED COMPLETION', () => {
     const request = labOrderChargeRequest({
       id: 7,
       tenantId: 1,
@@ -87,43 +79,29 @@ describe('The outpatient journey — contract tests', () => {
       testName: 'Complete blood count',
       testId: 11,
     });
-
-    expect(request.sourceType, 'laboratory source type').toBe('LAB_ORDER');
-    expect(request.sourceId, 'the order id keys the charge').toBe(7);
-    expect(request.encounterId, 'the charge carries the encounter').toBe(4);
-    expect(request.codes[0], 'the order name is tried first').toBe('LAB-COMPLETE-BLOOD-COUNT');
-
-    /* The laboratory routes moved to src/routes/laboratory.routes.ts. */
-    const app = source('src/routes/laboratory.routes.ts');
-    const route = app.slice(
-      app.indexOf("'/api/lab-orders/batch'"),
-      app.indexOf("'/api/lab-orders',", app.indexOf("'/api/lab-orders/batch'")),
+    expect(request).toMatchObject({ sourceType: 'LAB_ORDER', sourceId: 7, encounterId: 4 });
+    const routes = source('src/routes/laboratory.routes.ts');
+    const batch = routeBody(routes, 'router.post', '/api/lab-orders/batch')!;
+    expect(batch).not.toContain('chargeSafely');
+    expect(batch).not.toContain('chargeLabOrderBatch');
+    const complete = routeBody(routes, 'router.post', '/api/lab-orders/:id/complete')!;
+    expect(complete).toContain('completeLabInvestigation');
+    expect(complete).toMatch(
+      /chargeSafely\(\s*labOrderChargeRequest\(order\),\s*billingOutboxAttemptId,\s*billingInitialTariff,\s*\)/,
     );
-
-    expect(
-      route.includes('chargeLabOrderBatch(result.orders, db)'),
-      'the batch route prices every order',
-    ).toBe(true);
-    expect(route.includes('billing: billed'), 'the batch route returns what was billed').toBe(true);
-    expect(
-      !route.includes("sourceType: 'LAB_ORDER'"),
-      'the batch route does not re-implement the charge request inline',
-    ).toBe(true);
+    const queries = source('src/db/queries/laboratory.ts');
+    expect(queries).toContain('stageClinicalBillingOutbox(');
+    expect(queries).toContain('labOrderChargeRequest(completed)');
+    expect(queries).toContain('resolveFacilityCharge(snapshotTx, billingRequest)');
+    expect(complete).toContain('billingOutboxAttemptId');
+    expect(queries).toContain("status !== 'Verified'");
   });
 
-  it('3. RADIOLOGY PRICES FROM THE COLUMN THAT EXISTS', async () => {
+  it('3. RADIOLOGY BILLS THE REPORTED EXAMINATION, NOT THE MODALITY', () => {
     const schema = schemaSource();
     const radiologyTable = schema.slice(schema.indexOf('radiologyOrders = pgTable'));
-
-    expect(
-      radiologyTable.includes("procedureName: text('procedure_name')"),
-      'radiology_orders has procedure_name',
-    ).toBe(true);
-    expect(
-      !radiologyTable.slice(0, 1800).includes("testName: text('test_name')"),
-      'radiology_orders has no test_name column',
-    ).toBe(true);
-
+    expect(radiologyTable).toContain("procedureName: text('procedure_name')");
+    expect(radiologyTable.slice(0, 1800)).not.toContain("testName: text('test_name')");
     const request = radiologyChargeRequest({
       id: 9,
       tenantId: 1,
@@ -132,262 +110,71 @@ describe('The outpatient journey — contract tests', () => {
       encounterId: null,
       procedureName: 'Chest X-ray',
     });
-
-    expect(request.codes[0], 'radiology prices by procedure name').toBe('RAD-CHEST-X-RAY');
-    expect(request.description, 'the line names the study').toBe('Chest X-ray');
-    expect(request.encounterId, 'an order without an encounter is allowed').toBe(null);
-
-    /* The radiology routes moved to src/routes/radiology.routes.ts. */
-    const app = source('src/routes/radiology.routes.ts');
-    /*
-     * The route is matched by shape rather than by exact formatting: it
-     * was reformatted onto several lines when the audit added permission
-     * and scope guards, and this assertion is about the charge request,
-     * not about where the line breaks fell.
-     */
-    const routeStart = app.search(/router\.post\(\s*'\/api\/radiology-orders'/);
-    const routeEnd = app.search(/router\.put\(\s*'\/api\/radiology-orders\/:id\/report'/);
-
-    const route = routeStart === -1 || routeEnd === -1 ? '' : app.slice(routeStart, routeEnd);
-
-    expect(
-      route.includes('radiologyChargeRequest'),
-      'the radiology route uses the shared request',
-    ).toBe(true);
-    expect(!route.includes('testName'), 'the radiology route no longer looks for testName').toBe(
-      true,
+    expect(request).toMatchObject({ sourceType: 'RADIOLOGY', sourceId: 9, encounterId: null });
+    const routes = source('src/routes/radiology.routes.ts');
+    const order = routeBody(routes, 'router.post', '/api/radiology-orders')!;
+    const report = routeBody(routes, 'router.put', '/api/radiology-orders/:id/report')!;
+    expect(order).not.toContain('chargeSafely');
+    expect(report).toContain(
+      'chargeSafely(radiologyChargeRequest(reported), billingOutboxAttemptId)',
     );
+    const resolver = source('src/billing/facility-charge-resolver.ts');
+    expect(resolver).toContain('row.facilityServiceId');
+    expect(resolver).toContain("row.status !== 'Reported'");
+    expect(resolver).not.toContain('row.modality');
   });
 
-  it('4. THE BILL SURVIVES EVERY STAGE', async () => {
-    const app = source('src/app.ts');
-
-    /*
-     * Discharge moved to src/routes/inpatient.routes.ts with the inpatient
-     * routes, so each stage names the file that now owns it. The claim is
-     * unchanged: this endpoint charges this source type.
-     */
-    const inpatient = source('src/routes/inpatient.routes.ts');
-    const diagnoses = source('src/routes/diagnoses.routes.ts');
-    const radiology = source('src/routes/radiology.routes.ts');
-    const pharmacy = source('src/routes/pharmacy.routes.ts');
-    const serviceTariffs = source('src/routes/service-tariffs.routes.ts');
-
-    const stages: Array<[string, string, string, string, string]> = [
-      ["'/api/encounters'", 'CONSULTATION', app, 'app.post', '/api/encounters'],
-      ["'/api/procedures'", 'PROCEDURE', diagnoses, 'router.post', '/api/procedures'],
-      ["'/api/radiology-orders'", 'RADIOLOGY', radiology, 'router.post', '/api/radiology-orders'],
-      ["'/api/pharmacy/dispense'", 'PHARMACY', pharmacy, 'router.post', '/api/pharmacy/dispense'],
-      /* The router is mounted at /api, so it registers the path without it. */
-      [
-        "'/api/admissions/:id/discharge'",
-        'BED_DAY',
-        inpatient,
-        'router.post',
-        '/admissions/:id/discharge',
-      ],
-    ];
-
-    for (const [route, sourceType, file, method, path] of stages) {
-      const body = routeBody(file, method, path);
-
-      expect(body !== null, `${route} exists`).toBe(true);
-
-      expect(body!.includes(sourceType), `${sourceType} is charged by ${route}`).toBe(true);
-    }
-
-    /*
-     * The one endpoint that cannot be checked by a literal is the lab
-     * batch: its request is built in service-charges.ts.
-     */
-    const charges = source('src/billing/service-charges.ts');
-    expect(charges.includes("sourceType: 'LAB_ORDER'"), 'laboratory charges are built once').toBe(
-      true,
-    );
-
-    /*
-     * A charge that cannot be priced must never stop the clinical act,
-     * and the screen is told what happened.
-     */
+  it('4. CLINICAL SOURCES USE THE STRICT RESOLVER AND DURABLE QUEUE', () => {
+    const encounterQueries = source('src/db/queries/encounters.ts');
+    const radiologyQueries = source('src/db/queries/laboratory.ts');
+    const inventory = source('src/inventory/inventory.service.ts');
+    const inpatient = source('src/db/queries/inpatient.ts');
+    const resolver = source('src/billing/facility-charge-resolver.ts');
     const billing = source('src/billing/billing.service.ts');
-    const matching = source('src/billing/tariff-matching.ts');
-    expect(
-      billing.includes("reason: 'TARIFF_NOT_CONFIGURED'"),
-      'a missing tariff is reported, not invented',
-    ).toBe(true);
-
-    /*
-     * The failure the tariff screen exists to prevent: a code that is
-     * stored in one case and looked up in another bills nothing, silently.
-     * Both ends are held here so neither can regress alone.
-     */
-    expect(
-      matching.includes('codeKey(row.code) === upper'),
-      'tariff lookup compares upper-cased codes',
-    ).toBe(true);
-    expect(
-      billing.includes('summariseCodes(request.codes)') &&
-        billing.includes('function summariseCodes'),
-      'the failure names the codes that were tried, and counts the rest',
-    ).toBe(true);
-
-    /* The tariff validators moved to their own module; read them there. */
-    const tariffs = source('src/routes/shared/tariffs.ts');
-    const tariffInput = tariffs.slice(
-      tariffs.indexOf('const validateTariffInput'),
-      tariffs.indexOf('const facilityHasTariffModule'),
-    );
-    expect(
-      tariffInput.includes('.trim().toUpperCase()'),
-      'tariff codes are stored in capitals, whatever the caller sends',
-    ).toBe(true);
-
-    const panel = source('src/components/modules/FacilityServiceTariffsPanel.tsx');
-    expect(
-      panel.includes('BILLING_FAMILIES') && panel.includes('not priced'),
-      'the tariff screen shows which services will not bill',
-    ).toBe(true);
-
-    /*
-     * Laboratory billing by catalogue code. The batch route carried only
-     * the test name, so a facility that priced LAB-CBC — the code its own
-     * catalogue shows — billed nothing for a full blood count.
-     */
-    /*
-     * The candidate list moved to one place (`codesForFamily`) so the
-     * charge, the diagnostic screen and this test cannot disagree. The
-     * behaviour asserted here is unchanged: the charge asks for the
-     * catalogue code first, because that is the code the facility sees in
-     * its own laboratory catalogue.
-     */
-    expect(
-      charges.includes('codesForFamily'),
-      'the laboratory charge asks the shared rule for its candidates',
-    ).toBe(true);
-    expect(
-      matching.includes('labTariffCodeCandidates({ code: input.code ?? null, name })'),
-      'and that rule asks for the catalogue code',
-    ).toBe(true);
-
-    const queries = source('src/db/queries.ts');
-    expect(
-      queries.includes('orders.push({') && queries.includes('testCode: test.code'),
-      'the batch carries each test code to the charging step',
-    ).toBe(true);
-    expect(
-      queries.includes('testCode = test?.code ?? null'),
-      'the single-order route resolves the code too',
-    ).toBe(true);
-
-    expect(
-      containsCode(app, "codes: codesForFamily({ family: 'LABORATORY',"),
-      'the one-by-one laboratory route prices like the batch does',
-    ).toBe(true);
-
-    expect(
-      panel.includes('unpricedLabTests'),
-      'the tariff screen names the laboratory tests that would bill nothing',
-    ).toBe(true);
-    expect(
-      panel.includes('labTariffCodeCandidates'),
-      'the screen and the engine share one rule for laboratory codes',
-    ).toBe(true);
-
-    expect(
-      containsCode(diagnoses, "codes: codesForFamily({ family: 'PROCEDURE',"),
-      'a procedure is priced from its own code as well as its name',
-    ).toBe(true);
-
-    /*
-     * The consultation that billed nothing because the facility numbered
-     * its tariffs OPD-001. Every automatic charge now offers the link the
-     * facility made on the tariff screen, and the engine tries it before
-     * the codes.
-     */
-    /*
-     * Each key is checked in the file that now owns its route. The delivery
-     * moved to src/routes/maternal-health.routes.ts when the maternity and
-     * immunisation routes were extracted from createApp, and the procedure
-     * to src/routes/diagnoses.routes.ts when the diagnosis and procedure
-     * routes followed. Naming the file per key keeps the assertion as tight
-     * as it was, instead of loosening it to "somewhere in the sources".
-     */
-    for (const [label, key, file] of [
-      ['the consultation', "billingServiceKeys('CONSULTATION'", 'src/app.ts'],
-      ['the admission', "billingServiceKeys('ADMISSION'", 'src/routes/inpatient.routes.ts'],
-      ['the delivery', "billingServiceKeys('DELIVERY'", 'src/routes/maternal-health.routes.ts'],
-      ['the prescription', "billingServiceKeys('PHARMACY'", 'src/routes/pharmacy.routes.ts'],
-      ['the procedure', "billingServiceKeys('PROCEDURE'", 'src/routes/diagnoses.routes.ts'],
-    ] as const) {
-      expect(source(file).includes(key), `${label} offers a billing link`).toBe(true);
+    for (const [queries, request] of [
+      [encounterQueries, 'consultationChargeRequest(updated)'],
+      [radiologyQueries, 'radiologyChargeRequest(updated)'],
+      [inpatient, 'admissionChargeRequest(created)'],
+    ]) {
+      expect(queries).toContain('stageClinicalBillingOutbox(');
+      expect(queries).toContain(request);
     }
-
-    /*
-     * The bed-day link moved with the bed-day engine: discharge, transfer
-     * and the nightly job all charge from `accrueBedDaysScoped`, so that
-     * is where the ward's link key has to be offered.
-     */
-    expect(
-      source('src/db/queries.ts').includes("billingServiceKeys('BED_DAY'"),
-      'the bed-day offers a billing link',
-    ).toBe(true);
-
-    expect(
-      charges.includes("billingServiceKeys('LABORATORY'"),
-      'a laboratory order offers a billing link',
-    ).toBe(true);
-    expect(
-      charges.includes("billingServiceKeys('RADIOLOGY'"),
-      'a radiology order offers a billing link',
-    ).toBe(true);
-
-    /*
-     * The order is now one rule in one module: LINK → CODE → DESCRIPTION.
-     * The assertion follows the code, so the guarantee survives the move:
-     * a link the facility made still beats a code the engine guessed, and
-     * both still beat a description match.
-     */
-    expect(
-      billing.includes('resolveTariffForCharge(') &&
-        matching.indexOf('/* ---- 1. Explicit link') < matching.indexOf('/* ---- 2. Exact code') &&
-        matching.indexOf('/* ---- 2. Exact code') <
-          matching.indexOf("/* ---- 3. The facility's own description"),
-      'a link the facility made is tried before a code, and a code before a description',
-    ).toBe(true);
-
-    /*
-     * A development database one migration behind must not turn every
-     * charge into a 500.
-     */
-    expect(
-      billing.includes("code === '42703'") && billing.includes('warnedMissingBillingKey'),
-      'a database without migration 0019 degrades to code matching, once, with a warning',
-    ).toBe(true);
-
-    /* The write path stores the link, and refuses a duplicate. */
-    expect(
-      serviceTariffs.includes('billingKey: input.billingKey'),
-      'the tariff write stores the link',
-    ).toBe(true);
-    expect(
-      tariffs.includes('TARIFF_BILLING_KEY_TAKEN'),
-      'two active tariffs cannot answer the same automatic charge',
-    ).toBe(true);
-    expect(
-      tariffs.includes('TARIFF_MIGRATION_REQUIRED') && tariffs.includes('migrations 0019 and 0021'),
-      'a database without the column says which migration is missing',
-    ).toBe(true);
+    const attempts = source('src/billing/charge-attempts.ts');
+    expect(attempts).toContain('recordChargeAttempt(');
+    expect(attempts).toContain('preserveExisting: true');
+    expect(attempts).toContain('BILLING_EVALUATION_PENDING');
+    expect(inventory).toContain("sourceType: 'PHARMACY'");
+    expect(resolver).toContain('schema.facilityServices');
+    expect(resolver).toContain('schema.facilityServiceTariffs');
+    expect(resolver).not.toContain('schema.masterServiceSources');
+    expect(resolver).not.toContain('schema.masterServiceAliases');
+    expect(resolver).toContain('CONSULTATION_SELECTION_REQUIRED');
+    expect(resolver).not.toContain(
+      'upper(trim(${schema.masterServices.code})) = upper(trim(${sourceCode}))',
+    );
+    expect(resolver).toContain('tariff.autoBill');
+    expect(resolver).toContain('cents <= 0');
+    expect(resolver).toContain('dateVerdict(');
+    expect(resolver).not.toContain('resolveFromRows');
+    expect(billing).toContain('resolveFacilityCharge(');
+    expect(billing).toContain('idempotencyKey');
+    // Non-pharmacy lines retain their service identity; an inventory-priced
+    // medicine deliberately has no fabricated facility-service ID.
+    expect(billing).toContain('facilityServiceId: service?.id ?? null');
+    expect(billing).toContain('resolvePharmacyInventoryCharge(');
+    expect(billing).toContain('inventoryItemId: pharmacy?.itemId ?? null');
+    expect(source('src/routes/index.ts')).not.toContain('masterTariffsRoutes');
   });
 
   it('5. A VISIT CAN END', async () => {
-    const queries = source('src/db/queries.ts');
+    const queries = queriesSource();
 
     expect(
       queries.includes("safeData.status === 'Completed'"),
       'completing a visit is recognised',
     ).toBe(true);
     expect(
-      queries.includes('safeData.endedAt = safeData.endedAt ?? new Date()'),
+      queries.includes('safeData.endedAt = locked.endedAt ?? new Date()'),
       'the server stamps the end time',
     ).toBe(true);
 
@@ -410,7 +197,7 @@ describe('The outpatient journey — contract tests', () => {
   });
 
   it('6. IDENTIFIERS ARE ALLOCATED ON THE SERVER', async () => {
-    const queries = source('src/db/queries.ts');
+    const queries = queriesSource();
 
     expect(
       queries.includes('export async function nextPatientMrn'),
@@ -438,7 +225,7 @@ describe('The outpatient journey — contract tests', () => {
     ).toBe(true);
 
     /* The API route turns the named refusal into 409, not 500. */
-    const app = source('src/app.ts');
+    const app = appSource();
     expect(
       app.includes('err instanceof queries.PatientMrnConflictError'),
       'a duplicate MRN answers 409',
@@ -456,11 +243,11 @@ describe('The outpatient journey — contract tests', () => {
      * update must be absent from both files: checking only the one that holds
      * the routes today would go quiet the moment they move again.
      */
-    const app = source('src/app.ts');
+    const app = appSource();
     const queues = source('src/routes/queues.routes.ts');
     const pharmacy = source('src/routes/pharmacy.routes.ts');
     const serviceTariffs = source('src/routes/service-tariffs.routes.ts');
-    const queries = source('src/db/queries.ts');
+    const queries = queriesSource();
     const opd = source('src/components/modules/OutpatientModule.tsx');
 
     expect(
@@ -480,7 +267,7 @@ describe('The outpatient journey — contract tests', () => {
     expect(pharmacy.includes("'Pharmacy'"), 'dispensing closes the pharmacy token').toBe(true);
 
     expect(
-      opd.includes("api.getQueues(currentFacility?.id, 'Triage')"),
+      opd.includes("api.getQueues(currentFacility.id, 'Triage')"),
       'the clinician sees the triage queue',
     ).toBe(true);
     expect(opd.includes("'In-Progress'"), 'starting a visit moves the token').toBe(true);
@@ -495,7 +282,7 @@ describe('The outpatient journey — contract tests', () => {
     }
 
     expect(
-      panel.includes('not</strong> billed'),
+      panel.includes('service without a valid match is not automatically billed'),
       'it says that an unmatched service is not billed',
     ).toBe(true);
   });

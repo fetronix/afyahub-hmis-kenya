@@ -15,6 +15,7 @@ import {
 } from '../billing/tariff-matching.ts';
 
 import { describe, expect, it } from 'vitest';
+import { appSource } from './support/schema-source.ts';
 
 const opdTariffs = [
   {
@@ -513,14 +514,14 @@ describe("Tariff matching — the facility's own price list", () => {
      * ...and it is recorded. Requirement: a failed attempt is kept and is
      * retryable, which needs the table, the route and the button to exist.
      */
-    const app = readFileSync(resolve(process.cwd(), 'src/app.ts'), 'utf8');
+    const app = appSource();
     const migration = readFileSync(
       resolve(process.cwd(), 'drizzle/0020_billing_charge_attempts.sql'),
       'utf8',
     );
     const journal = readFileSync(resolve(process.cwd(), 'drizzle/meta/_journal.json'), 'utf8');
     const panel = readFileSync(
-      resolve(process.cwd(), 'src/components/modules/FacilityServiceTariffsPanel.tsx'),
+      resolve(process.cwd(), 'src/components/modules/FacilityBillingReview.tsx'),
       'utf8',
     );
 
@@ -541,13 +542,23 @@ describe("Tariff matching — the facility's own price list", () => {
     const charges = readFileSync(resolve(process.cwd(), 'src/routes/shared/charges.ts'), 'utf8');
 
     expect(
-      charges.includes('chargeAttempts.chargeAndRecord(db, request)'),
-      'every charge site records what it could not price',
+      charges.includes(
+        'chargeAttempts.chargeAndRecord(db, request, initialAttemptId, initialClinicalTariff)',
+      ),
+      'every charge site records what it could not price and forwards the initial snapshot',
+    ).toBe(true);
+    const direct = readFileSync(
+      resolve(process.cwd(), 'src/billing/facility-charge-resolver.ts'),
+      'utf8',
+    );
+    expect(
+      direct.includes('TARIFF_NOT_CONFIGURED') && panel.includes('attempt.detail'),
+      'the direct resolver records a reason which the review screen displays',
     ).toBe(true);
     expect(
       app.includes("'/api/billing/tariff-match'"),
-      'the screen can ask why a service was not priced',
-    ).toBe(true);
+      'legacy guessed matching is not mounted',
+    ).toBe(false);
     expect(
       migration.includes('CREATE TABLE IF NOT EXISTS "billing_charge_attempts"'),
       'migration 0020 creates the queue',
@@ -564,7 +575,7 @@ describe("Tariff matching — the facility's own price list", () => {
       true,
     );
     expect(
-      panel.includes('Charges that could not be priced'),
+      panel.includes('Charges awaiting billing or pricing review'),
       'the queue is visible on the tariff screen',
     ).toBe(true);
     expect(panel.includes('Retry all'), 'with a retry action').toBe(true);

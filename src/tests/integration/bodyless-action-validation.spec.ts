@@ -1,0 +1,297 @@
+import express from 'express';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { httpJson, startTestServer } from './support/http-harness.ts';
+
+const storage = vi.hoisted(() => ({
+  touched: vi.fn(() => {
+    throw new Error('Unexpected database access');
+  }),
+}));
+vi.mock('../../db/index.ts', () => ({
+  db: new Proxy({}, { get: () => storage.touched }),
+  pool: { query: storage.touched, connect: storage.touched },
+}));
+vi.mock('../../auth/authorization.middleware.ts', async (original) => ({
+  ...(await original<typeof import('../../auth/authorization.middleware.ts')>()),
+  requirePermission: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+  requireAnyPermission: () => (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
+// Isolate the route middleware. In the full app, payer policy guards run first and may query the database.
+vi.mock('../../insurance/hub/guards.ts', async (original) => ({
+  ...(await original<typeof import('../../insurance/hub/guards.ts')>()),
+  shaPolicyGuard: (_req: unknown, _res: unknown, next: () => void) => next(),
+  privatePolicyGuard: (_req: unknown, _res: unknown, next: () => void) => next(),
+}));
+import shaRoutes from '../../routes/sha-eclaims.routes.ts';
+import privateInsuranceRoutes from '../../routes/private-insurance.routes.ts';
+import dialysisRoutes from '../../routes/dialysis.routes.ts';
+import accountingRoutes from '../../routes/accounting.routes.ts';
+import {
+  closeFinancialPeriodBodySchema,
+  createAccountBodySchema,
+  createBankAccountBodySchema,
+  createFinancialPeriodBodySchema,
+  createExpenseRequestBodySchema,
+  decideExpenseRequestBodySchema,
+  facilityActionBodySchema,
+  postJournalBodySchema,
+  reverseJournalBodySchema,
+} from '../../validation/schemas/index.ts';
+
+describe('bodyless action boundaries', () => {
+  let baseUrl: string;
+  let close: () => Promise<void>;
+  beforeAll(async () => {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      Object.assign(req, {
+        authContext: { tenantId: 1, facilityId: 10, userId: 2, isSuperAdmin: false },
+        user: { id: 2, fullName: 'Synthetic', username: 'synthetic' },
+      });
+      next();
+    });
+    app.use('/api/insurance/sha', shaRoutes);
+    app.use('/api/insurance', privateInsuranceRoutes);
+    app.use('/api/dialysis', dialysisRoutes);
+    app.use('/api/accounting', accountingRoutes);
+    ({ baseUrl, close } = await startTestServer(app));
+  });
+  afterAll(async () => {
+    if (close) await close();
+  });
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('POST /api/accounting/bank/accounts rejects full account numbers and malformed masks', async () => {
+    const body = {
+      accountName: 'Synthetic',
+      bankCode: 'SYN',
+      bankName: 'Synthetic',
+      glAccountId: 1,
+      accountLastFour: '1234',
+    };
+    expect(createBankAccountBodySchema.safeParse(body).success).toBe(true);
+    for (const invalid of [
+      {},
+      { ...body, accountLastFour: '123456' },
+      { ...body, accountNumber: '12345678' },
+      { ...body, password: 'not-a-real-password' },
+      { ...body, glAccountId: -1 },
+    ]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/accounting/bank/accounts', {
+        body: invalid,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(storage.touched).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/accounting/expenses/:id/decision rejects invalid decisions and notes', async () => {
+    expect(
+      decideExpenseRequestBodySchema.safeParse({ decision: 'approve', notes: 'Reviewed' }).success,
+    ).toBe(true);
+    for (const body of [
+      {},
+      { decision: 'APPROVE', notes: '' },
+      { decision: 'PAY', notes: 'Reviewed' },
+    ]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/accounting/expenses/1/decision', {
+        body,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(storage.touched).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/accounting/expenses rejects malformed expense requests before scope lookup', async () => {
+    const body = {
+      expenseAccountId: 1,
+      payableAccountId: 2,
+      amountKes: '10.00',
+      incurredDate: '2027-01-01',
+      payeeName: 'Synthetic',
+      category: 'Other',
+      description: 'Recorded expense',
+    };
+    expect(createExpenseRequestBodySchema.safeParse(body).success).toBe(true);
+    for (const invalid of [
+      {},
+      { ...body, amountKes: '-1' },
+      { ...body, payableAccountId: 1 },
+      {
+        ...body,
+        supportingDocuments: [{ name: 'Document', storageReference: 'https://example.test/file' }],
+      },
+    ]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/accounting/expenses', {
+        body: invalid,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(storage.touched).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/accounting/journals/:id/reverse rejects invalid dates or reasons before scope lookup', async () => {
+    expect(
+      reverseJournalBodySchema.safeParse({ entryDate: '2027-01-01', reason: 'Duplicate' }).success,
+    ).toBe(true);
+    for (const body of [
+      {},
+      { entryDate: '2027-01-01', reason: '' },
+      { entryDate: '2027-02-30', reason: 'Duplicate' },
+    ]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/accounting/journals/1/reverse', {
+        body,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(storage.touched).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/accounting/journals rejects unbalanced lines before scope lookup', async () => {
+    const body = {
+      entryDate: '2027-01-01',
+      description: 'Synthetic journal',
+      lines: [
+        { accountId: 1, debitKes: '10.00' },
+        { accountId: 2, creditKes: '10.00' },
+      ],
+    };
+    expect(postJournalBodySchema.safeParse(body).success).toBe(true); // Key may be supplied in a header.
+    for (const invalid of [
+      {},
+      {
+        ...body,
+        lines: [
+          { accountId: 1, debitKes: '10.00' },
+          { accountId: 2, creditKes: '9.00' },
+        ],
+      },
+      { ...body, entryDate: '2027-02-30' },
+    ]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/accounting/journals', {
+        body: invalid,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(storage.touched).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/accounting/periods/:id/close rejects missing closing notes', async () => {
+    expect(closeFinancialPeriodBodySchema.safeParse({ notes: 'Reviewed' }).success).toBe(true);
+    for (const body of [{}, { notes: '  ' }, { notes: 4 }]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/accounting/periods/1/close', { body });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(storage.touched).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/accounting/periods rejects invalid dates before scope lookup', async () => {
+    const body = {
+      periodCode: '2027-01',
+      name: 'Synthetic',
+      startDate: '2027-01-01',
+      endDate: '2027-01-31',
+    };
+    expect(createFinancialPeriodBodySchema.safeParse(body).success).toBe(true);
+    for (const invalid of [
+      {},
+      { ...body, startDate: '2027-02-30' },
+      { ...body, startDate: '2027-02-01' },
+    ]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/accounting/periods', {
+        body: invalid,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(storage.touched).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/accounting/accounts rejects invalid account payloads before scope lookup', async () => {
+    const body = {
+      accountCode: 'SYN',
+      accountName: 'Synthetic',
+      accountType: 'ASSET',
+      normalBalance: 'DEBIT',
+      subType: 'OTHER',
+    };
+    expect(createAccountBodySchema.safeParse(body).success).toBe(true);
+    for (const invalid of [{}, { ...body, accountType: 'invalid' }, { ...body, accountName: '' }]) {
+      const response = await httpJson(baseUrl, 'POST', '/api/accounting/accounts', {
+        body: invalid,
+      });
+      expect(response.status).toBe(400);
+      expect(response.body.error).toBe('VALIDATION_ERROR');
+    }
+    expect(storage.touched).not.toHaveBeenCalled();
+  });
+
+  it('POST /api/accounting/expenses/:id/post rejects malformed input before the handler', async () => {
+    const response = await httpJson(baseUrl, 'POST', '/api/accounting/expenses/1/post', {
+      body: { facilityId: -1 },
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('VALIDATION_ERROR');
+    expect(storage.touched).not.toHaveBeenCalled();
+    expect(facilityActionBodySchema.safeParse({}).success).toBe(true);
+  });
+
+  it('POST /api/dialysis/schedules/:id/start rejects malformed input before the handler', async () => {
+    const response = await httpJson(baseUrl, 'POST', '/api/dialysis/schedules/1/start', {
+      body: { facilityId: -1 },
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('VALIDATION_ERROR');
+    expect(storage.touched).not.toHaveBeenCalled();
+    expect(facilityActionBodySchema.safeParse({}).success).toBe(true);
+  });
+
+  it('POST /api/dialysis/treatment-plans/:id/authorize rejects malformed input before the handler', async () => {
+    const response = await httpJson(baseUrl, 'POST', '/api/dialysis/treatment-plans/1/authorize', {
+      body: { facilityId: -1 },
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('VALIDATION_ERROR');
+    expect(storage.touched).not.toHaveBeenCalled();
+    expect(facilityActionBodySchema.safeParse({}).success).toBe(true);
+  });
+
+  it('POST /api/insurance/claims/:id/validate rejects a non-object body at the route', async () => {
+    const response = await httpJson(baseUrl, 'POST', '/api/insurance/claims/1/validate', {
+      body: [],
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('VALIDATION_ERROR');
+    expect(storage.touched).not.toHaveBeenCalled();
+    expect(facilityActionBodySchema.safeParse({}).success).toBe(true);
+  });
+
+  it('POST /api/insurance/sha/claims/:id/submit rejects a non-object body at the route', async () => {
+    const response = await httpJson(baseUrl, 'POST', '/api/insurance/sha/claims/1/submit', {
+      body: [],
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('VALIDATION_ERROR');
+    expect(storage.touched).not.toHaveBeenCalled();
+    expect(facilityActionBodySchema.safeParse({}).success).toBe(true);
+  });
+
+  it('POST /api/insurance/sha/claims/:id/validate rejects a non-object body at the route', async () => {
+    const response = await httpJson(baseUrl, 'POST', '/api/insurance/sha/claims/1/validate', {
+      body: [],
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('VALIDATION_ERROR');
+    expect(storage.touched).not.toHaveBeenCalled();
+    expect(facilityActionBodySchema.safeParse({}).success).toBe(true);
+  });
+});

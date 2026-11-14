@@ -200,7 +200,8 @@ router.post('/auth/login', loginLimiter, async (req, res) => {
   } catch (error) {
     if (sendPortalError(res, error)) return;
 
-    console.error('Portal login failed:', error);
+    // Query errors may carry a login identifier or session parameters.
+    console.error('Portal login failed.');
 
     res.status(500).json({
       success: false,
@@ -371,7 +372,7 @@ router.post('/sharing', async (req: PortalRequest, res) => {
       success: true,
       ...result,
       message:
-        'Give this code to the recipient. It works once, only for them, and only within your staff session at a facility in this network.',
+        'Keep this code private. Any authorized staff member with patient-read permission in your tenant who has it can redeem it once. The recipient name is not verified. Redemption returns request details, not your clinical record.',
     });
   } catch (error) {
     if (sendPortalError(res, error)) return;
@@ -444,7 +445,8 @@ router.post('/password', async (req: PortalRequest, res) => {
     res.json({
       success: true,
       ...result,
-      message: 'Password changed. Every other device has been signed out.',
+      message:
+        'Password changed. All devices, including this one, have been signed out. Sign in again.',
     });
   } catch (error) {
     if (sendPortalError(res, error)) return;

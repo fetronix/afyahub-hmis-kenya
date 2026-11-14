@@ -1,3 +1,4 @@
+import { isFacilityFinancialPermission } from '../auth/permission-boundaries.ts';
 /**
  * JaliCare HMIS
  * Permission Seed
@@ -11,8 +12,9 @@
  * - UPDATES the name / module / description of an existing permission
  *   row. Those three columns are platform-owned: they are the label the
  *   screens print, not a facility decision.
- * - INSERTS a role_permissions row for SUPER_ADMIN (all seeded codes)
- *   and for each tenant FACILITY_ADMIN (the invitation set) when that
+ * - INSERTS a role_permissions row for SUPER_ADMIN (except facility tariffs,
+ *   procurement mutations and facility-owned payment/payer operations) and for each tenant
+ *   FACILITY_ADMIN (the invitation set) when that
  *   grant is absent.
  *
  * WHAT IT NEVER DOES
@@ -71,6 +73,43 @@ function plan(action: 'create' | 'update' | 'grant', message: string): void {
    ============================================================ */
 
 const PERMISSIONS = [
+  // Facility administrators explicitly delegate these; none imply clinical clearance.
+  {
+    code: 'theatre.read',
+    name: 'Read theatre schedule',
+    module: 'theatre',
+    description: 'View facility theatre cases, rooms, practitioners and scheduling history.',
+  },
+  {
+    code: 'theatre.reports.read',
+    name: 'Read theatre scheduling reports',
+    module: 'theatre',
+    description: 'View aggregated facility scheduling reports, not clinical outcomes.',
+  },
+  {
+    code: 'theatre.rooms.manage',
+    name: 'Manage theatre rooms',
+    module: 'theatre',
+    description: 'Create rooms and change their operational state.',
+  },
+  {
+    code: 'theatre.schedule.create',
+    name: 'Schedule theatre cases',
+    module: 'theatre',
+    description: 'Create a structured theatre booking.',
+  },
+  {
+    code: 'theatre.schedule.reconcile',
+    name: 'Review historical theatre reservations',
+    module: 'theatre',
+    description: 'Record or revoke an explicit scheduling-only legacy reservation attestation.',
+  },
+  {
+    code: 'theatre.schedule.manage',
+    name: 'Change theatre bookings',
+    module: 'theatre',
+    description: 'Reschedule or cancel a scheduled theatre case.',
+  },
   /* ==========================================================
      PLATFORM
      ========================================================== */
@@ -158,6 +197,28 @@ const PERMISSIONS = [
     name: 'Manage Facility Modules',
     module: 'facilities',
     description: "Turn a facility module on or off, which also opens or closes that module's API.",
+  },
+
+  /*
+   * Letterhead branding (migration 0090). Reading is separate from managing
+   * because a cashier needs to know which branding their receipts carry and
+   * has no business replacing the hospital's stationery. Both are facility
+   * scoped: a facility administrator manages their own letterhead and never
+   * another facility's.
+   */
+  {
+    code: 'facility.branding.read',
+    name: 'View Facility Letterhead',
+    module: 'facilities',
+    description: 'View the letterhead versions this facility has uploaded and which one is active.',
+  },
+
+  {
+    code: 'facility.branding.manage',
+    name: 'Manage Facility Letterhead',
+    module: 'facilities',
+    description:
+      "Upload, preview, activate, replace and withdraw this facility's letterhead versions.",
   },
 
   {
@@ -490,6 +551,14 @@ const PERMISSIONS = [
     description: 'Cancel appointments.',
   },
 
+  {
+    code: 'appointments.categories.manage',
+    name: 'Manage appointment categories',
+    module: 'appointments',
+    description:
+      'Configure facility appointment categories and optional service references; this does not authorize billing.',
+  },
+
   /* ==========================================================
      MATERNITY / MCH
      ========================================================== */
@@ -630,6 +699,20 @@ const PERMISSIONS = [
   },
 
   /* ==========================================================
+     RADIOLOGY
+     ========================================================== */
+
+  // The radiology routers gate reads on clinical.read; this code exists because
+  // two shared catalogue endpoints list radiology.read as an accepted reader
+  // permission. Without it the gate named a permission nobody could hold.
+  {
+    code: 'radiology.read',
+    name: 'View Radiology',
+    module: 'radiology',
+    description: 'View radiology orders and reports.',
+  },
+
+  /* ==========================================================
      PHARMACY
      ========================================================== */
 
@@ -704,6 +787,22 @@ const PERMISSIONS = [
     description: 'Record patient payments.',
   },
 
+  {
+    code: 'billing.refunds.record',
+    name: 'Record Manual Refunds',
+    module: 'billing',
+    description:
+      'Request and record an approved externally performed refund; does not initiate transfers.',
+  },
+
+  {
+    code: 'billing.refunds.approve',
+    name: 'Independently Review Refund Requests',
+    module: 'billing',
+    description:
+      'Independently approve, reject or revoke a patient-receipt refund request; no transfer is initiated.',
+  },
+
   /* ==========================================================
      FACILITY SERVICE TARIFFS
      ========================================================== */
@@ -753,29 +852,325 @@ const PERMISSIONS = [
     description: 'Manage insurance and SHA claims.',
   },
 
+  {
+    code: 'insurance.sha.read',
+    name: 'View SHA eClaims & Readiness',
+    module: 'insurance',
+    description: 'View SHA eClaims connection readiness, eligibility history, and benefit status.',
+  },
+
+  {
+    code: 'insurance.sha.eligibility.check',
+    name: 'Check SHA Patient Eligibility',
+    module: 'insurance',
+    description: 'Initiate or retry SHA patient eligibility verification.',
+  },
+
+  {
+    code: 'insurance.sha.benefits.validate',
+    name: 'Validate SHA Service Benefits',
+    module: 'insurance',
+    description: 'Validate service coverage and benefits against SHA rules.',
+  },
+
+  {
+    code: 'insurance.sha.preauthorization.create',
+    name: 'Create & Submit SHA Preauthorization',
+    module: 'insurance',
+    description: 'Create and submit SHA preauthorization requests.',
+  },
+
+  {
+    code: 'insurance.sha.claims.read',
+    name: 'View SHA eClaims',
+    module: 'insurance',
+    description: 'View SHA eClaims packages, status history, and rejection details.',
+  },
+
+  {
+    code: 'insurance.sha.claims.prepare',
+    name: 'Prepare SHA eClaims',
+    module: 'insurance',
+    description: 'Assemble and validate SHA eClaims packages from clinical and billing records.',
+  },
+
+  {
+    code: 'insurance.sha.claims.submit',
+    name: 'Submit SHA eClaims',
+    module: 'insurance',
+    description: 'Submit validated SHA eClaims packages to the payer gateway.',
+  },
+
+  {
+    code: 'insurance.sha.claims.resubmit',
+    name: 'Resubmit Rejected SHA eClaims',
+    module: 'insurance',
+    description: 'Correct and resubmit rejected SHA eClaims packages with audit trail.',
+  },
+
+  {
+    code: 'insurance.sha.remittance.read',
+    name: 'View SHA Remittances',
+    module: 'insurance',
+    description: 'View SHA remittance advices and payment statuses.',
+  },
+
+  {
+    code: 'insurance.sha.reconciliation.manage',
+    name: 'Reconcile SHA Remittances',
+    module: 'insurance',
+    description: 'Record SHA remittance advices and reconcile claims against invoices.',
+  },
+
+  {
+    code: 'insurance.sha.configuration.manage',
+    name: 'Manage SHA Payer Configuration & Rules',
+    module: 'insurance',
+    description:
+      'Manage SHA payer configuration, service code mappings, and benefit rule approvals.',
+  },
+
+  {
+    code: 'insurance.payers.read',
+    name: 'View Private Insurer Configurations',
+    module: 'insurance',
+    description:
+      'View configured private insurers (Britam, PACIS, gateways), capability matrices, and connection status.',
+  },
+
+  {
+    code: 'insurance.payers.manage',
+    name: 'Manage Private Insurer Configurations',
+    module: 'insurance',
+    description:
+      'Configure private insurers, integration modes, secret environment references, and claim/preauth requirements.',
+  },
+
+  {
+    code: 'insurance.members.read',
+    name: 'View Insurance Memberships & Policies',
+    module: 'insurance',
+    description:
+      'View patient insurance memberships, principal/dependent links, and policy validity records.',
+  },
+
+  {
+    code: 'insurance.members.manage',
+    name: 'Manage Insurance Memberships & Policies',
+    module: 'insurance',
+    description: 'Register patient insurance policies and record auditable membership corrections.',
+  },
+
+  {
+    code: 'insurance.eligibility.check',
+    name: 'Check Private Insurance Eligibility',
+    module: 'insurance',
+    description:
+      'Initiate adapter-backed or explicitly labelled manual eligibility checks for private insurers.',
+  },
+
+  {
+    code: 'insurance.benefits.validate',
+    name: 'Validate Private Insurance Benefits & Copayments',
+    module: 'insurance',
+    description:
+      'Validate mapped benefits, limits, deductibles, and copayments across private insurers.',
+  },
+
+  {
+    code: 'insurance.mappings.manage',
+    name: 'Manage Insurer Service Mappings & Benefit Rules',
+    module: 'insurance',
+    description:
+      'Configure effective-dated service-code mappings, benefit limits, exclusions, and copayment rules per insurer.',
+  },
+
+  {
+    code: 'insurance.preauthorization.manage',
+    name: 'Manage Private Insurance Preauthorizations',
+    module: 'insurance',
+    description:
+      'Create, attach clinical documents, submit, and update private insurer preauthorization requests.',
+  },
+
+  {
+    code: 'insurance.private.claims.prepare',
+    name: 'Prepare & Validate Private Insurance Claims',
+    module: 'insurance',
+    description:
+      'Assemble, review, correct, and validate private insurance claims from JaliCare invoices and clinical records.',
+  },
+
+  {
+    code: 'insurance.private.claims.submit',
+    name: 'Submit & Resubmit Private Insurance Claims',
+    module: 'insurance',
+    description:
+      'Submit and resubmit validated private insurance claims and record external adjudication responses.',
+  },
+
+  {
+    code: 'insurance.private.remittance.reconcile',
+    name: 'Import & Reconcile Private Insurance Remittances',
+    module: 'insurance',
+    description:
+      'Import private insurer remittance advices and reconcile allocations against claims and invoices.',
+  },
+
   /* ==========================================================
      PROCUREMENT
      ========================================================== */
 
   {
     code: 'procurement.read',
-    name: 'View Procurement',
+    name: 'View Suppliers and Purchase Orders',
     module: 'procurement',
-    description: 'View procurement information.',
+    description: 'View tenant suppliers and facility purchase orders and history.',
   },
 
   {
     code: 'procurement.create',
-    name: 'Create Procurement Requests',
+    name: 'Create Suppliers and Purchase Orders',
     module: 'procurement',
-    description: 'Create procurement requests.',
+    description: 'Create supplier records and pending purchase orders.',
+  },
+
+  {
+    code: 'procurement.update',
+    name: 'Edit Procurement',
+    module: 'procurement',
+    description: 'Edit pending purchase orders and supplier details.',
+  },
+  {
+    code: 'procurement.delete',
+    name: 'Cancel Procurement',
+    module: 'procurement',
+    description: 'Cancel pending orders and deactivate suppliers without deleting history.',
+  },
+  {
+    code: 'procurement.reject',
+    name: 'Reject Purchase Orders',
+    module: 'procurement',
+    description: 'Reject pending purchase orders with a reason.',
+  },
+  {
+    code: 'procurement.complete',
+    name: 'Complete Purchase Orders',
+    module: 'procurement',
+    description: 'Record administrative completion of approved purchase orders.',
   },
 
   {
     code: 'procurement.approve',
-    name: 'Approve Procurement',
+    name: 'Approve Purchase Orders',
     module: 'procurement',
-    description: 'Approve procurement transactions.',
+    description: 'Approve itemized purchase orders created and edited by other users.',
+  },
+
+  /*
+   * Delegated approval authority is a facility-governance control, not a
+   * procurement permission. Keeping it separate lets a facility decide who may
+   * move the thresholds without also handing them the ability to approve the
+   * spending those thresholds govern — see the note in
+   * `src/routes/approval-policy.routes.ts`.
+   */
+  {
+    code: 'approval_policies.read',
+    name: 'View Approval Policies',
+    module: 'procurement',
+    description:
+      'See the amount thresholds that decide which approval authority a facility requires.',
+  },
+
+  {
+    code: 'approval_policies.manage',
+    name: 'Manage Approval Policies',
+    module: 'procurement',
+    description: 'Create, amend and retire the facility approval thresholds. Audited.',
+  },
+
+  /* ==========================================================
+     FIXED ASSETS
+     ========================================================== */
+
+  {
+    code: 'assets.read',
+    name: 'View Fixed Assets',
+    module: 'assets',
+    description:
+      'View the facility asset register, maintenance, transfers and depreciation history.',
+  },
+  {
+    code: 'assets.manage',
+    name: 'Manage Fixed Assets',
+    module: 'assets',
+    description: 'Register assets, maintain categories, move custodians and record maintenance.',
+  },
+  {
+    code: 'assets.depreciate',
+    name: 'Post Depreciation',
+    module: 'assets',
+    description: 'Run and post monthly depreciation to the general ledger.',
+  },
+  {
+    code: 'assets.dispose',
+    name: 'Dispose of Fixed Assets',
+    module: 'assets',
+    description: 'Write off, sell or retire an asset and post the disposal journal.',
+  },
+
+  /* ==========================================================
+     WORKFORCE — HR AND PAYROLL
+     ========================================================== */
+
+  {
+    code: 'hr.read',
+    name: 'View Human Resources',
+    module: 'hr',
+    description: 'View employees, departments, attendance, rosters and leave.',
+  },
+  {
+    code: 'hr.manage',
+    name: 'Manage Human Resources',
+    module: 'hr',
+    description: 'Register employees, record attendance, rosters and leave requests.',
+  },
+  {
+    code: 'hr.approve',
+    name: 'Approve Leave',
+    module: 'hr',
+    description: 'Approve or reject leave requests recorded by another user.',
+  },
+  {
+    code: 'payroll.read',
+    name: 'View Payroll',
+    module: 'payroll',
+    description: 'View payroll periods, runs and payslips.',
+  },
+  {
+    code: 'payroll.manage',
+    name: 'Prepare Payroll',
+    module: 'payroll',
+    description: 'Create periods, set pay components and calculate a payroll run.',
+  },
+  {
+    code: 'payroll.approve',
+    name: 'Approve Payroll',
+    module: 'payroll',
+    description: 'Approve a payroll run calculated by another user.',
+  },
+  {
+    code: 'payroll.post',
+    name: 'Post Payroll to Ledger',
+    module: 'payroll',
+    description: 'Post an approved payroll run to the general ledger.',
+  },
+  {
+    code: 'payroll.statutory.manage',
+    name: 'Record Statutory Payroll Rules',
+    module: 'payroll',
+    description:
+      'Record effective-dated statutory versions with their authority source; the application ships none.',
   },
 
   /* ==========================================================
@@ -837,6 +1232,396 @@ const PERMISSIONS = [
     name: 'Manage System Settings',
     module: 'system',
     description: 'Manage system configuration.',
+  },
+
+  /* ==========================================================
+     ACCOUNTING, GENERAL LEDGER & BANK RECONCILIATION
+     ========================================================== */
+
+  {
+    code: 'accounting.planning.read',
+    name: 'View budget plans',
+    module: 'accounting',
+    description:
+      'Facility-scoped planning projections only; no actual expenditure or procurement posting.',
+  },
+  {
+    code: 'accounting.planning.manage',
+    name: 'Manage draft budget plans',
+    module: 'accounting',
+    description:
+      'Facility-scoped planning projections only; no actual expenditure or procurement posting.',
+  },
+  {
+    code: 'accounting.planning.import',
+    name: 'Import planning workbooks',
+    module: 'accounting',
+    description:
+      'Facility-scoped planning projections only; no actual expenditure or procurement posting.',
+  },
+  {
+    code: 'accounting.planning.approve',
+    name: 'Independently approve and archive budget plans',
+    module: 'accounting',
+    description:
+      'Facility-scoped planning projections only; no actual expenditure or procurement posting.',
+  },
+  {
+    code: 'accounting.planning.export',
+    name: 'Issue and export planning reports',
+    module: 'accounting',
+    description:
+      'Facility-scoped planning projections only; no actual expenditure or procurement posting.',
+  },
+  {
+    code: 'accounting.planning.audit',
+    name: 'Read planning audit history',
+    module: 'accounting',
+    description:
+      'Facility-scoped planning projections only; no actual expenditure or procurement posting.',
+  },
+  {
+    code: 'accounting.read',
+    name: 'View Accounting & Financial Statements',
+    module: 'accounting',
+    description:
+      'View chart of accounts, general ledger, financial statements, cashbook, AP/AR, and profitability reports.',
+  },
+  {
+    code: 'accounting.coa.manage',
+    name: 'Manage Chart of Accounts & Periods',
+    module: 'accounting',
+    description: 'Create and update chart of accounts and financial periods.',
+  },
+  {
+    code: 'accounting.journals.post',
+    name: 'Post General Ledger Journals & Reversals',
+    module: 'accounting',
+    description:
+      'Post balanced double-entry journals and controlled reversals or adjustment entries.',
+  },
+  {
+    code: 'accounting.periods.close',
+    name: 'Close Financial Periods',
+    module: 'accounting',
+    description: 'Close or lock accounting financial periods against new postings.',
+  },
+  {
+    code: 'accounting.expenses.request',
+    name: 'Submit Expense Requests',
+    module: 'accounting',
+    description: 'Create expense requests and attach supporting documentation.',
+  },
+  {
+    code: 'accounting.expenses.approve',
+    name: 'Approve & Post Expense Requests',
+    module: 'accounting',
+    description: 'Approve or reject expense requests and post approved expenses to the ledger.',
+  },
+  {
+    code: 'accounting.assets.manage',
+    name: 'Manage Fixed Asset Register & Depreciation',
+    module: 'accounting',
+    description:
+      'Register fixed assets, record additions/disposals, and post periodic depreciation.',
+  },
+  {
+    code: 'accounting.payables.manage',
+    name: 'Manage Accounts Payable & Supplier Payments',
+    module: 'accounting',
+    description: 'Record supplier invoices, match purchase orders, and record supplier payments.',
+  },
+  {
+    code: 'accounting.bank.manage',
+    name: 'Manage Bank Accounts & Reconciliation',
+    module: 'accounting',
+    description:
+      'Configure facility bank accounts, import bank statements, match transactions, and complete bank reconciliations.',
+  },
+  {
+    code: 'accounting.reports.export',
+    name: 'Export Accounting Reports',
+    module: 'accounting',
+    description:
+      'Export trial balance, profit & loss, balance sheet, fixed asset, and reconciliation schedules.',
+  },
+
+  // Facility-owned bank workflows. Grants require explicit finance provisioning.
+  {
+    code: 'bank_payments.read',
+    name: 'View Bank Payments',
+    module: 'billing',
+    description: 'View Bank Payments; facility-scoped and audited.',
+  },
+  {
+    code: 'bank_payments.submit',
+    name: 'Submit Pending Bank Transfers',
+    module: 'billing',
+    description: 'Submit Pending Bank Transfers; facility-scoped and audited.',
+  },
+  {
+    code: 'bank_payments.verify',
+    name: 'Independently Verify Bank Evidence',
+    module: 'billing',
+    description: 'Independently Verify Bank Evidence; facility-scoped and audited.',
+  },
+  {
+    code: 'bank_payments.settle',
+    name: 'Approve Verified Bank Settlement',
+    module: 'billing',
+    description: 'Approve Verified Bank Settlement; facility-scoped and audited.',
+  },
+  {
+    code: 'bank_payments.configure',
+    name: 'Administer Facility Bank Accounts and Bank-only Policy',
+    module: 'billing',
+    description:
+      'Administer Facility Bank Accounts and Bank-only Policy; facility-scoped and audited.',
+  },
+
+  /* Payer hub: platform policy and facility operations are separate. */
+  {
+    code: 'payer_hub.global.read',
+    name: 'View Global Payer Registry',
+    module: 'payer_hub',
+    description:
+      'View payer definitions and assignment metadata without clinical or financial records.',
+  },
+  {
+    code: 'payer_hub.global.manage',
+    name: 'Manage Global Payer Registry',
+    module: 'payer_hub',
+    description: 'Register payers and control internal workflow policy.',
+  },
+  {
+    code: 'payer_hub.assign',
+    name: 'Assign Payers to Facilities',
+    module: 'payer_hub',
+    description: 'Grant or revoke payer assignments.',
+  },
+  {
+    code: 'payer_hub.production.approve',
+    name: 'Review Payer Production Requests',
+    module: 'payer_hub',
+    description: 'Review production requests; approval remains blocked until verified.',
+  },
+  {
+    code: 'payer_hub.catalogue.read',
+    name: 'View Facility Payer Catalogue',
+    module: 'payer_hub',
+    description: 'View assigned payers, manual workflow availability and onboarding blockers.',
+  },
+  {
+    code: 'payer_hub.facility.manage',
+    name: 'Manage Facility Payer Activation',
+    module: 'payer_hub',
+    description: 'Request assigned payers and configure facility activation.',
+  },
+  {
+    code: 'payer_hub.credentials.manage',
+    name: 'Manage Payer Credential References',
+    module: 'payer_hub',
+    description:
+      'Configure facility-specific server-side environment references, never raw credentials.',
+  },
+  {
+    code: 'payer_hub.production.request',
+    name: 'Request Payer Production Approval',
+    module: 'payer_hub',
+    description: 'Request a platform production review without enabling live transport.',
+  },
+
+  /* Payment & banking hub: no finance or transfer permission is granted by default. */
+  {
+    code: 'payment_hub.global.read',
+    name: 'View Global Payment Providers',
+    module: 'payment_hub',
+    description: 'View non-sensitive provider registry and aggregate status.',
+  },
+  {
+    code: 'payment_hub.global.manage',
+    name: 'Manage Global Payment Providers',
+    module: 'payment_hub',
+    description: 'Manage provider metadata, environments and shared-secret references.',
+  },
+  {
+    code: 'payment_hub.assign',
+    name: 'Assign Payment Providers',
+    module: 'payment_hub',
+    description: 'Grant or revoke provider availability for selected facilities.',
+  },
+  {
+    code: 'payment_hub.production.approve',
+    name: 'Approve Production Integration Requests',
+    module: 'payment_hub',
+    description:
+      'Record a platform production approval or rejection; adapter security gates remain mandatory.',
+  },
+  {
+    code: 'payment_hub.catalogue.read',
+    name: 'View Facility Payment Catalogue',
+    module: 'payment_hub',
+    description: 'View facility-specific provider availability and setup status.',
+  },
+  {
+    code: 'payment_hub.facility.manage',
+    name: 'Manage Facility Payment Integrations',
+    module: 'payment_hub',
+    description:
+      'Configure available integrations, masked account aliases and sandbox health checks.',
+  },
+  {
+    code: 'payment_hub.credentials.manage',
+    name: 'Manage Facility Provider Credentials',
+    module: 'payment_hub',
+    description: 'Store encrypted facility-specific credentials without viewing them.',
+  },
+  {
+    code: 'payment_hub.accounts.read',
+    name: 'View Masked Payment Accounts',
+    module: 'payment_hub',
+    description: 'View masked facility payment-account mappings.',
+  },
+  {
+    code: 'payment_hub.collection.initiate',
+    name: 'Initiate Payment Collection',
+    module: 'payment_hub',
+    description: 'Request an approved payment collection without treating acceptance as payment.',
+  },
+  {
+    code: 'payment_hub.payments.verify',
+    name: 'Check Provider Payment Status',
+    module: 'payment_hub',
+    description: 'Query permitted payment requests without posting receipts.',
+  },
+  {
+    code: 'payment_hub.transactions.read',
+    name: 'View Payment Transactions',
+    module: 'payment_hub',
+    description: 'View facility-scoped payment requests and unverified notifications.',
+  },
+  {
+    code: 'payment_hub.reconciliation.manage',
+    name: 'Reconcile Payment Transactions',
+    module: 'payment_hub',
+    description: 'Manually review and match verified transactions to existing receipts.',
+  },
+  {
+    code: 'payment_hub.production.request',
+    name: 'Request Production Payment Access',
+    module: 'payment_hub',
+    description: 'Request a platform production-activation review.',
+  },
+  {
+    code: 'payment_hub.transfers.initiate',
+    name: 'Initiate Provider Transfers',
+    module: 'payment_hub',
+    description: 'Reserved for explicitly approved, implemented transfers; currently unavailable.',
+  },
+
+  /* ==========================================================
+     DEDICATED DIALYSIS MODULE
+     ========================================================== */
+
+  {
+    code: 'dialysis.read',
+    name: 'View Dialysis Unit',
+    module: 'dialysis',
+    description:
+      'View dialysis machines, schedules, patient assessments, treatment plans, sessions, and operational reports.',
+  },
+  {
+    code: 'dialysis.assessments.manage',
+    name: 'Record Dialysis Patient Assessments',
+    module: 'dialysis',
+    description: 'Create and update renal assessments and clinical fitness checks.',
+  },
+  {
+    code: 'dialysis.plans.authorize',
+    name: 'Authorize Dialysis Treatment Plans',
+    module: 'dialysis',
+    description:
+      'Prescribe, authorize, amend, or discontinue facility-validated dialysis treatment plans.',
+  },
+  {
+    code: 'dialysis.schedule.manage',
+    name: 'Manage Dialysis Schedules & Machine Allocation',
+    module: 'dialysis',
+    description:
+      'Schedule, check in, reschedule, or cancel dialysis slots and allocate dialysis bays/machines.',
+  },
+  {
+    code: 'dialysis.sessions.record',
+    name: 'Record Dialysis Sessions & Consumables',
+    module: 'dialysis',
+    description:
+      'Initiate dialysis sessions, record intradialytic observations and stock-linked consumables, and complete or terminate sessions.',
+  },
+  {
+    code: 'dialysis.machines.manage',
+    name: 'Manage Dialysis Machines & Maintenance',
+    module: 'dialysis',
+    description:
+      'Register dialysis machines, isolation bays, disinfection timestamps, and preventive maintenance.',
+  },
+  {
+    code: 'dialysis.adverse_events.manage',
+    name: 'Record Dialysis Adverse Events & Follow-Up',
+    module: 'dialysis',
+    description:
+      'Document intradialytic or post-dialysis adverse events, interventions, and follow-up outcomes.',
+  },
+  {
+    code: 'dialysis.protocols.manage',
+    name: 'Configure Facility Dialysis Protocols',
+    module: 'dialysis',
+    description:
+      'Configure facility-approved dialysis protocol validation rules and required fields.',
+  },
+
+  /* ==========================================================
+     ICD-11 DIAGNOSIS CATALOGUE & MAPPING
+     ========================================================== */
+
+  {
+    code: 'clinical.icd11.read',
+    name: 'Search ICD-11 Catalogue & Mappings',
+    module: 'clinical',
+    description:
+      'Search WHO ICD-11 diagnosis codes, release metadata, and verified ICD-10-to-ICD-11 mappings.',
+  },
+  {
+    code: 'clinical.icd11.manage',
+    name: 'Manage ICD-11 Sync & Mapping Reviews',
+    module: 'clinical',
+    description:
+      'Synchronize WHO ICD-11 catalogue entries and review ambiguous ICD-10-to-ICD-11 mappings.',
+  },
+
+  /* ==========================================================
+     WEBSITE BOOKING INTEGRATION
+     ========================================================== */
+
+  {
+    code: 'booking.read',
+    name: 'View Website Bookings',
+    module: 'website_booking',
+    description:
+      'View website bookings, booking references, slot availability, and notification delivery logs.',
+  },
+  {
+    code: 'booking.manage',
+    name: 'Manage Website Bookings & Reminders',
+    module: 'website_booking',
+    description:
+      'Reschedule or cancel website bookings, link patient records, and send appointment reminders.',
+  },
+  {
+    code: 'booking.clients.manage',
+    name: 'Manage Website Booking API Clients',
+    module: 'website_booking',
+    description:
+      'Create, rotate, and revoke WordPress/external website booking API keys and capacity rules.',
   },
 ] as const;
 
@@ -938,11 +1723,47 @@ async function seedPermissions(): Promise<void> {
   console.log('');
   console.log('Synchronizing SUPER_ADMIN permissions...');
 
-  const allPermissions = await db.select().from(permissions);
+  const allPermissions: Array<{ id: number | null; code: string }> = await db
+    .select({ id: permissions.id, code: permissions.code })
+    .from(permissions);
+  // A dry run does not insert missing catalogue rows. Include them as virtual
+  // entries so the plan also shows grants which would follow those inserts.
+  if (dryRun) {
+    const existingCodes = new Set(allPermissions.map((permission) => permission.code));
+    for (const permission of PERMISSIONS) {
+      if (!existingCodes.has(permission.code))
+        allPermissions.push({ id: null, code: permission.code });
+    }
+  }
 
+  // Platform administration does not grant facility procurement mutations,
+  // payment credentials, financial operations or transfers. Facility tariffs are also separate.
+  const platformHubPermissions = new Set([
+    'payment_hub.global.read',
+    'payment_hub.global.manage',
+    'payment_hub.assign',
+    'payment_hub.production.approve',
+    'payer_hub.global.read',
+    'payer_hub.global.manage',
+    'payer_hub.assign',
+    'payer_hub.production.approve',
+  ]);
   for (const permission of allPermissions) {
-    // Facility tariffs are managed only by tenant-level Facility Admins.
-    if (permission.code === 'tariffs.read' || permission.code === 'tariffs.manage') {
+    if (
+      permission.code.startsWith('theatre.') ||
+      permission.code.startsWith('payroll.') ||
+      (permission.code.startsWith('hr.') && permission.code !== 'hr.read') ||
+      (permission.code.startsWith('procurement.') && permission.code !== 'procurement.read') ||
+      (permission.code.startsWith('assets.') && permission.code !== 'assets.read') ||
+      isFacilityFinancialPermission(permission.code) ||
+      ((permission.code.startsWith('payment_hub.') || permission.code.startsWith('payer_hub.')) &&
+        !platformHubPermissions.has(permission.code))
+    ) {
+      continue;
+    }
+
+    if (permission.id === null) {
+      plan('grant', `SUPER_ADMIN -> ${permission.code}`);
       continue;
     }
 
@@ -994,9 +1815,51 @@ async function seedPermissions(): Promise<void> {
      * database seeded before this permission existed still works.
      */
     'facilities.modules.manage',
+    /* The facility administrator owns this facility's stationery. */
+    'facility.branding.read',
+    'facility.branding.manage',
+    'approval_policies.read',
+    'approval_policies.manage',
+    'patients.read',
+    'payer_hub.catalogue.read',
+    'payer_hub.facility.manage',
+    'payer_hub.credentials.manage',
+    'payer_hub.production.request',
+    'payment_hub.catalogue.read',
+    'payment_hub.facility.manage',
+    'payment_hub.credentials.manage',
+    'payment_hub.accounts.read',
+    'payment_hub.production.request',
+    'insurance.read',
+    'insurance.sha.read',
+    'insurance.sha.eligibility.check',
+    'insurance.sha.benefits.validate',
+    'insurance.sha.preauthorization.create',
+    'insurance.sha.claims.read',
+    'insurance.sha.claims.prepare',
+    'insurance.sha.claims.submit',
+    'insurance.sha.claims.resubmit',
+    'insurance.sha.remittance.read',
+    'insurance.sha.reconciliation.manage',
+    'insurance.sha.configuration.manage',
+    'insurance.payers.read',
+    'insurance.payers.manage',
+    'insurance.members.read',
+    'insurance.members.manage',
+    'insurance.eligibility.check',
+    'insurance.benefits.validate',
+    'insurance.mappings.manage',
+    'insurance.preauthorization.manage',
+    'insurance.private.claims.prepare',
+    'insurance.private.claims.submit',
+    'insurance.private.remittance.reconcile',
+    'hr.read',
+    'hr.manage',
+    'payroll.read',
+    'payroll.manage',
   ] as const;
 
-  const staffInvitationPermissions = [];
+  const staffInvitationPermissions: Array<{ id: number | null; code: string }> = [];
 
   for (const code of staffInvitationPermissionCodes) {
     const [permission] = await db
@@ -1006,6 +1869,10 @@ async function seedPermissions(): Promise<void> {
       .limit(1);
 
     if (!permission) {
+      if (dryRun && PERMISSIONS.some((candidate) => candidate.code === code)) {
+        staffInvitationPermissions.push({ id: null, code });
+        continue;
+      }
       throw new Error(`Required permission was not seeded: ${code}`);
     }
 
@@ -1021,6 +1888,10 @@ async function seedPermissions(): Promise<void> {
 
   for (const facilityAdminRole of facilityAdminRoles) {
     for (const permission of staffInvitationPermissions) {
+      if (permission.id === null) {
+        plan('grant', `FACILITY_ADMIN(${facilityAdminRole.id}) -> ${permission.code}`);
+        continue;
+      }
       const [existingAssignment] = await db
         .select()
         .from(rolePermissions)

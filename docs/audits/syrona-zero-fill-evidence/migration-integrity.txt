@@ -1,0 +1,50 @@
+
+ RUN  v5.0.5 /home/user/afyahub-hmis-kenya
+
+[vitest] PostgreSQL not reachable at 127.0.0.1:5432 — database specs will be skipped.
+ ❯ src/tests/migrations.spec.ts (7 tests | 1 failed) 245ms
+   ❯ Migration file integrity tests (7)
+     ✓ No Bom 23ms
+     ✓ Journal Matches Files 14ms
+     ✓ Timestamps Increasing 9ms
+     ✓ Statements Terminated 97ms
+     ✓ Data Type Casts 21ms
+     ✓ Runner Safety 1ms
+     × Guarded Ddl 76ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/tests/migrations.spec.ts > Migration file integrity tests > Guarded Ddl
+AssertionError: 0095_budget_procurement_planning.sql: unguarded table creates: expected [ 'PLANNING_IMPORT_BATCHES', …(7) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "PLANNING_IMPORT_BATCHES",
++   "PLANNING_PLANS",
++   "PLANNING_CATEGORIES",
++   "PLANNING_ITEMS",
++   "PLANNING_MONTHS",
++   "PLANNING_UNIFORMS",
++   "PLANNING_EVENTS",
++   "PLANNING_REPORTS",
++ ]
+
+ ❯ src/tests/migrations.spec.ts:200:67
+    198|         ...sql.matchAll(/CREATE (?:UNIQUE )?INDEX(?! IF NOT EXISTS)\s+…
+    199|       ].map((match) => match[1]);
+    200|       expect(unguardedTables, `${file}: unguarded table creates`).toEq…
+       |                                                                   ^
+    201|         isReceiptIdentity ? ['INVENTORY_RECEIPT_REQUESTS'] : [],
+    202|       );
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 passed (7)
+   Start at  09:32:28
+   Duration  1.61s (setup 65%, tests 26%, import 7%, transform 2%)
+

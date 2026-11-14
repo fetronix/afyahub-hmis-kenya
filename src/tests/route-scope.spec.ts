@@ -61,9 +61,9 @@ function routeBlock(startMarker: string, length = 2200): string {
 describe('Route scope and claim integrity — regression tests', () => {
   it('1. Every route that had no guard now has one', async () => {
     const guarded: Array<[string, string]> = [
-      ["app.get(\n    '/api/theatre-cases'", 'clinical.read'],
-      ["app.post(\n    '/api/theatre-cases'", 'clinical.create'],
-      ["app.put(\n    '/api/theatre-cases/:id'", 'clinical.update'],
+      ["app.get(\n    '/api/theatre-cases'", 'theatre.read'],
+      ["app.post(\n    '/api/theatre-cases'", 'theatre.schedule.create'],
+      ["app.put(\n    '/api/theatre-cases/:id'", 'theatre.schedule.manage'],
       ["app.get(\n    '/api/radiology-orders'", 'clinical.read'],
       ["app.post(\n    '/api/radiology-orders'", 'clinical.create'],
       ["app.put(\n    '/api/radiology-orders/:id/report'", 'clinical.update'],
@@ -96,11 +96,19 @@ describe('Route scope and claim integrity — regression tests', () => {
     ]) {
       const block = routeBlock(marker, 1600);
 
+      const delegatedProcurement = marker.includes('/api/purchase-orders');
       expect(
-        block.includes('requireScopedFacility'),
+        delegatedProcurement
+          ? block.includes('scope(req, res')
+          : block.includes('requireScopedFacility'),
         `${marker.split('\n')[1]} resolves its facility from the authenticated scope`,
       ).toBe(true);
     }
+
+    const procurement = source('src/routes/procurement.routes.ts');
+    expect(procurement).toContain('await requireScopedFacility(req, res, rawFacilityId)');
+    expect(procurement).toContain('tenantId: facility.tenantId');
+    expect(procurement).toContain('facilityId: facility.id');
 
     /* The helper moved to src/routes/shared/scoping.ts; check it there. */
     const scoping = source('src/routes/shared/scoping.ts');
@@ -119,17 +127,28 @@ describe('Route scope and claim integrity — regression tests', () => {
      * body first and then override the identifiers.
      */
     for (const marker of [
-      "app.post(\n    '/api/theatre-cases'",
       "app.post(\n    '/api/radiology-orders'",
       "app.post(\n    '/api/purchase-orders'",
     ]) {
-      const block = routeBlock(marker, 1800);
+      const block = routeBlock(marker, 5000);
 
       expect(
-        /facilityId:\s*facility\.id/.test(block) && /tenantId:\s*facility\.tenantId/.test(block),
+        marker.includes('/api/purchase-orders')
+          ? /facilityId:\s*access\.facilityId/.test(block) &&
+              /tenantId:\s*access\.tenantId/.test(block)
+          : /facilityId:\s*facility\.id/.test(block) &&
+              /tenantId:\s*facility\.tenantId/.test(block),
         `${marker.split('\n')[1]} overwrites facility and tenant from the session`,
       ).toBe(true);
     }
+
+    // Legacy Theatre writes are rejected, rather than attempting to scope an unsafe write.
+    expect(routeBlock("app.post(\n    '/api/theatre-cases'", 1800)).toContain(
+      'LEGACY_THEATRE_WRITE_DISABLED',
+    );
+    const theatreScheduling = source('src/routes/theatre-scheduling.routes.ts');
+    expect(theatreScheduling).toContain('tenantId: facility.tenantId');
+    expect(theatreScheduling).toContain('facilityId: facility.id');
 
     /*
      * Object-level ownership: updating a case or reporting a study first
@@ -150,7 +169,8 @@ describe('Route scope and claim integrity — regression tests', () => {
 
     expect(
       suppliers.includes('process.env') === false &&
-        suppliers.includes('context.tenantId') &&
+        suppliers.includes('scope(req, res') &&
+        suppliers.includes('access.tenantId') &&
         suppliers.includes('TENANT_ACCESS_DENIED'),
       'Suppliers are filtered by the session tenant, not the query string',
     ).toBe(true);

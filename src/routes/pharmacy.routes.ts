@@ -7,9 +7,10 @@
 
 import { type AuthRequest } from '../auth/auth.middleware.ts';
 import { requirePermission } from '../auth/authorization.middleware.ts';
+import { hasAllPermissions } from '../auth/authorization.service.ts';
+import { parseMoneyToCents } from '../billing/settlement.ts';
+import { resolveFacilityScope } from '../auth/scope.service.ts';
 import * as billing from '../billing/billing.service.ts';
-import { billingServiceKeys } from '../billing/tariff-codes.ts';
-import { codesForFamily } from '../billing/tariff-matching.ts';
 import * as queries from '../db/queries.ts';
 import * as inventory from '../inventory/inventory.service.ts';
 import { chargeSafely } from './shared/charges.ts';
@@ -17,6 +18,8 @@ import { handleInventoryError, handleScopeError, respondInternalError } from './
 import { requireAuthContext } from './shared/request.ts';
 import { and } from 'drizzle-orm';
 import { Router, type Response } from 'express';
+import { createInventoryItemBodySchema } from '../validation/schemas/index.ts';
+import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
 const router = Router();
 
@@ -124,15 +127,25 @@ router.post(
       });
     }
 
+    const requestedFacilityId: unknown = req.body?.facilityId;
+    if (
+      requestedFacilityId !== undefined &&
+      (typeof requestedFacilityId !== 'number' ||
+        !Number.isSafeInteger(requestedFacilityId) ||
+        requestedFacilityId <= 0)
+    ) {
+      return res.status(400).json({ success: false, error: 'INVALID_FACILITY_ID' });
+    }
+
     try {
       const result = await inventory.receiveBatchScoped(
         context,
         itemId,
         req.body ?? {},
-        typeof req.body?.facilityId === 'number' ? req.body.facilityId : undefined,
+        requestedFacilityId,
       );
 
-      return res.status(201).json(result);
+      return res.status(result.replayed ? 200 : 201).json(result);
     } catch (err: unknown) {
       if (handleScopeError(err, res)) return;
       if (handleInventoryError(err, res)) return;
@@ -146,27 +159,164 @@ router.post(
   },
 );
 
-router.get('/api/inventory', requirePermission('inventory.read'), async (req, res) => {
+/** A status lookup never turns NOT_FOUND into permission to use a new identity. */
+router.post(
+  '/api/inventory/receipt-status',
+  requirePermission('inventory.manage'),
+  async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    const facilityId: unknown = req.body?.facilityId;
+    if (
+      facilityId !== undefined &&
+      (typeof facilityId !== 'number' || !Number.isSafeInteger(facilityId) || facilityId <= 0)
+    )
+      return res.status(400).json({ success: false, error: 'INVALID_FACILITY_ID' });
+    try {
+      return res.json(
+        await inventory.getReceiptRequestStatusScoped(context, {
+          facilityId,
+          idempotencyKey: req.body?.idempotencyKey,
+        }),
+      );
+    } catch (err: unknown) {
+      if (handleScopeError(err, res) || handleInventoryError(err, res)) return;
+      console.error('Receipt status error:', err);
+      return res.status(500).json({ success: false, error: 'RECEIPT_STATUS_FAILED' });
+    }
+  },
+);
+
+/** Close only the retry identity, never a recorded receipt or its stock. */
+router.post(
+  '/api/inventory/receipt-retry-cancellation',
+  requirePermission('inventory.manage'),
+  async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    const facilityId: unknown = req.body?.facilityId;
+    if (
+      facilityId !== undefined &&
+      (typeof facilityId !== 'number' || !Number.isSafeInteger(facilityId) || facilityId <= 0)
+    )
+      return res.status(400).json({ success: false, error: 'INVALID_FACILITY_ID' });
+    try {
+      return res.json(
+        await inventory.cancelReceiptRetryScoped(context, {
+          facilityId,
+          idempotencyKey: req.body?.idempotencyKey,
+          reason: req.body?.reason,
+        }),
+      );
+    } catch (err: unknown) {
+      if (handleScopeError(err, res) || handleInventoryError(err, res)) return;
+      console.error('Receipt retry cancellation error:', err);
+      return res.status(500).json({ success: false, error: 'RECEIPT_CANCELLATION_FAILED' });
+    }
+  },
+);
+
+router.get('/api/inventory', requirePermission('inventory.read'), async (req: AuthRequest, res) => {
   try {
-    const facilityId = req.query.facilityId ? Number(req.query.facilityId) : undefined;
-
-    const list = await queries.getInventoryItems(facilityId);
-
-    res.json(list);
-  } catch (err: any) {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    const facilityId = resolveFacilityScope(
+      context,
+      req.query.facilityId !== undefined ? Number(req.query.facilityId) : undefined,
+    );
+    const facility = await queries.getFacilityByIdScoped(context, facilityId);
+    if (!facility) return res.status(404).json({ error: 'FACILITY_NOT_FOUND' });
+    const list = await queries.getInventoryItems(facility.id);
+    return res.json(list);
+  } catch (err: unknown) {
+    if (handleScopeError(err, res)) return;
     respondInternalError(res, err, 'GET /api/inventory');
   }
 });
 
-router.post('/api/inventory', requirePermission('inventory.manage'), async (req, res) => {
-  try {
-    const item = await queries.createInventoryItem(req.body);
+router.post(
+  '/api/inventory',
+  requirePermission('inventory.manage'),
+  validateBody(createInventoryItemBodySchema),
+  async (req: AuthRequest, res) => {
+    try {
+      const context = requireAuthContext(req, res);
+      if (!context) return;
+      const body = getValidatedBody<Parameters<typeof queries.createInventoryItem>[0]>(req);
+      if (
+        (parseMoneyToCents(body.sellingPrice) ?? 0) > 0 &&
+        !hasAllPermissions(context, ['billing.update'])
+      )
+        return res.status(403).json({
+          error: 'FORBIDDEN',
+          message: 'Facility finance permission is required to set a selling price.',
+        });
+      const facilityId = resolveFacilityScope(context, body.facilityId);
+      const facility = await queries.getFacilityByIdScoped(context, facilityId);
+      if (!facility) return res.status(404).json({ error: 'FACILITY_NOT_FOUND' });
+      const item = await queries.createInventoryItem(
+        { ...body, facilityId: facility.id },
+        { tenantId: facility.tenantId, facilityId: facility.id, userId: context.userId },
+      );
+      return res.status(201).json(item);
+    } catch (err: unknown) {
+      if (handleScopeError(err, res)) return;
+      respondInternalError(res, err, 'POST /api/inventory');
+    }
+  },
+);
 
-    res.status(201).json(item);
-  } catch (err: any) {
-    respondInternalError(res, err, 'POST /api/inventory');
-  }
-});
+router.put(
+  '/api/inventory/:id/selling-price',
+  requirePermission('inventory.manage', 'billing.update'),
+  async (req: AuthRequest, res: Response) => {
+    const context = requireAuthContext(req, res);
+    if (!context) return;
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body))
+      return res.status(400).json({ error: 'INVALID_INPUT' });
+    try {
+      const result = await inventory.updateInventorySellingPriceScoped(
+        context,
+        Number(req.params.id),
+        {
+          facilityId: req.body.facilityId,
+          sellingPrice: req.body.sellingPrice,
+          expectedPriceRevision: req.body.expectedPriceRevision,
+          reason: req.body.reason,
+        },
+      );
+      return res.json(result);
+    } catch (error: unknown) {
+      if (handleScopeError(error, res)) return;
+      if (handleInventoryError(error, res)) return;
+      respondInternalError(res, error, 'PUT /api/inventory/:id/selling-price');
+    }
+  },
+);
+
+// The retry identity is in the request body, not the URL/access log.
+router.post(
+  '/api/pharmacy/dispense/status',
+  requirePermission('pharmacy.dispense'),
+  async (req: AuthRequest, res) => {
+    try {
+      const context = requireAuthContext(req, res);
+      if (!context) return;
+      if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+        return res.status(400).json({ error: 'INVALID_DISPENSE_BODY' });
+      }
+      const status = await inventory.getDispenseRequestStatusScoped(context, {
+        facilityId: req.body.facilityId,
+        idempotencyKey: req.body.idempotencyKey,
+      });
+      return res.json(status);
+    } catch (error: unknown) {
+      if (handleInventoryError(error, res)) return;
+      console.error('Dispensing status could not be checked.');
+      return res.status(500).json({ error: 'DISPENSE_STATUS_FAILED' });
+    }
+  },
+);
 
 router.post(
   '/api/pharmacy/dispense',
@@ -192,33 +342,30 @@ router.post(
        * with the batch rows locked, so two tills cannot take the same
        * last strip and an expired lot is never handed to a patient.
        */
-      const result = await inventory.dispenseFefoScoped(req.authContext, req.body);
+      // The operator identity is taken from the authenticated session, not
+      // from a caller-supplied label.
+      const result = await inventory.dispenseFefoScoped(req.authContext, {
+        ...req.body,
+        idempotencyKey: req.get('Idempotency-Key') ?? req.body.idempotencyKey,
+        dispensedBy: req.user?.fullName || req.user?.username || String(req.authContext.userId),
+      });
 
       const dispensation = result.dispensation;
 
-      /*
-       * Price the dispensation from the facility tariff.
-       *
-       * The previous implementation created the invoice in the browser
-       * with a hardcoded KES 15 unit price, which meant pharmacy revenue
-       * never reflected the facility's own rates. Tariffs now win; the
-       * medication's own price is used only as a fallback.
-       */
+      /* The committed dispensing contains the authoritative inventory price.
+       * Billing must not accept a client price or infer a pharmacy tariff. */
       let charge: billing.ChargeResult | null = null;
 
       if (dispensation && dispensation.id && dispensation.patientId) {
-        const drugName = typeof req.body.drugName === 'string' ? req.body.drugName : 'Medication';
+        const drugName = result.billingContext.drugName;
 
         charge = await chargeSafely({
           tenantId: dispensation.tenantId ?? req.authContext.tenantId ?? 0,
           facilityId: dispensation.facilityId ?? req.authContext.facilityId ?? 0,
           patientId: dispensation.patientId,
-          encounterId: typeof req.body.encounterId === 'number' ? req.body.encounterId : null,
-          codes: codesForFamily({
-            family: 'PHARMACY',
-            name: drugName,
-          }),
-          serviceKeys: billingServiceKeys('PHARMACY', [drugName]),
+          encounterId: result.billingContext.encounterId,
+          codes: [],
+          serviceKeys: [],
           family: 'PHARMACY',
           serviceName: drugName,
           quantity:
@@ -227,41 +374,32 @@ router.post(
           sourceId: dispensation.id,
           itemType: 'Pharmacy',
           description: drugName,
-          fallbackUnitPrice:
-            typeof req.body.unitPrice === 'string' || typeof req.body.unitPrice === 'number'
-              ? req.body.unitPrice
-              : null,
+          // Never accept a browser price or substitute a service tariff.
+          // Missing dispensing-time inventory evidence remains unresolved.
+          fallbackUnitPrice: null,
           fallbackDescription: drugName,
         });
       }
 
-      /*
-       * The patient has been served, so the token that sent them here
-       * is done. A board that keeps showing them is a board nobody
-       * trusts by the end of the day.
-       */
-      await queries
-        .completeQueueTokensForPatient(req.authContext, result.dispensation.patientId, 'Pharmacy')
-        .catch((error: unknown) => {
-          console.error('Could not close the pharmacy queue token:', error);
-        });
+      // One patient can have multiple prescriptions. A single dispensing (or
+      // an unlinked sale) is not evidence that the entire pharmacy visit ended.
+      const queueWarning = 'Complete the pharmacy queue separately when the visit is finished.';
 
       res.status(201).json({
         ...result.dispensation,
         stockTracking: result.stockTracking,
         allocations: result.allocations,
         stockAfter: result.stockAfter,
+        replayed: result.replayed,
+        prescriptionComplete: result.prescriptionComplete,
+        queueWarning,
         billing: charge,
       });
     } catch (err: unknown) {
       if (handleInventoryError(err, res)) return;
 
-      const message = err instanceof Error ? err.message : 'Dispensing failed.';
-
-      console.error('Dispense error:', err);
-      res.status(500).json({
-        error: message,
-      });
+      console.error('Dispense failed; review server-side operational status.');
+      res.status(500).json({ error: 'Dispensing could not be completed.' });
     }
   },
 );
