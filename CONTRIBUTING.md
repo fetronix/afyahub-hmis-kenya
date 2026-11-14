@@ -35,6 +35,7 @@ npm ci
 cp .env.example .env     # set FIELD_ENCRYPTION_KEY and the SQL_* values
 npm run db:preflight
 npm run db:migrate
+npm run db:bootstrap-admin   # ADMIN_USERNAME / ADMIN_EMAIL / ADMIN_PASSWORD
 npm run db:seed:permissions
 npm run dev
 ```

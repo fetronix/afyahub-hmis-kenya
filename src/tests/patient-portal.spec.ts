@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { platformRoutesSource } from './support/schema-source.ts';
 import { isDelegablePermission } from '../auth/staff-role-policy.ts';
 import {
   buildActivationLink,
@@ -858,7 +859,7 @@ describe('Patient portal — policy and identifier tests', () => {
   it('11. Permissions', async () => {
     const permissions = code('src/seeds/permissions.ts');
     const catalogue = code('src/auth/staff-role-catalogue.ts');
-    const platform = code('src/routes/platform.routes.ts');
+    const platform = platformRoutesSource();
 
     for (const permission of [
       'portal.invite',

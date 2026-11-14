@@ -7,34 +7,58 @@
 
 import { type AuthRequest } from '../auth/auth.middleware.ts';
 import { requirePermission } from '../auth/authorization.middleware.ts';
-import * as billing from '../billing/billing.service.ts';
-import { chargeLabOrderBatch } from '../billing/service-charges.ts';
-import { billingServiceKeys } from '../billing/tariff-codes.ts';
-import { codesForFamily } from '../billing/tariff-matching.ts';
-import { db } from '../db/index.ts';
+import { resolveFacilityScope } from '../auth/scope.service.ts';
+import { LaboratoryDomainError } from '../clinical/laboratory-contracts.ts';
+import { labOrderChargeRequest } from '../billing/service-charges.ts';
 import * as queries from '../db/queries.ts';
 import { chargeSafely } from './shared/charges.ts';
 import { handleScopeError, respondInternalError } from './shared/errors.ts';
 import { and } from 'drizzle-orm';
 import { Router, type Response } from 'express';
+import {
+  createLabOrderBatchBodySchema,
+  createLabOrderBodySchema,
+  createLabResultBodySchema,
+  updateLabOrderStatusBodySchema,
+  verifyLabResultBodySchema,
+} from '../validation/schemas/index.ts';
+import { getValidatedBody, validateBody } from '../validation/validate.ts';
 
 const router = Router();
+
+function handleLaboratoryError(error: unknown, res: Response): boolean {
+  if (handleScopeError(error, res)) return true;
+  if (error instanceof LaboratoryDomainError) {
+    res.status(error.status).json({ success: false, error: error.code, message: error.message });
+    return true;
+  }
+  return false;
+}
 
 // =========================================================
 // LABORATORY
 // =========================================================
 
-router.get('/api/lab-tests', requirePermission('laboratory.read'), async (req, res) => {
-  try {
-    const facilityId = req.query.facilityId ? Number(req.query.facilityId) : undefined;
-
-    const list = await queries.getLabTests(facilityId);
-
-    res.json(list);
-  } catch (err: any) {
-    respondInternalError(res, err, 'GET /api/lab-tests');
-  }
-});
+router.get(
+  '/api/lab-tests',
+  requirePermission('laboratory.read'),
+  async (req: AuthRequest, res) => {
+    try {
+      if (!req.authContext) return res.status(401).json({ error: 'AUTHORIZATION_CONTEXT_MISSING' });
+      const facilityId = resolveFacilityScope(
+        req.authContext,
+        req.query.facilityId !== undefined ? Number(req.query.facilityId) : undefined,
+      );
+      const facility = await queries.getFacilityByIdScoped(req.authContext, facilityId);
+      if (!facility) return res.status(404).json({ error: 'FACILITY_NOT_FOUND' });
+      return res.json(await queries.getLabTests(facility.id));
+    } catch (err: unknown) {
+      if (handleLaboratoryError(err, res)) return;
+      console.error('[api] GET /api/lab-tests failed.');
+      return res.status(500).json({ error: 'The request could not be completed.' });
+    }
+  },
+);
 
 router.get(
   '/api/lab-orders',
@@ -48,8 +72,10 @@ router.get(
       const list = await queries.getLabOrders(req.authContext!, facilityId, patientId);
 
       res.json(list);
-    } catch (err: any) {
-      respondInternalError(res, err, 'GET /api/lab-orders');
+    } catch (err: unknown) {
+      if (handleLaboratoryError(err, res)) return;
+      console.error('[api] GET /api/lab-orders failed.');
+      res.status(500).json({ error: 'The request could not be completed.' });
     }
   },
 );
@@ -57,28 +83,20 @@ router.get(
 router.post(
   '/api/lab-orders/batch',
   requirePermission('laboratory.orders.create'),
-
+  validateBody(createLabOrderBatchBodySchema),
   async (req: AuthRequest, res: Response) => {
     if (!req.authContext) {
       return res.status(401).json({ error: 'Authentication context is required.' });
     }
 
     try {
-      const result = await queries.createLabOrderBatch(req.authContext, req.body);
+      const body = getValidatedBody<Parameters<typeof queries.createLabOrderBatch>[1]>(req);
+      const result = await queries.createLabOrderBatch(req.authContext, body);
 
-      /*
-       * Every order in the batch is priced, not just the first.
-       *
-       * The screen orders investigations through this endpoint and
-       * never through the single-order one, so this is the only place
-       * a laboratory charge can be raised. Before this, a batch of
-       * tests reached the laboratory queue and the patient's invoice
-       * stayed empty.
-       */
-      const billed = await chargeLabOrderBatch(result.orders, db);
-
-      return res.status(201).json({ ...result, billing: billed });
+      // Ordering is not completion of the investigation.
+      return res.status(201).json({ ...result, billing: [] });
     } catch (err: any) {
+      if (handleLaboratoryError(err, res)) return;
       const message = err?.message || 'Failed to create laboratory batch.';
       const clientError = [
         'Select at least one laboratory test.',
@@ -97,71 +115,30 @@ router.post(
         'A selected test is unavailable at this facility.',
       ].includes(message);
 
-      return res.status(clientError ? 400 : 500).json({ error: message });
+      if (clientError) return res.status(400).json({ error: message });
+      console.error('[api] Laboratory batch could not be recorded.');
+      return res.status(500).json({
+        error: 'Laboratory request could not be confirmed. Review existing orders before retrying.',
+      });
     }
   },
 );
 router.post(
   '/api/lab-orders',
   requirePermission('laboratory.orders.create'),
+  validateBody(createLabOrderBodySchema),
   async (req: AuthRequest, res: Response) => {
     if (!req.authContext) {
       return res.status(401).json({ error: 'Authentication context is required.' });
     }
 
     try {
-      const order = await queries.createLabOrder(req.authContext, req.body);
+      const body = getValidatedBody<Parameters<typeof queries.createLabOrder>[1]>(req);
+      const order = await queries.createLabOrder(req.authContext, body);
 
-      const labOrder = order as {
-        id?: number;
-        tenantId?: number;
-        facilityId?: number;
-        patientId?: number;
-        encounterId?: number | null;
-        testId?: number | null;
-        testName?: string;
-        testCode?: string | null;
-      } | null;
-
-      const charge =
-        labOrder && labOrder.id
-          ? await chargeSafely({
-              tenantId: labOrder.tenantId ?? req.authContext.tenantId ?? 0,
-              facilityId: labOrder.facilityId ?? req.authContext.facilityId ?? 0,
-              patientId: labOrder.patientId ?? 0,
-              encounterId: labOrder.encounterId ?? null,
-              /*
-               * The catalogue code first (LAB-CBC), then the name-derived
-               * codes, then the generic fallbacks — the same order the batch
-               * route uses, because a single order must price the same way
-               * a batch does.
-               */
-              codes: codesForFamily({
-                family: 'LABORATORY',
-                code: labOrder.testCode ?? null,
-                name: labOrder.testName,
-              }),
-              serviceKeys: billingServiceKeys('LABORATORY', [
-                labOrder.testCode ?? null,
-                labOrder.testName,
-              ]),
-              family: 'LABORATORY',
-              serviceName: labOrder.testName,
-              aliases: labOrder.testCode ? [labOrder.testCode] : [],
-              serviceRef: {
-                type: 'LAB_TEST',
-                id: typeof labOrder.testId === 'number' ? labOrder.testId : null,
-                code: labOrder.testCode ?? null,
-              },
-              sourceType: 'LAB_ORDER',
-              sourceId: labOrder.id,
-              itemType: 'Laboratory',
-              description: labOrder.testName,
-            })
-          : null;
-
-      res.status(201).json({ ...order, billing: charge });
+      res.status(201).json({ ...order, billing: null });
     } catch (err: any) {
+      if (handleLaboratoryError(err, res)) return;
       respondInternalError(res, err, 'POST /api/lab-orders');
     }
   },
@@ -170,20 +147,28 @@ router.post(
 router.put(
   '/api/lab-orders/:id/status',
   requirePermission('laboratory.results.enter'),
+  validateBody(updateLabOrderStatusBodySchema),
   async (req: AuthRequest, res) => {
     try {
-      const { status, accessionNumber } = req.body;
+      const { status, accessionNumber, sharedOrderId } = getValidatedBody<{
+        status: string;
+        accessionNumber?: string;
+        sharedOrderId?: number;
+      }>(req);
 
       const order = await queries.updateLabOrderStatus(
         req.authContext!,
         Number(req.params.id),
         status,
         accessionNumber,
+        sharedOrderId,
       );
 
       res.json(order);
-    } catch (err: any) {
-      respondInternalError(res, err, 'PUT /api/lab-orders/:id/status');
+    } catch (err: unknown) {
+      if (handleLaboratoryError(err, res)) return;
+      console.error('[api] PUT /api/lab-orders/:id/status failed.');
+      res.status(500).json({ error: 'The request could not be completed.' });
     }
   },
 );
@@ -205,8 +190,10 @@ router.get(
       );
 
       res.json(list);
-    } catch (err: any) {
-      respondInternalError(res, err, 'GET /api/lab-results');
+    } catch (err: unknown) {
+      if (handleLaboratoryError(err, res)) return;
+      console.error('[api] GET /api/lab-results failed.');
+      res.status(500).json({ error: 'The request could not be completed.' });
     }
   },
 );
@@ -214,6 +201,7 @@ router.get(
 router.post(
   '/api/lab-results',
   requirePermission('laboratory.results.enter'),
+  validateBody(createLabResultBodySchema),
   async (req: AuthRequest, res) => {
     try {
       const {
@@ -225,23 +213,16 @@ router.post(
         referenceRange,
         flag,
         notes,
-      } = req.body ?? {};
-
-      if (
-        !Number.isInteger(Number(orderId)) ||
-        Number(orderId) <= 0 ||
-        !Number.isInteger(Number(patientId)) ||
-        Number(patientId) <= 0 ||
-        typeof parameterName !== 'string' ||
-        !parameterName.trim() ||
-        typeof measuredValue !== 'string' ||
-        !measuredValue.trim()
-      ) {
-        res.status(400).json({
-          error: 'Valid order, patient, parameter name, and measured value are required.',
-        });
-        return;
-      }
+      } = getValidatedBody<{
+        orderId: number;
+        patientId: number;
+        parameterName: string;
+        measuredValue: string;
+        unit?: string | null;
+        referenceRange?: string | null;
+        flag?: string | null;
+        notes?: string | null;
+      }>(req);
 
       const result = await queries.addLabResult(req.authContext!, {
         orderId: Number(orderId),
@@ -255,16 +236,44 @@ router.post(
       });
 
       res.status(201).json(result);
-    } catch (err: any) {
-      respondInternalError(res, err, 'POST /api/lab-results');
+    } catch (err: unknown) {
+      if (handleLaboratoryError(err, res)) return;
+      console.error('[api] POST /api/lab-results failed.');
+      res.status(500).json({ error: 'The request could not be completed.' });
     }
   },
 );
 
 // =========================================================
 router.post(
+  '/api/lab-orders/:id/complete',
+  requirePermission('laboratory.results.verify'),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      if (!req.authContext) return res.status(401).json({ error: 'Authentication is required.' });
+      const { billingOutboxAttemptId, billingInitialTariff, ...order } =
+        await queries.completeLabInvestigation(req.authContext, Number(req.params.id));
+      const charge = await chargeSafely(
+        labOrderChargeRequest(order),
+        billingOutboxAttemptId,
+        billingInitialTariff,
+      );
+      return res.json({ ...order, billing: charge });
+    } catch (err: unknown) {
+      if (handleLaboratoryError(err, res)) return;
+      console.error('[api] Laboratory completion could not be recorded.');
+      return res.status(500).json({
+        error:
+          'Investigation completion could not be confirmed. Review its status before retrying.',
+      });
+    }
+  },
+);
+
+router.post(
   '/api/lab-results/:id/verify',
   requirePermission('laboratory.results.verify'),
+  validateBody(verifyLabResultBodySchema),
   async (req: AuthRequest, res) => {
     try {
       if (!req.authContext || !req.user) {
@@ -281,15 +290,11 @@ router.post(
       const verifier = req.user.fullName || req.user.username || String(req.user.id);
 
       const result = await queries.verifyLabResult(req.authContext, resultId, verifier);
-
       res.json(result);
-    } catch (err: any) {
-      if (typeof handleScopeError === 'function' && handleScopeError(err, res)) {
-        return;
-      }
-      res.status(400).json({
-        error: err instanceof Error ? err.message : 'Could not verify laboratory result.',
-      });
+    } catch (err: unknown) {
+      if (handleLaboratoryError(err, res)) return;
+      console.error('[api] POST /api/lab-results/:id/verify failed.');
+      res.status(500).json({ error: 'Could not verify laboratory result.' });
     }
   },
 );

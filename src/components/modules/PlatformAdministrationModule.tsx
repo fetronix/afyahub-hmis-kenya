@@ -1,12 +1,17 @@
+import { DataTable, PageHeader } from '../ui/layout.tsx';
 import React, { useCallback, useEffect, useState } from 'react';
 import { api, getSessionToken } from '../../api/client.ts';
 import type { Tenant, Facility } from '../../types/index.ts';
 import { Building2, Hospital, UserPlus, RefreshCw, Copy, CreditCard } from 'lucide-react';
 import { SubscriptionBillingPanel } from './SubscriptionBillingPanel.tsx';
+import { PlatformPaymentProviders } from './payment-hub/PlatformPaymentProviders.tsx';
+import { PlatformPayerRegistry } from './payer-hub/PlatformPayerRegistry.tsx';
 import { FacilityRbacEditor } from './FacilityRbacEditor.tsx';
 import { KENYA_COUNTIES, subCountiesOf } from '../../constants/kenya-locations.ts';
+import { FACILITY_MODULES } from '../../config/facility-modules.ts';
 
-type Tab = 'tenants' | 'facilities' | 'administrators' | 'billing';
+type Tab =
+  'tenants' | 'facilities' | 'administrators' | 'billing' | 'payment_providers' | 'payer_registry';
 type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED';
 
 type FacilityAdminInvitation = {
@@ -67,29 +72,10 @@ const fieldClass =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100';
 const labelClass = 'mb-1 block text-xs font-semibold text-slate-700';
 
-const FACILITY_MODULES = [
-  { id: 'registration', label: 'Patient Registration' },
-  { id: 'reception', label: 'Reception & Appointments' },
-  { id: 'opd', label: 'Outpatient Department (OPD)' },
-  { id: 'inpatient', label: 'Inpatient & Admissions' },
-  { id: 'maternity', label: 'Maternity & MCH' },
-  { id: 'theatre', label: 'Theatre' },
-  { id: 'specialty', label: 'Specialty Clinics' },
-  { id: 'laboratory', label: 'Laboratory' },
-  { id: 'radiology', label: 'Radiology' },
-  { id: 'pharmacy', label: 'Pharmacy' },
-  { id: 'inventory', label: 'Inventory' },
-  { id: 'procurement', label: 'Procurement' },
-  { id: 'finance', label: 'Finance & Billing' },
-  { id: 'insurance', label: 'Insurance / SHA Claims' },
-  { id: 'public_health', label: 'Public Health' },
-  { id: 'analytics', label: 'Analytics & Reports' },
-  { id: 'interoperability', label: 'Interoperability' },
-  { id: 'configuration', label: 'Facility Configuration' },
-  { id: 'audit', label: 'Audit Logs' },
-] as const;
-
-const DEFAULT_FACILITY_MODULES = FACILITY_MODULES.map((module) => module.id);
+// New client-specific modules are opt-in, never silently enabled at another facility.
+const DEFAULT_FACILITY_MODULES = FACILITY_MODULES.filter(
+  (module) => !['accounting', 'dialysis', 'website_booking', 'patient_portal'].includes(module.id),
+).map((module) => module.id);
 export const PlatformAdministrationModule: React.FC = () => {
   const [tab, setTab] = useState<Tab>('tenants');
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -135,6 +121,7 @@ export const PlatformAdministrationModule: React.FC = () => {
     email: '',
     phone: '',
     address: '',
+    timezone: '',
   });
   const [enabledModuleSelection, setEnabledModuleSelection] = useState<string[]>([
     ...DEFAULT_FACILITY_MODULES,
@@ -339,6 +326,7 @@ export const PlatformAdministrationModule: React.FC = () => {
         email: '',
         phone: '',
         address: '',
+        timezone: '',
       });
       return;
     }
@@ -353,6 +341,7 @@ export const PlatformAdministrationModule: React.FC = () => {
       email: selectedFacility.email ?? '',
       phone: selectedFacility.phone ?? '',
       address: selectedFacility.address ?? '',
+      timezone: selectedFacility.timezone ?? '',
     });
   }, [selectedFacility]);
 
@@ -395,6 +384,7 @@ export const PlatformAdministrationModule: React.FC = () => {
           email: editFacilityForm.email.trim() || null,
           phone: editFacilityForm.phone.trim() || null,
           address: editFacilityForm.address.trim() || null,
+          timezone: editFacilityForm.timezone.trim() || null,
         },
         'PATCH',
       );
@@ -452,19 +442,19 @@ export const PlatformAdministrationModule: React.FC = () => {
     { id: 'facilities', label: 'Facilities', icon: Hospital },
     { id: 'administrators', label: 'Facility administrators', icon: UserPlus },
     { id: 'billing', label: 'Subscription billing', icon: CreditCard },
+    { id: 'payment_providers', label: 'Payment & Banking Providers', icon: CreditCard },
+    { id: 'payer_registry', label: 'Payers & eClaims', icon: CreditCard },
   ];
 
   return (
     <section className="space-y-5">
-      <header className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between">
+      <PageHeader>
         <div>
           <p className="text-xs font-bold uppercase tracking-wider text-blue-700">
             Platform controls
           </p>
-          <h1 className="mt-1 text-xl font-bold text-slate-900">
-            Tenant & Facility Administration
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <h1 className="ui-page-title">Tenant & Facility Administration</h1>
+          <p className="ui-page-description">
             Register organizations, onboard facilities, and invite facility administrators.
           </p>
         </div>
@@ -476,7 +466,7 @@ export const PlatformAdministrationModule: React.FC = () => {
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Refresh
         </button>
-      </header>
+      </PageHeader>
 
       {error && (
         <div
@@ -511,6 +501,9 @@ export const PlatformAdministrationModule: React.FC = () => {
           </button>
         ))}
       </div>
+
+      {tab === 'payment_providers' && <PlatformPaymentProviders />}
+      {tab === 'payer_registry' && <PlatformPayerRegistry />}
 
       {tab === 'tenants' && (
         <div className="grid gap-5 xl:grid-cols-2">
@@ -985,6 +978,25 @@ export const PlatformAdministrationModule: React.FC = () => {
                   </div>
                 </div>
 
+                <div>
+                  <label className={labelClass} htmlFor="facility-timezone">
+                    Facility timezone (IANA)
+                  </label>
+                  <input
+                    id="facility-timezone"
+                    className={fieldClass}
+                    maxLength={100}
+                    placeholder="Inherit tenant timezone"
+                    value={editFacilityForm.timezone}
+                    onChange={(e) =>
+                      setEditFacilityForm({ ...editFacilityForm, timezone: e.target.value })
+                    }
+                  />
+                  <p className="mt-1 text-xs text-slate-500">
+                    Leave blank to inherit the tenant timezone. For example, Africa/Nairobi.
+                  </p>
+                </div>
+
                 <p className="text-xs text-slate-500">
                   Facility ID: {selectedFacility.id} · Tenant ID: {selectedFacility.tenantId}
                 </p>
@@ -1058,7 +1070,9 @@ export const PlatformAdministrationModule: React.FC = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setEnabledModuleSelection([...DEFAULT_FACILITY_MODULES])}
+                    onClick={() =>
+                      setEnabledModuleSelection(FACILITY_MODULES.map((module) => module.id))
+                    }
                     disabled={saving}
                     className="rounded-lg border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                   >
@@ -1222,7 +1236,7 @@ export const PlatformAdministrationModule: React.FC = () => {
               </p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                <DataTable className="min-w-full divide-y divide-slate-200 text-left text-sm">
                   <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                     <tr>
                       <th className="px-4 py-3">Recipient</th>
@@ -1292,7 +1306,7 @@ export const PlatformAdministrationModule: React.FC = () => {
                       </tr>
                     ))}
                   </tbody>
-                </table>
+                </DataTable>
               </div>
             )}
           </div>

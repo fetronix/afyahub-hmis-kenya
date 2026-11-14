@@ -1,4 +1,4 @@
-﻿{
+{
   "compilerOptions": {
     "target": "ES2022",
     "experimentalDecorators": true,
@@ -18,5 +18,5 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "exclude": ["local-backups"]
+  "exclude": ["local-backups", "node_modules", "build", "dist", ".tmp-tools"]
 }
