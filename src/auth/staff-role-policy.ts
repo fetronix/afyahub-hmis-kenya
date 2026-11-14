@@ -45,6 +45,7 @@ export const RESTRICTED_PERMISSION_MODULES = [
 ] as const;
 
 export const RESTRICTED_PERMISSION_CODES = [
+  'accounting.planning.reset',
   'roles.manage',
   'roles.create',
   'roles.update',

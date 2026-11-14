@@ -6,9 +6,11 @@ import { requireScopedFacility } from '../routes/shared/scoping.ts';
 import * as planning from './planning.service.ts';
 import * as reports from './reports.service.ts';
 import * as outcomes from './import-results.service.ts';
+import resetRoutes from './planning-reset.routes.ts';
 import { PlanningError, assert } from './calculations.ts';
 const router = Router();
 router.use(requirePermission('accounting.read', 'accounting.planning.read'));
+router.use('/reset', resetRoutes);
 type Work = (req: AuthRequest, res: Response, s: planning.PlanningScope) => Promise<unknown>;
 function route(fn: Work) {
   return async (req: AuthRequest, res: Response, next: NextFunction) => {

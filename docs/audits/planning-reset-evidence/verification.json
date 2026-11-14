@@ -1,0 +1,53 @@
+{
+  "syntheticOnly": true,
+  "liveDatabaseAccessed": false,
+  "productionMigrationsExecuted": false,
+  "liveResetExecuted": false,
+  "database": {
+    "engine": "PostgreSQL 18.6",
+    "disposable": true,
+    "loopbackOnly": true,
+    "name": "planning_reset_synthetic_test",
+    "migrationsApplied": 98
+  },
+  "focusedRegression": {
+    "suitesPassed": 13,
+    "testsPassed": 163,
+    "testsFailed": 0,
+    "testsSkipped": 0,
+    "resetDatabaseTests": 15,
+    "resetUiTests": 9,
+    "resetContractTests": 2,
+    "existingBudgetDatabaseTests": 29
+  },
+  "checks": {
+    "typecheck": "passed",
+    "scopedEslint": "passed (zero warnings/errors)",
+    "scopedPrettier": "passed",
+    "frontendBuild": "passed (existing large-chunk warning)",
+    "serverBuild": "passed"
+  },
+  "broaderMigrationIntegrity": {
+    "passed": 167,
+    "failed": 1,
+    "failure": "src/tests/migrations.spec.ts / Guarded Ddl: unchanged 0095_budget_procurement_planning.sql lacks guarded CREATE TABLE statements",
+    "baselineAndPublishedFilesUnchanged": true,
+    "notSilentlyFixedOrWaived": true
+  },
+  "migrationSha256": "25eaa13870f332eb3e4b7855fb5817f68827d359211e479002027d84e30a6232",
+  "modifiedBaselineFiles": [
+    ".env.example",
+    "drizzle/meta/_journal.json",
+    "src/auth/staff-role-policy.ts",
+    "src/budget-planning/planning.routes.ts",
+    "src/components/modules/planning/PlanningWorkspace.tsx",
+    "src/seeds/permissions.ts"
+  ],
+  "missingBaselineFiles": [],
+  "limitations": [
+    "No live database or authenticated production browser test",
+    "Explicit permission provisioning and reviewed deployment/migration remain required",
+    "Preview key must be shared across multiple workers or previews fail closed on worker/restart changes",
+    "Inventory and selected-row evidence are loaded in full; selection limited to 100 plans"
+  ]
+}

@@ -10,6 +10,7 @@ import { PlanningEditor, field, button, quiet, months } from './PlanningEditors.
 import { PlanningInlineItem } from './PlanningInlineItem.tsx';
 import { PlanningImport } from './PlanningImport.tsx';
 import { ImportOverview } from './ImportResults.tsx';
+import { PlanningReset } from './PlanningReset.tsx';
 import {
   sectionItems,
   isBrandingCategory,
@@ -43,6 +44,8 @@ export function PlanningWorkspace({
   const can = (p: string) => permissions.includes(`accounting.planning.${p}`);
   const auditAllowed = permissions.includes('accounting.planning.audit');
   const exportAllowed = permissions.includes('accounting.planning.export');
+  const [resetOpen, setResetOpen] = useState(false);
+  const [facilityAudit, setFacilityAudit] = useState(false);
   const [inlineId, setInlineId] = useState<number | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [total, setTotal] = useState(0);
@@ -157,7 +160,10 @@ export function PlanningWorkspace({
     setHistory([]);
     if (view === 'planningAudit' && auditAllowed)
       planningApi
-        .get<PlanningRow[]>(facilityId, '/audit', { planId, page: auditPage })
+        .get<PlanningRow[]>(facilityId, '/audit', {
+          planId: facilityAudit ? '' : planId,
+          page: auditPage,
+        })
         .then((r) => {
           if (live) setAudit(r);
         })
@@ -176,7 +182,7 @@ export function PlanningWorkspace({
     return () => {
       live = false;
     };
-  }, [facilityId, planId, view, refresh, auditPage, auditAllowed, exportAllowed]);
+  }, [facilityId, planId, view, refresh, auditPage, auditAllowed, exportAllowed, facilityAudit]);
   const run = async (fn: () => Promise<void>, refreshAfter = true) => {
     setBusy(true);
     setError('');
@@ -298,6 +304,40 @@ export function PlanningWorkspace({
         <h3 className="text-xl font-bold">Budget &amp; Procurement Planning</h3>
         <p className="text-sm text-muted">{planningViews.find(([id]) => id === view)?.[1]}</p>
       </header>
+      {can('reset') && can('manage') && (
+        <section aria-label="Budget planning settings" className="space-y-3">
+          <h4 className="font-semibold">Planning settings</h4>
+          <button
+            className={quiet}
+            aria-expanded={resetOpen}
+            onClick={() => setResetOpen((v) => !v)}
+          >
+            {resetOpen ? 'Close reset settings' : 'Reset Planning Data'}
+          </button>
+          {resetOpen && (
+            <PlanningReset
+              key={facilityId}
+              facilityId={facilityId}
+              onReset={() => {
+                setFacilityAudit(true);
+                setAuditPage(1);
+                setLoaded(null);
+                setEditor(null);
+                setInlineId(null);
+                setFilters((f) => ({
+                  ...f,
+                  search: '',
+                  categoryId: '',
+                  consumableGroup: '',
+                  unit: '',
+                  page: 1,
+                }));
+                reload();
+              }}
+            />
+          )}
+        </section>
+      )}
       <nav aria-label="Budget planning sections" className="flex flex-wrap gap-2">
         {planningViews.map(([id, label]) => (
           <button
@@ -672,7 +712,13 @@ export function PlanningWorkspace({
                     disabled={!itemCategories.some((c) => c.is_active)}
                     onClick={() => setEditor({ kind: 'item' })}
                   >
-                    {view === 'planningBranding' ? 'Add branding item' : 'Add item'}
+                    {!matchingItems.length
+                      ? view === 'planningBranding'
+                        ? 'Add First Item — Branding'
+                        : 'Add First Item — Stationery'
+                      : view === 'planningBranding'
+                        ? 'Add branding item'
+                        : 'Add item'}
                   </button>
                 )}
                 {draft && (
@@ -816,7 +862,8 @@ export function PlanningWorkspace({
                 </DataTable>
                 {!itemRows.length && (
                   <p className="p-4 text-sm">
-                    No matching items. Add a category first, then add an item or import a workbook.
+                    No matching items. Add a category if needed, then Add First Item. CSV/Excel
+                    import is optional.
                   </p>
                 )}
               </div>
@@ -854,7 +901,9 @@ export function PlanningWorkspace({
               </p>
               {draft && (
                 <button className={button} onClick={() => setEditor({ kind: 'uniform' })}>
-                  Add uniform projection
+                  {data.uniforms.length
+                    ? 'Add uniform projection'
+                    : 'Add First Item — Uniform projection'}
                 </button>
               )}
               <div className="overflow-x-auto">
@@ -1038,6 +1087,17 @@ export function PlanningWorkspace({
         (can('audit') ? (
           <section className="space-y-3">
             <h4 className="font-semibold">Immutable planning audit trail</h4>
+            <label className="block text-sm">
+              <input
+                type="checkbox"
+                checked={facilityAudit}
+                onChange={(e) => {
+                  setFacilityAudit(e.target.checked);
+                  setAuditPage(1);
+                }}
+              />
+              Show facility-wide audit (including planning resets)
+            </label>
             {audit.map((r) => (
               <details key={r.id} className="rounded border border-hair p-3 text-xs">
                 <summary>

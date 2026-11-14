@@ -1246,6 +1246,13 @@ const PERMISSIONS = [
       'Facility-scoped planning projections only; no actual expenditure or procurement posting.',
   },
   {
+    code: 'accounting.planning.reset',
+    name: 'Reset draft planning data',
+    module: 'accounting',
+    description:
+      'Destructive draft-only facility reset; additionally requires FACILITY_ADMIN and planning manage permission.',
+  },
+  {
     code: 'accounting.planning.manage',
     name: 'Manage draft budget plans',
     module: 'accounting',
