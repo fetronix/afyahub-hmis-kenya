@@ -12,7 +12,7 @@ The supplied Syrona scenario has 75 lines and 13 departments (eight income, five
 - Formula Audit shows inert arithmetic rules instead of calculated money. References include `[INC-01]`, `[INC-01@-1]` and `PREV`. Only arithmetic, parentheses, references and numbers are supported—not JavaScript, spreadsheet functions or executable workbook formulas. Invalid references, dependency cycles and arithmetic errors block persistence.
 - The Professional Fees checkbox optionally adds 70% of dialysis revenue in April–December; it defaults off, preserving the supplied rules.
 - CSV and Excel export the entire current table (not just visible rows), including summaries. Excel contains genuine numeric money/percentage cells with number formats. Formula-audit expressions remain text, not executable formulas. CSV text is protected against spreadsheet-formula injection.
-- Financial reset requires the exact phrase **RESET FINANCIAL BASELINE** and an audit reason. It removes this financial model's custom entities and overrides only. It is not the separate workspace-wide planning reset and does not delete procurement plans, imports, actuals, settings or audit records.
+- Financial reset requires the authenticated facility administrator, the exact phrase **RESET FINANCIAL BASELINE**, and a trimmed audit reason of 10–500 characters. The confirmation shows custom-row, custom-department and monthly-override removal counts; the transaction records actual reset counts and the reason with previous/new audit values. It removes this financial model's custom entities and overrides only. It is not the separate workspace-wide planning reset and does not delete procurement plans, imports, actuals, settings or audit records.
 
 ## Exact baseline reconciliation
 
@@ -40,12 +40,12 @@ Read-only repeatable-read lookup never automatically creates the baseline. Finan
 
 ## Verification (synthetic/local only)
 
-- **182 tests passed across 13 suites**, including 19 financial model/engine/export tests, 10 financial PostgreSQL/HTTP tests and 12 financial React tests, plus planning/import/reset/accounting regressions.
+- **185 tests passed across 13 suites**, including 19 financial model/engine/export tests, 11 financial PostgreSQL/HTTP tests and 14 financial React tests, plus planning/import/reset/accounting regressions.
 - Applied 99 migrations, through 0098, to a disposable synthetic PostgreSQL database only.
 - `npm run typecheck`, scoped ESLint, `npm run build` and `npm run build:server` passed. The frontend build still warns about a bundle over 500 kB.
-- Browser verifier passed **13 checks** using the real grid in an explicitly isolated demo: inline edit and downstream recalculation, restore, desktop sticky columns, audit display, custom creation/deletion, reset guard, actual CSV/XLSX downloads, mobile overflow containment, and no browser runtime errors or application API requests.
-- Evidence: `financial-budget-evidence/browser-results.json` and desktop/audit/mobile PNGs in the same directory.
-- An initially oversubscribed parallel regression run timed out one UI test; the isolated UI suite passed, then the complete regression passed with two workers. No test assertions were weakened to hide it.
+- Browser verifier passed **16 checks** using the real grid in an explicitly isolated demo: inline edit and downstream recalculation, restore, desktop sticky columns, audit display, custom creation/deletion, reset guard, actual CSV/XLSX downloads, mobile overflow containment, and no browser runtime errors or application API requests.
+- Evidence: `financial-budget-evidence/browser-results.json` and desktop/audit/mobile/reset-preview PNGs in the same directory.
+- During this completion review, running the compiler alongside regression tests exhausted sandbox memory and caused UI timeouts; verification was rerun sequentially, with two test workers and compiler memory/concurrency limits, and passed. A reset scope-isolation fixture was updated to provide the newly required reason so it still verifies the intended 404 scope guard. Assertions were not weakened.
 
 Reproduce the offline demo after a frontend build:
 
@@ -58,3 +58,32 @@ This binds to `0.0.0.0`, uses no application session/API/database and discards e
 ## Deployment boundary
 
 No production migration, deployment, live query, live reset or live data change was performed. Production adoption requires authorized tenant/facility/year/currency selection, reviewed migration execution, permissions and authenticated environment verification. Existing unrelated guarded-DDL failure involving migration 0095 was not altered or represented as resolved. This feature does not establish statutory-rate accuracy or production readiness.
+
+## Completion review and navigation boundary
+
+The module remains in **Planning → Annual Financial Budget**. No navigation entry was moved, renamed or restructured during completion. Relocation to **Accounting & Finance → Budgeting & Financial Planning** is deferred to a separate review/task.
+
+The final pass added reset-reason enforcement, a reset-impact preview/committed receipt, facility-admin reset authorization, and a keyed financial-budget session so a destination change cannot reuse another plan's model/version. Added tests cover reason validation, unchanged version after rejected reset, committed audit reason/counts, non-admin reset denial, correct reset request revision and stale/late destination reads.
+
+### Verified feature coverage
+
+| Area                                                                     | Verification                                                           |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
+| Supplied 75-line / 13-department scenario and unusual rules              | Pure model/engine tests; baseline reconciliation above                 |
+| Formula chains, manual overrides, cycle/reference/numeric validation     | Pure tests plus React and synthetic persistence tests                  |
+| Monthly input, Enter/blur/Escape, baseline restore, dependent totals     | React tests and real-grid browser checks                               |
+| Custom rows/departments, metadata edits, confirmed deletion              | React tests; browser create/delete checks                              |
+| Collapse/search isolation from totals and formula-audit mode             | Model/React tests; browser audit check                                 |
+| Annual KPIs, weighted margins, zero-income guards, negative display      | Pure/React tests and browser KPI check                                 |
+| CSV formula protection, numeric XLSX and inert audit rules               | Pure export tests, synthetic HTTP exports and actual browser downloads |
+| Draft/year/currency protection, facility/tenant/RBAC isolation           | Synthetic PostgreSQL/HTTP tests                                        |
+| Version conflict, concurrent writes, failed COMMIT rollback              | Synthetic PostgreSQL/HTTP tests; fail-closed UI regression             |
+| Financial-only reset, exact confirmation, reason and actual audit counts | Synthetic PostgreSQL/HTTP and React tests; offline browser reset       |
+| Existing planning sections/imports/reset and accounting workspace        | Existing regression suites retained and passed                         |
+| Wide-screen sticky columns / mobile-contained swipe grid                 | Browser measurements and reviewed screenshots                          |
+
+### Reproduction notes
+
+The regression selection was the three financial-budget suites plus `budget-planning`, `budget-planning.db`, `planning-import-outcomes`, `planning-import-destination`, `planning-reset-contract`, and the existing planning-sections/zero-fill/reset/import-outcomes/accounting-workspace UI suites. Use `vitest run --maxWorkers=2` with the explicitly disposable synthetic database environment. The complete repository-wide test suite was **not** represented as passed; the targeted 13-suite selection is the verification scope.
+
+For this sandbox's native TypeScript compiler, verification used `GOMEMLIMIT=1800MiB GOMAXPROCS=2 npm run typecheck`; no source configuration was changed for that resource limit. The bundle-size warning remains a limitation, not a failed build. Browser checks remain isolated-demo evidence, not a claim of authenticated production end-to-end verification.

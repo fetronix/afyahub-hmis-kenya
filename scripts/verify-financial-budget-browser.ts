@@ -141,8 +141,38 @@ try {
       (els.find((el) => el.textContent?.trim() === 'Confirm baseline reset') as HTMLButtonElement)
         ?.disabled,
   );
-  check(disabled, 'Baseline reset is disabled until exact phrase is supplied');
-  await page.click('[aria-label="Close budget dialog"]');
+  check(disabled, 'Baseline reset is disabled until exact phrase and audit reason are supplied');
+  await page.locator('[role="dialog"] input').fill('RESET FINANCIAL BASELINE');
+  check(
+    await page.$$eval(
+      '[role="dialog"] button',
+      (els) =>
+        (els.find((el) => el.textContent?.trim() === 'Confirm baseline reset') as HTMLButtonElement)
+          ?.disabled,
+    ),
+    'Exact phrase alone cannot bypass the reset audit reason',
+  );
+  await page
+    .locator('[role="dialog"] textarea')
+    .fill('Restore reviewed browser demonstration baseline');
+  check(
+    await page.$$eval(
+      '[role="dialog"] button',
+      (els) =>
+        !(
+          els.find((el) => el.textContent?.trim() === 'Confirm baseline reset') as HTMLButtonElement
+        )?.disabled,
+    ),
+    'Reset enables only after complete confirmation',
+  );
+  await page.screenshot({
+    path: path.join(output, '04-financial-reset-preview.png'),
+    fullPage: true,
+  });
+  await clickText('Confirm baseline reset');
+  await page.waitForSelector('[role="dialog"]', { hidden: true });
+  await page.waitForSelector('[aria-label="INC-01 Jan 2026: KES 18,200.00"]');
+  check(true, 'Confirmed reset returns the in-memory demonstration to the baseline');
   const client = await browser.target().createCDPSession();
   await client.send('Browser.setDownloadBehavior', {
     behavior: 'allow',

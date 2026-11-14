@@ -15,6 +15,7 @@ import {
 import { planningApi, type Plan } from '../../../api/clients/planning.client.ts';
 import {
   createFinancialBaseline,
+  financialResetImpact,
   budgetMonths,
   type FinancialBudget,
   type BudgetLine,
@@ -459,7 +460,7 @@ export function FinancialBudgetGrid({
   canExport?: boolean;
   busy?: boolean;
   onChange: (next: FinancialBudget) => Promise<boolean>;
-  onReset: (confirmation: string) => Promise<boolean>;
+  onReset: (confirmation: string, reason: string) => Promise<boolean>;
   onExport: (format: 'csv' | 'xlsx', audit: boolean) => Promise<void>;
   status?: string;
 }) {
@@ -469,7 +470,8 @@ export function FinancialBudgetGrid({
     [search, setSearch] = useState('');
   const [modal, setModal] = useState<'line' | 'department' | 'reset' | null>(null),
     [line, setLine] = useState<BudgetLine | undefined>(),
-    [confirmation, setConfirmation] = useState('');
+    [confirmation, setConfirmation] = useState(''),
+    [resetReason, setResetReason] = useState('');
   const [pendingDelete, setPendingDelete] = useState<BudgetLine | null>(null),
     [error, setError] = useState('');
   const enabled = editable && !busy;
@@ -630,6 +632,7 @@ export function FinancialBudgetGrid({
             className={control}
             onClick={() => {
               setConfirmation('');
+              setResetReason('');
               setModal('reset');
             }}
           >
@@ -935,6 +938,23 @@ export function FinancialBudgetGrid({
             Stationery/uniform procurement records, import history, audit, letterheads and actual
             accounting are untouched.
           </p>
+          <p className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm">
+            Reset preview: {financialResetImpact(model).customRows} custom rows,{' '}
+            {financialResetImpact(model).customDepartments} custom departments and{' '}
+            {financialResetImpact(model).monthlyOverrides} monthly overrides will be removed.
+            {model.dialysisFeesAprDec &&
+              ' The optional April–December dialysis fees will be turned off.'}
+          </p>
+          <label className="mt-4 block text-sm">
+            Audit reason (10–500 characters)
+            <textarea
+              className={field}
+              minLength={10}
+              maxLength={500}
+              value={resetReason}
+              onChange={(e) => setResetReason(e.target.value)}
+            />
+          </label>
           <label className="mt-4 block text-sm">
             Type RESET FINANCIAL BASELINE
             <input
@@ -944,10 +964,15 @@ export function FinancialBudgetGrid({
             />
           </label>
           <button
-            disabled={busy || confirmation !== 'RESET FINANCIAL BASELINE'}
+            disabled={
+              !enabled ||
+              confirmation !== 'RESET FINANCIAL BASELINE' ||
+              resetReason.trim().length < 10 ||
+              resetReason.trim().length > 500
+            }
             className={primary + ' mt-4'}
             onClick={() =>
-              void onReset(confirmation).then((ok) => {
+              void onReset(confirmation, resetReason.trim()).then((ok) => {
                 if (ok) setModal(null);
               })
             }
@@ -960,19 +985,24 @@ export function FinancialBudgetGrid({
   );
 }
 type Loaded = { plan: Plan; facility: { id: number; name: string }; model: FinancialBudget | null };
-export function AnnualFinancialBudget({
-  facilityId,
-  planId,
-  canManage,
-  canExport,
-  onSaved,
-}: {
+type AnnualFinancialBudgetProps = {
   facilityId: number;
   planId: number;
   canManage: boolean;
   canExport: boolean;
   onSaved: () => void;
-}) {
+};
+/** A changed destination must never reuse the previous plan's loaded model/version. */
+export function AnnualFinancialBudget(props: AnnualFinancialBudgetProps) {
+  return <FinancialBudgetSession key={`${props.facilityId}:${props.planId}`} {...props} />;
+}
+function FinancialBudgetSession({
+  facilityId,
+  planId,
+  canManage,
+  canExport,
+  onSaved,
+}: AnnualFinancialBudgetProps) {
   const [loaded, setLoaded] = useState<Loaded | null>(null),
     [model, setModel] = useState<FinancialBudget>(() => createFinancialBaseline()),
     [error, setError] = useState(''),
@@ -1004,7 +1034,7 @@ export function AnnualFinancialBudget({
       live = false;
     };
   }, [facilityId, planId, refresh]);
-  const save = async (next: FinancialBudget, confirmation?: string) => {
+  const save = async (next: FinancialBudget, confirmation?: string, reason?: string) => {
     if (!loaded || busy || blocked) return false;
     setBusy(true);
     setError('');
@@ -1015,7 +1045,7 @@ export function AnnualFinancialBudget({
         facilityId,
         `/plans/${planId}/financial-budget${confirmation ? '/reset' : ''}`,
         confirmation
-          ? { version: loaded.plan.version, confirmation }
+          ? { version: loaded.plan.version, confirmation, reason }
           : { version: loaded.plan.version, model: next },
         confirmation ? 'POST' : 'PUT',
       );
@@ -1094,7 +1124,7 @@ export function AnnualFinancialBudget({
         canExport={canExport && !!loaded.model && !blocked}
         busy={busy}
         onChange={save}
-        onReset={(confirmation) => save(createFinancialBaseline(), confirmation)}
+        onReset={(confirmation, reason) => save(createFinancialBaseline(), confirmation, reason)}
         onExport={(format, audit) =>
           planningApi.financialBudgetFile(facilityId, planId, format, audit)
         }

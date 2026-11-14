@@ -36,8 +36,8 @@ function Harness({
         setModel(next);
         return true;
       }}
-      onReset={async (confirmation) => {
-        reset(confirmation);
+      onReset={async (confirmation, reason) => {
+        reset(confirmation, reason);
         setModel(createFinancialBaseline());
         return true;
       }}
@@ -191,8 +191,17 @@ describe('Excel-like annual financial budget', () => {
     fireEvent.change(screen.getByLabelText('Type RESET FINANCIAL BASELINE'), {
       target: { value: 'RESET FINANCIAL BASELINE' },
     });
+    expect(confirm).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Audit reason (10–500 characters)'), {
+      target: { value: 'Restore the reviewed baseline' },
+    });
     fireEvent.click(confirm);
-    await waitFor(() => expect(reset).toHaveBeenCalledWith('RESET FINANCIAL BASELINE'));
+    await waitFor(() =>
+      expect(reset).toHaveBeenCalledWith(
+        'RESET FINANCIAL BASELINE',
+        'Restore the reviewed baseline',
+      ),
+    );
   });
   it('toggles optional Apr–Dec professional dialysis fees and shows negative results in red', async () => {
     const m = createFinancialBaseline();
@@ -241,6 +250,98 @@ describe('Excel-like annual financial budget', () => {
       '/plans/5/financial-budget',
       expect.objectContaining({ version: 1 }),
       'PUT',
+    );
+  });
+  it('isolates plan changes while the next destination is loading and ignores late reads', async () => {
+    let resolveOld!: (value: unknown) => void;
+    let resolveNew!: (value: unknown) => void;
+    api.get.mockImplementation(
+      (_facility: number, path: string) =>
+        new Promise((resolve) => {
+          if (path.includes('/5/')) resolveOld = resolve;
+          else resolveNew = resolve;
+        }),
+    );
+    const props = { facilityId: 7, canManage: true, canExport: true, onSaved: vi.fn() };
+    const view = render(<AnnualFinancialBudget {...props} planId={5} />);
+    view.rerender(<AnnualFinancialBudget {...props} facilityId={8} planId={6} />);
+    expect(screen.queryByRole('button', { name: 'Add line item' })).not.toBeInTheDocument();
+    const plan = {
+      id: 6,
+      name: 'New destination',
+      version: 9,
+      status: 'DRAFT',
+      financial_year: 2026,
+      currency: 'KES',
+    };
+    resolveNew({
+      plan,
+      facility: { id: 8, name: 'New facility' },
+      model: createFinancialBaseline(),
+    });
+    await screen.findByText('New facility — 2026 Annual Budget');
+    resolveOld({
+      plan: { ...plan, id: 5 },
+      facility: { id: 7, name: 'Old facility' },
+      model: createFinancialBaseline(),
+    });
+    await waitFor(() =>
+      expect(screen.queryByText('Old facility — 2026 Annual Budget')).not.toBeInTheDocument(),
+    );
+    api.send.mockResolvedValue({
+      plan: { ...plan, version: 10 },
+      model: createFinancialBaseline(),
+    });
+    clickMonth();
+    fireEvent.change(screen.getByLabelText('INC-01 Jan 2026'), { target: { value: '10' } });
+    fireEvent.keyDown(screen.getByLabelText('INC-01 Jan 2026'), { key: 'Enter' });
+    await waitFor(() =>
+      expect(api.send).toHaveBeenCalledWith(
+        8,
+        '/plans/6/financial-budget',
+        expect.objectContaining({ version: 9 }),
+        'PUT',
+      ),
+    );
+  });
+  it('submits financial reset with the current revision and trimmed audit reason', async () => {
+    const plan = {
+      id: 5,
+      name: 'Test plan',
+      version: 3,
+      status: 'DRAFT',
+      financial_year: 2026,
+      currency: 'KES',
+    };
+    api.get.mockResolvedValue({
+      plan,
+      facility: { id: 7, name: 'Test facility' },
+      model: createFinancialBaseline(),
+    });
+    api.send.mockResolvedValue({ plan: { ...plan, version: 4 }, model: createFinancialBaseline() });
+    render(
+      <AnnualFinancialBudget facilityId={7} planId={5} canManage canExport onSaved={() => {}} />,
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Reset baseline' }));
+    expect(screen.getByText(/Reset preview: 0 custom rows/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Type RESET FINANCIAL BASELINE'), {
+      target: { value: 'RESET FINANCIAL BASELINE' },
+    });
+    fireEvent.change(screen.getByLabelText('Audit reason (10–500 characters)'), {
+      target: { value: '  Restore reviewed financial assumptions  ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm baseline reset' }));
+    await waitFor(() =>
+      expect(api.send).toHaveBeenCalledWith(
+        7,
+        '/plans/5/financial-budget/reset',
+        {
+          version: 3,
+          confirmation: 'RESET FINANCIAL BASELINE',
+          reason: 'Restore reviewed financial assumptions',
+        },
+        'POST',
+      ),
     );
   });
   it('fails closed on persistence conflict without claiming local edits were saved', async () => {

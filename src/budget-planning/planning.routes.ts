@@ -86,9 +86,17 @@ router.put(
 router.post(
   '/plans/:id/financial-budget/reset',
   manage,
-  route(async (req, res, s) =>
-    res.json(await financial.saveFinancialBudget(s, req.params.id, req.body, true)),
-  ),
+  route(async (req, res, s) => {
+    assert(
+      req.authContext?.roles.includes('FACILITY_ADMIN') &&
+        req.authContext.facilityId === s.facilityId &&
+        req.authContext.tenantId === s.tenantId,
+      'FACILITY_ADMIN_REQUIRED',
+      'Financial baseline reset requires the administrator of the authenticated facility.',
+      403,
+    );
+    res.json(await financial.saveFinancialBudget(s, req.params.id, req.body, true));
+  }),
 );
 router.get(
   '/plans/:id/financial-budget/export',

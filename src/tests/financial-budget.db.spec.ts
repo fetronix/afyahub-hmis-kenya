@@ -64,7 +64,9 @@ describeDb('annual financial budgets — disposable synthetic PostgreSQL only', 
           tenantId: s.tenantId,
           facilityId: s.facilityId,
           isSuperAdmin: mode === 'super',
-          roles: [mode === 'super' ? 'SUPER_ADMIN' : 'FACILITY_ADMIN'],
+          roles: [
+            mode === 'super' ? 'SUPER_ADMIN' : mode === 'planner' ? 'ACCOUNTANT' : 'FACILITY_ADMIN',
+          ],
           permissions: [
             'accounting.read',
             'accounting.planning.read',
@@ -176,6 +178,7 @@ describeDb('annual financial budgets — disposable synthetic PostgreSQL only', 
           await api(p.id, '/reset', 'POST', {
             version: p.version,
             confirmation: 'RESET FINANCIAL BASELINE',
+            reason: 'Verify cross-facility isolation',
           })
         ).status,
       ).toBe(404);
@@ -222,6 +225,26 @@ describeDb('annual financial budgets — disposable synthetic PostgreSQL only', 
     expect((await financialBudget(s, p.id)).model).toBeNull();
     expect((await financialBudget(s, p.id)).plan.version).toBe(p.version);
   });
+  it('restricts financial reset to the authenticated facility administrator', async () => {
+    const p = await fixture();
+    const saved = await saveFinancialBudget(s, p.id, {
+      version: p.version,
+      model: createFinancialBaseline(),
+    });
+    const body = {
+      version: saved.plan.version,
+      confirmation: 'RESET FINANCIAL BASELINE',
+      reason: 'Restore reviewed baseline',
+    };
+    const denied = await api(p.id, '/reset', 'POST', body, 'planner');
+    expect(denied.status).toBe(403);
+    expect((await denied.json()).error).toBe('FACILITY_ADMIN_REQUIRED');
+    expect((await financialBudget(s, p.id)).plan.version).toBe(saved.plan.version);
+    expect((await api(p.id, '/reset', 'POST', { ...body, reason: 'short' })).status).toBe(400);
+    const accepted = await api(p.id, '/reset', 'POST', body);
+    expect(accepted.status).toBe(200);
+    expect((await accepted.json()).resetAudit.reason).toBe('Restore reviewed baseline');
+  });
   it('resets only the financial scenario after exact confirmation and preserves procurement records', async () => {
     let p = await fixture();
     const category = await planning.saveCategory(s, p.id, null, {
@@ -253,13 +276,40 @@ describeDb('annual financial budgets — disposable synthetic PostgreSQL only', 
     await expect(
       saveFinancialBudget(s, p.id, { version: saved.plan.version, confirmation: 'wrong' }, true),
     ).rejects.toMatchObject({ code: 'CONFIRMATION_REQUIRED' });
+    for (const reason of [undefined, '', 'short', 123, ' '.repeat(12), 'x'.repeat(501)]) {
+      await expect(
+        saveFinancialBudget(
+          s,
+          p.id,
+          { version: saved.plan.version, confirmation: 'RESET FINANCIAL BASELINE', reason },
+          true,
+        ),
+      ).rejects.toMatchObject({ code: 'RESET_REASON_REQUIRED' });
+    }
+    expect((await financialBudget(s, p.id)).plan.version).toBe(saved.plan.version);
     const reset = await saveFinancialBudget(
       s,
       p.id,
-      { version: saved.plan.version, confirmation: 'RESET FINANCIAL BASELINE' },
+      {
+        version: saved.plan.version,
+        confirmation: 'RESET FINANCIAL BASELINE',
+        reason: 'Restore reviewed financial assumptions',
+      },
       true,
     );
     expect(reset.model).toEqual(createFinancialBaseline());
+    expect(reset.resetAudit).toEqual({
+      reason: 'Restore reviewed financial assumptions',
+      removed: { customRows: 1, customDepartments: 0, monthlyOverrides: 1, dialysisOption: false },
+    });
+    const audit = (
+      await pool.query(
+        "SELECT previous_values,updated_values FROM planning_events WHERE plan_id=$1 AND action='RESET_FINANCIAL_BASELINE'",
+        [p.id],
+      )
+    ).rows[0];
+    expect(audit.previous_values).toEqual(model);
+    expect(audit.updated_values.resetAudit).toEqual(reset.resetAudit);
     expect(
       (await pool.query('SELECT count(*)::int n FROM planning_items WHERE plan_id=$1', [p.id]))
         .rows[0].n,

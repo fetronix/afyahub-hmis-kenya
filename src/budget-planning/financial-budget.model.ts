@@ -23,6 +23,16 @@ export type FinancialBudget = {
   departments: BudgetDepartment[];
   rows: BudgetLine[];
 };
+/** Counts discarded by a financial-only baseline reset; no procurement records are included. */
+export function financialResetImpact(model: FinancialBudget | null) {
+  return {
+    customRows: model?.rows.filter((row) => row.custom).length ?? 0,
+    customDepartments: model?.departments.filter((department) => department.custom).length ?? 0,
+    monthlyOverrides:
+      model?.rows.reduce((sum, row) => sum + Object.keys(row.overrides).length, 0) ?? 0,
+    dialysisOption: model?.dialysisFeesAprDec ?? false,
+  };
+}
 export const budgetMonths = [
   'Jan',
   'Feb',

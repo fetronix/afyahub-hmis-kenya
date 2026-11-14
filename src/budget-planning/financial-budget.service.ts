@@ -1,6 +1,6 @@
 import { transaction, scopedPlan, event, type PlanningScope } from './planning.service.ts';
 import { assert, id, PlanningError } from './calculations.ts';
-import { createFinancialBaseline } from './financial-budget.model.ts';
+import { createFinancialBaseline, financialResetImpact } from './financial-budget.model.ts';
 import { validateFinancialBudget } from './financial-budget.engine.ts';
 export async function financialBudget(s: PlanningScope, planId: unknown) {
   return transaction(async (c) => {
@@ -32,6 +32,13 @@ export async function saveFinancialBudget(
       input.confirmation === 'RESET FINANCIAL BASELINE',
       'CONFIRMATION_REQUIRED',
       'Type RESET FINANCIAL BASELINE exactly.',
+    );
+  const reason = typeof input.reason === 'string' ? input.reason.trim() : '';
+  if (reset)
+    assert(
+      reason.length >= 10 && reason.length <= 500,
+      'RESET_REASON_REQUIRED',
+      'Provide an audit reason of 10–500 characters.',
     );
   let model;
   try {
@@ -79,6 +86,7 @@ export async function saveFinancialBudget(
         [plan.id, s.tenantId, s.facilityId, s.actorId],
       )
     ).rows[0];
+    const resetAudit = reset ? { reason, removed: financialResetImpact(previous) } : undefined;
     await event(
       c,
       s,
@@ -88,8 +96,13 @@ export async function saveFinancialBudget(
           ? 'UPDATE_FINANCIAL_BUDGET'
           : 'CREATE_FINANCIAL_BUDGET',
       plan.id,
-      { entity: 'financial_budget', entityId: plan.id, previous, updated: model },
+      {
+        entity: 'financial_budget',
+        entityId: plan.id,
+        previous,
+        updated: resetAudit ? { ...model, resetAudit } : model,
+      },
     );
-    return { plan: next, model };
+    return { plan: next, model, ...(resetAudit ? { resetAudit } : {}) };
   });
 }
