@@ -7,6 +7,8 @@ import * as planning from './planning.service.ts';
 import * as reports from './reports.service.ts';
 import * as outcomes from './import-results.service.ts';
 import resetRoutes from './planning-reset.routes.ts';
+import * as financial from './financial-budget.service.ts';
+import { financialCsv, financialXlsx } from './financial-budget.export.ts';
 import { PlanningError, assert } from './calculations.ts';
 const router = Router();
 router.use(requirePermission('accounting.read', 'accounting.planning.read'));
@@ -70,6 +72,51 @@ function route(fn: Work) {
 const manage = requirePermission('accounting.planning.manage'),
   importPermission = requirePermission('accounting.planning.import', 'accounting.planning.manage'),
   exportPermission = requirePermission('accounting.planning.export');
+router.get(
+  '/plans/:id/financial-budget',
+  route(async (req, res, s) => res.json(await financial.financialBudget(s, req.params.id))),
+);
+router.put(
+  '/plans/:id/financial-budget',
+  manage,
+  route(async (req, res, s) =>
+    res.json(await financial.saveFinancialBudget(s, req.params.id, req.body)),
+  ),
+);
+router.post(
+  '/plans/:id/financial-budget/reset',
+  manage,
+  route(async (req, res, s) =>
+    res.json(await financial.saveFinancialBudget(s, req.params.id, req.body, true)),
+  ),
+);
+router.get(
+  '/plans/:id/financial-budget/export',
+  exportPermission,
+  route(async (req, res, s) => {
+    const loaded = await financial.financialBudget(s, req.params.id);
+    assert(loaded.model, 'NO_FINANCIAL_BUDGET', 'Save the financial budget before exporting.', 409);
+    assert(
+      ['csv', 'xlsx'].includes(String(req.query.format)),
+      'INVALID_FORMAT',
+      'Choose CSV or Excel.',
+    );
+    const format = String(req.query.format),
+      audit = req.query.mode === 'formulas';
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="annual-budget-2026-${loaded.plan.id}.${format}"`,
+    );
+    res.type(
+      format === 'csv'
+        ? 'text/csv; charset=utf-8'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.send(
+      format === 'csv' ? financialCsv(loaded.model, audit) : financialXlsx(loaded.model, audit),
+    );
+  }),
+);
 router.get(
   '/plans',
   route(async (req, res, s) => res.json(await planning.listPlans(s, req.query))),

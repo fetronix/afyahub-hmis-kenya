@@ -5,7 +5,11 @@ const read = (p: string) => readFileSync(p, 'utf8');
 describe('planning reset migration and permission boundary', () => {
   it('registers the new migration without changing the original planning guards', () => {
     const journal = JSON.parse(read('drizzle/meta/_journal.json'));
-    expect(journal.entries.at(-1).tag).toBe('0097_controlled_planning_reset');
+    expect(
+      journal.entries.find(
+        (entry: { tag: string }) => entry.tag === '0097_controlled_planning_reset',
+      )?.idx,
+    ).toBe(97);
     const migration = read('drizzle/0097_controlled_planning_reset.sql');
     expect(migration).toContain("p.status<>'DRAFT'");
     expect(migration).toContain('pg_current_xact_id()');

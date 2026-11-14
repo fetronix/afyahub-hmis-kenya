@@ -687,6 +687,13 @@
       "when": 1796006400000,
       "tag": "0097_controlled_planning_reset",
       "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1796092800000,
+      "tag": "0098_annual_financial_budget",
+      "breakpoints": true
     }
   ]
 }

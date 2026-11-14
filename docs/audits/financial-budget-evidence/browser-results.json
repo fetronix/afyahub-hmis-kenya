@@ -1,0 +1,22 @@
+{
+  "syntheticDemoOnly": true,
+  "noApplicationApi": true,
+  "passed": true,
+  "checks": [
+    "All 16 specified columns rendered",
+    "All five summary KPI cards rendered",
+    "Inline Enter edit recalculates dependent month and marks override",
+    "Override restoration recovers the baseline rule/value",
+    "Row code, name and annual total stay sticky during horizontal scrolling",
+    "Formula audit displays inert underlying rules",
+    "Custom line created through modal",
+    "Custom line deleted only after explicit confirmation",
+    "Baseline reset is disabled until exact phrase is supplied",
+    "CSV download contains the entire live audit table with formula protection",
+    "Excel download is a genuine XLSX workbook",
+    "Mobile layout contains horizontal overflow inside the financial grid",
+    "No browser runtime errors or application/network API requests"
+  ],
+  "errors": [],
+  "blocked": []
+}

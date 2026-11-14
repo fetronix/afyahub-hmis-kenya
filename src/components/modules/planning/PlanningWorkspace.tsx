@@ -11,6 +11,7 @@ import { PlanningInlineItem } from './PlanningInlineItem.tsx';
 import { PlanningImport } from './PlanningImport.tsx';
 import { ImportOverview } from './ImportResults.tsx';
 import { PlanningReset } from './PlanningReset.tsx';
+import { AnnualFinancialBudget } from './AnnualFinancialBudget.tsx';
 import {
   sectionItems,
   isBrandingCategory,
@@ -21,6 +22,7 @@ import { DataTable } from '../../ui/layout.tsx';
 type PlanList = { plans: Plan[]; total: number };
 export const planningViews = [
   ['planningDashboard', 'Planning Dashboard'],
+  ['planningFinancials', 'Annual Financial Budget'],
   ['planningImport', 'CSV / Excel Import & History'],
   ['planningPlans', 'Annual Plans'],
   ['planningItems', 'Stationery & Consumables'],
@@ -442,6 +444,16 @@ export function PlanningWorkspace({
           refresh={refresh}
         />
       )}
+      {view === 'planningFinancials' && planId && (
+        <AnnualFinancialBudget
+          key={`${facilityId}:${planId}`}
+          facilityId={facilityId}
+          planId={Number(planId)}
+          canManage={can('manage')}
+          canExport={can('export')}
+          onSaved={reload}
+        />
+      )}
       {view === 'planningImport' && (
         <PlanningImport
           key={facilityId}
@@ -461,12 +473,12 @@ export function PlanningWorkspace({
           Updating planning records…
         </p>
       )}
-      {!data && view !== 'planningImport' && (
+      {!data && view !== 'planningImport' && view !== 'planningFinancials' && (
         <p className="p-4 text-sm">
           {planId ? 'Loading plan…' : 'No plan selected. Create a draft or adjust filters.'}
         </p>
       )}
-      {data && (
+      {data && view !== 'planningFinancials' && (
         <>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>

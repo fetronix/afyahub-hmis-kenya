@@ -39,6 +39,26 @@ export const planningApi = {
       body: file,
     });
   },
+  async financialBudgetFile(
+    facilityId: number,
+    planId: number,
+    format: 'csv' | 'xlsx',
+    audit = false,
+  ) {
+    const token = getSessionToken();
+    const response = await fetch(
+      `/api/budget-planning/plans/${planId}/financial-budget/export?facilityId=${facilityId}&format=${format}&mode=${audit ? 'formulas' : 'values'}`,
+      { headers: token ? { Authorization: `Bearer ${token}` } : {} },
+    );
+    if (!response.ok)
+      throw new Error('Financial export failed. Check the saved budget and export permission.');
+    const url = URL.createObjectURL(await response.blob()),
+      link = document.createElement('a');
+    link.href = url;
+    link.download = `annual-budget-2026-${planId}.${format}`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  },
   async importResultsFile(facilityId: number, batchId: number, errorsOnly = false) {
     const token = getSessionToken();
     const response = await fetch(
