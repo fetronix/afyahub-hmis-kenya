@@ -1,0 +1,74 @@
+[
+  {
+    "action": "VIEW",
+    "resource": "report_centre",
+    "resource_id": "inventory-movements",
+    "details": "{\"rowCount\":5,\"total\":5,\"offset\":0,\"limit\":25,\"filterFields\":[\"from\",\"to\"],\"from\":\"2026-01-01\",\"to\":\"2026-01-31\"}"
+  },
+  {
+    "action": "VIEW",
+    "resource": "report_centre",
+    "resource_id": "inventory-movements",
+    "details": "{\"rowCount\":2,\"total\":2,\"offset\":0,\"limit\":25,\"filterFields\":[\"status\",\"from\",\"to\"],\"from\":\"2026-01-01\",\"to\":\"2026-01-31\",\"status\":\"RECEIPT\"}"
+  },
+  {
+    "action": "VIEW",
+    "resource": "report_centre",
+    "resource_id": "inventory-movements",
+    "details": "{\"rowCount\":2,\"total\":2,\"offset\":0,\"limit\":25,\"filterFields\":[\"search\",\"from\",\"to\"],\"from\":\"2026-01-01\",\"to\":\"2026-01-31\"}"
+  },
+  {
+    "action": "VIEW",
+    "resource": "report_centre",
+    "resource_id": "inventory-movements",
+    "details": "{\"rowCount\":5,\"total\":5,\"offset\":0,\"limit\":25,\"filterFields\":[\"from\",\"to\"],\"from\":\"2026-01-01\",\"to\":\"2026-01-31\"}"
+  },
+  {
+    "action": "VIEW",
+    "resource": "report_centre",
+    "resource_id": "inventory-movements",
+    "details": "{\"rowCount\":2,\"total\":2,\"offset\":0,\"limit\":25,\"filterFields\":[\"from\",\"to\",\"itemIds\"],\"from\":\"2026-01-01\",\"to\":\"2026-01-31\"}"
+  },
+  {
+    "action": "VIEW",
+    "resource": "report_centre",
+    "resource_id": "inventory-movements",
+    "details": "{\"rowCount\":5,\"total\":5,\"offset\":0,\"limit\":25,\"filterFields\":[\"from\",\"to\"],\"from\":\"2026-01-01\",\"to\":\"2026-01-31\"}"
+  },
+  {
+    "action": "EXPORT_REQUEST",
+    "resource": "report_centre",
+    "resource_id": "inventory-movements",
+    "details": "{\"rowCount\":5,\"total\":5,\"offset\":0,\"limit\":1000,\"filterFields\":[\"from\",\"to\"],\"from\":\"2026-01-01\",\"to\":\"2026-01-31\"}"
+  },
+  {
+    "action": "EXPORT_REQUEST",
+    "resource": "report_centre",
+    "resource_id": "inventory-movements",
+    "details": "{\"rowCount\":5,\"total\":5,\"offset\":0,\"limit\":1000,\"filterFields\":[\"from\",\"to\"],\"from\":\"2026-01-01\",\"to\":\"2026-01-31\"}"
+  },
+  {
+    "action": "EXPORT_REQUEST",
+    "resource": "report_centre",
+    "resource_id": "inventory-movements",
+    "details": "{\"rowCount\":5,\"total\":5,\"offset\":0,\"limit\":1000,\"filterFields\":[\"from\",\"to\"],\"from\":\"2026-01-01\",\"to\":\"2026-01-31\"}"
+  },
+  {
+    "action": "VIEW",
+    "resource": "report_centre",
+    "resource_id": "inventory-movements",
+    "details": "{\"rowCount\":0,\"total\":0,\"offset\":0,\"limit\":25,\"filterFields\":[\"from\",\"to\"],\"from\":\"2026-04-01\",\"to\":\"2026-04-02\"}"
+  },
+  {
+    "action": "EXPORT_REQUEST",
+    "resource": "report_centre",
+    "resource_id": "inventory-movements",
+    "details": "{\"rowCount\":0,\"total\":0,\"offset\":0,\"limit\":1000,\"filterFields\":[\"from\",\"to\"],\"from\":\"2026-04-01\",\"to\":\"2026-04-02\"}"
+  },
+  {
+    "action": "EXPORT_REQUEST",
+    "resource": "report_centre",
+    "resource_id": "inventory-movements",
+    "details": "{\"rowCount\":0,\"total\":0,\"offset\":0,\"limit\":1000,\"filterFields\":[\"from\",\"to\"],\"from\":\"2026-04-01\",\"to\":\"2026-04-02\"}"
+  }
+]

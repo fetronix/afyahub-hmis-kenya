@@ -55,6 +55,30 @@ export function operationalQueryPlan(
     undatedLabel,
   });
 
+  if (id === 'inventory-movements') {
+    where.push('m.tenant_id=$1', 'm.facility_id=$2');
+    if (filters.search) {
+      const q = p(textPattern(filters.search));
+      where.push(
+        `(i.item_code ILIKE ${q} OR i.name ILIKE ${q} OR m.reference_id ILIKE ${q} OR m.reference_type ILIKE ${q})`,
+      );
+    }
+    if (filters.itemIds) where.push(`i.id=ANY(${p(filters.itemIds)}::integer[])`);
+    if (filters.status) where.push(`m.movement_type=${p(filters.status)}`);
+    dateRange('m.movement_date');
+    return finish({
+      from: 'inventory_movements m LEFT JOIN inventory_items i ON i.id=m.item_id AND i.facility_id=m.facility_id',
+      select: `m.id AS "movementId", m.movement_date::text AS "movementDate", i.item_code AS "itemCode", i.name AS item, i.unit,
+        m.movement_type AS "movementType", m.quantity_delta AS "quantityDelta", m.stock_after AS "stockAfter",
+        CASE WHEN i.id IS NOT NULL THEN sum(m.quantity_delta) OVER(PARTITION BY m.item_id)::text ELSE NULL END AS "itemNetQuantity",
+        m.store_from AS "storeFrom", m.store_to AS "storeTo", m.reference_type AS "referenceType", m.reference_id AS "referenceId",
+        m.reason_code AS reason, m.actor_name AS actor`,
+      order: 'm.movement_date DESC, m.id DESC',
+      missingExpression: 'i.id IS NULL',
+      missingLabel:
+        'movement(s) have missing or out-of-scope item links; current item metadata and per-item net quantity are withheld',
+    });
+  }
   if (id === 'patient-registrations') {
     where.push('p.tenant_id=$1', 'p.registration_facility_id=$2');
     patientFilters('');

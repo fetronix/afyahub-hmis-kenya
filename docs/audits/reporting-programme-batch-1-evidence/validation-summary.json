@@ -1,0 +1,37 @@
+{
+  "syntheticOnly": true,
+  "baselineCommit": "f0a3bf20fb50397d7a37512e59522a08c8ded47d",
+  "database": {
+    "suites": 7,
+    "passed": 79,
+    "includesNewMovementTests": 12
+  },
+  "focusedExisting": 30,
+  "matrixTests": 4,
+  "browserChecks": 32,
+  "nativeDownloads": 5,
+  "exportInspectionChecks": 101,
+  "typecheck": "PASS",
+  "frontendBuild": "PASS",
+  "serverBuild": "PASS",
+  "targetedTypeScriptLint": "PASS",
+  "limitations": "See ../REPORTING_PROGRAMME_BATCH_1_ACCEPTANCE.md; no whole-repo certification or deployment",
+  "artifactSha256": {
+    "01-movement-workbench.png": "74cb8e1df772bca02bed1204e79a41940ab896dc5fbd327bc392cc9db6ab3a5d",
+    "02-actual-movement-rows.png": "53fe04dd30e87364d886d91f322c6d77a1795444fa6e51c9213143755ce1d7ab",
+    "03-empty-result.png": "8685b8d7c1aaa6d6bd2f9e1de0b0012dbd75ebf9ae6d2a884f63b6c16e84d5f5",
+    "04-date-error.png": "319c30f9672d32056c6859391c740c88da23b50c2ca8e573f8e19a6bb88c8c70",
+    "05-branded-pdf-first-page.png": "076690063c61244785b2877ca7d1be2a5789209391e7e139a87c8025e4f99355",
+    "06-branded-pdf-last-page.png": "5b5b7de5f40fea118fc132dc8939d62194fc2b8504b2510d70cfeb8cb4deee3f",
+    "07-before-activation-pdf.png": "453b805f163f9456659fc28605304a1090bc3d243b75dc41a1e2d2a3fcabfd4d",
+    "audit-events.json": "be36df9ecf2cbadc5a5dda341423f172331439c2c36ec7f446b6b95eadd61164",
+    "export-inspection.json": "92db4c3695df50275a28d93a93780b0bde174ae3402bf14b0877d3666485f2e6",
+    "movements-before-activation.pdf": "5ddd008a4a289e544c60f1b1725ba5a24b823bbb7a51129eed23a9b75951f0f3",
+    "movements-empty.pdf": "6dbe17b63bc039102b22b858d8ad803a1b98fc2317cf95d2f094720cb0de7b61",
+    "movements-empty.xlsx": "aa0f4dde274dd35a7fbd20ed1a2f67d6a96328f3755eb6d7d861953a7279b3e4",
+    "movements.pdf": "53c43c46419819ba98fb470675f0d6fffff8091964d40e57e45eaa1efd410540",
+    "movements.xlsx": "d3b7acb5951519daa102d5eacb050e1c9160ab7417bdf2d50874122f20bdd873",
+    "report-result.json": "0816769eec7b749e7ef29b6449d5096150ac2b0c06003029fe13a14bc7928b20",
+    "results.json": "1ddf69ba45c5def3b37c3f93230617896f33edc7eb1e0e9c8cc33b5c8959d992"
+  }
+}

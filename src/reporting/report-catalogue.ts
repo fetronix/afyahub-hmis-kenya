@@ -1,5 +1,6 @@
 /** Shared reporting navigation. A catalogue entry is not evidence that a report is implemented. */
 export type ReportEngineId =
+  | 'inventory-movements'
   | 'inventory-category'
   | 'inventory-store'
   | 'purchase-orders'
@@ -375,8 +376,9 @@ export const REPORT_CATEGORIES: readonly ReportCategory[] = [
         id: 'stock-goods-stock-movements',
         name: 'Stock movements',
         group: null,
-        dependency: 'Complete movement/receipt/return ledger and report.',
-        engine: null,
+        dependency:
+          'Recorded movement register only; historical opening/closing balances, cost valuation and completeness before movement capture are not established.',
+        engine: 'inventory-movements',
         workflow: null,
       },
       {

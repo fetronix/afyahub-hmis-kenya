@@ -7,6 +7,51 @@ const patientNote =
 
 /** Actual source-backed registers, deliberately narrower than a reconciled or statutory report. */
 export const OPERATIONAL_REPORT_ENGINES = {
+  'inventory-movements': {
+    id: 'inventory-movements',
+    title: 'Recorded stock movements',
+    description:
+      'Append-only recorded quantity movements, not stock valuation or reconstructed historical balances.',
+    module: 'inventory',
+    permissions: ['reports.read', 'inventory.read'],
+    columns: [
+      { key: 'movementId', label: 'Movement ID' },
+      { key: 'movementDate', label: 'Recorded movement date' },
+      { key: 'itemCode', label: 'Current item code' },
+      { key: 'item', label: 'Current item name' },
+      { key: 'unit', label: 'Current item unit' },
+      { key: 'movementType', label: 'Movement type' },
+      { key: 'quantityDelta', label: 'Recorded quantity change' },
+      { key: 'stockAfter', label: 'Recorded stock after movement' },
+      { key: 'itemNetQuantity', label: 'Item net quantity in selected filters' },
+      { key: 'storeFrom', label: 'Recorded from location' },
+      { key: 'storeTo', label: 'Recorded to location' },
+      { key: 'referenceType', label: 'Reference type' },
+      { key: 'referenceId', label: 'Reference ID' },
+      { key: 'reason', label: 'Reason code' },
+      { key: 'actor', label: 'Recorded actor name' },
+    ],
+    searchLabel: 'Search current item name/code or recorded reference',
+    dateLabel: 'Recorded movement date',
+    dateRangeRequired: true,
+    inventoryItemFilter: true,
+    statuses: [
+      'RECEIPT',
+      'DISPENSE',
+      'ADJUSTMENT',
+      'WRITE_OFF',
+      'COUNT_VARIANCE',
+      'TRANSFER_IN',
+      'TRANSFER_OUT',
+      'RETURN_OUT',
+    ].map((value) => ({ value, label: value.replaceAll('_', ' ') })),
+    notes: [
+      'Only recorded movement rows are included. Historical opening/closing stock and completeness before movement capture are not established; this is not inventory valuation, purchasing spend or posted accounting.',
+      'Item code, name and unit are current same-facility metadata, not immutable movement-time snapshots. Missing or out-of-scope item links withhold those labels and the per-item net quantity.',
+      'Item net quantity sums signed deltas for that item within the selected date/search/type/item filters before pagination. It is repeated per item, not a row-additive total or closing balance. Different items/units are never totalled together.',
+      'Recorded stock after movement is retained as written; back-dated records are not replayed to reconstruct balances. Transfers retain both recorded legs. Locations and actor names are recorded text, not verified department/staff identities.',
+    ],
+  },
   'patient-registrations': {
     id: 'patient-registrations',
     title: 'Recorded facility registrations',

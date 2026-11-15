@@ -1,0 +1,75 @@
+{
+  "syntheticOnly": true,
+  "productionAccess": false,
+  "actualBuiltApplication": true,
+  "adapters": false,
+  "checks": [
+    "Disposable secure platform bootstrap",
+    "Real normal staff username/password login",
+    "Existing catalogue opens real stock movement workbench",
+    "Actual browser query returns 5 scoped movement rows",
+    "Actual returned source rows displayed without other-facility item metadata",
+    "Screen query computes separate per-item signed nets 7 Pieces and 80 mL, never mixed-unit 87",
+    "Actual browser query returns 2 scoped movement rows",
+    "Movement-type filter changes actual displayed rows",
+    "Actual browser query returns 2 scoped movement rows",
+    "Actual browser query returns 5 scoped movement rows",
+    "Actual browser query returns 2 scoped movement rows",
+    "Real scoped item selector narrows source records",
+    "Actual browser query returns 5 scoped movement rows",
+    "Actual pdf export API succeeds: movements-before-activation",
+    "Native pdf download bytes match authenticated export: movements-before-activation",
+    "Existing facility letterhead upload stays draft",
+    "Existing facility letterhead explicitly activated",
+    "Actual pdf export API succeeds: movements",
+    "Native pdf download bytes match authenticated export: movements",
+    "Actual xlsx export API succeeds: movements",
+    "Native xlsx download bytes match authenticated export: movements",
+    "Actual browser query returns 0 scoped movement rows",
+    "Actual browser displays clear empty state",
+    "Actual pdf export API succeeds: movements-empty",
+    "Native pdf download bytes match authenticated export: movements-empty",
+    "Actual xlsx export API succeeds: movements-empty",
+    "Native xlsx download bytes match authenticated export: movements-empty",
+    "Actual browser request rejects reversed dates",
+    "Normal browser-authenticated session denied sibling-facility report",
+    "Normal browser-authenticated session denied foreign-facility report",
+    "Database persists browser report and export audit",
+    "No uncaught errors during actual browser workflow"
+  ],
+  "errors": [],
+  "downloads": [
+    {
+      "format": "pdf",
+      "file": "movements-before-activation.pdf",
+      "bytes": 24868,
+      "nativeBrowserDownload": true
+    },
+    {
+      "format": "pdf",
+      "file": "movements.pdf",
+      "bytes": 45061,
+      "nativeBrowserDownload": true
+    },
+    {
+      "format": "xlsx",
+      "file": "movements.xlsx",
+      "bytes": 4340,
+      "nativeBrowserDownload": true
+    },
+    {
+      "format": "pdf",
+      "file": "movements-empty.pdf",
+      "bytes": 21276,
+      "nativeBrowserDownload": true
+    },
+    {
+      "format": "xlsx",
+      "file": "movements-empty.xlsx",
+      "bytes": 3735,
+      "nativeBrowserDownload": true
+    }
+  ],
+  "facility": 33,
+  "engine": "inventory-movements"
+}
