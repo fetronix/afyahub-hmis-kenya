@@ -5,6 +5,7 @@ import {
   documentRequest,
   type PatientFile,
 } from '../api/patient-documents.client.ts';
+import { RadiologyConsentMetadata } from './RadiologyConsentMetadata.tsx';
 import { PatientDocumentsPanel } from './PatientDocumentsPanel.tsx';
 
 export interface RadiologyConsentState {
@@ -162,6 +163,7 @@ function RequestConsent({
         patientId={patientId}
         radiologyOrderId={orderId}
         requestWorkflow={{
+          refreshKey: revision,
           procedureName: state?.request.procedureName ?? procedureName,
           disabled: inactive || loading || busy,
           consentStatus: state?.status ?? 'UNAVAILABLE',
@@ -227,10 +229,27 @@ function RequestConsent({
         )}
         {selected && (!latest || !complete) && (
           <p role="status">
-            This version is incomplete, superseded or belongs to an earlier procedure.
-            Correct/upload the appropriate signed version; do not reuse unrelated consent.
+            This version is incomplete, superseded or belongs to an earlier procedure. Review the
+            original and record the missing signature details as a new version, or upload the
+            appropriate document. Do not reuse unrelated consent.
           </p>
         )}
+        {selected &&
+          latest &&
+          permissions.includes('radiology.consent.verify') &&
+          permissions.includes('patients.documents.upload') && (
+            <RadiologyConsentMetadata
+              key={selected.id}
+              patientId={patientId}
+              doc={selected}
+              disabled={inactive || busy || loading}
+              onSaved={(doc) => {
+                setDocumentId(String(doc.id));
+                setAcknowledged(false);
+                setRevision((v) => v + 1);
+              }}
+            />
+          )}
         <label className="flex items-start gap-2">
           <input
             type="checkbox"

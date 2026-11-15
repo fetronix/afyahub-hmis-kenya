@@ -1,0 +1,46 @@
+{
+  "syntheticOnly": true,
+  "productionAccess": false,
+  "browser": {
+    "passed": 36,
+    "runtime": "Chromium143, production-built Vite SPA + bundled Express, normal staff/portal login",
+    "mockedRequests": false
+  },
+  "vitest": {
+    "files": 5,
+    "passed": 105,
+    "failed": 0,
+    "skipped": 0,
+    "suites": {
+      "simpleUploadHttpDb": 11,
+      "signedDocumentsDb": 43,
+      "responsibleDoctorLegacyHttpDb": 20,
+      "documentUi": 12,
+      "workflowRegressions": 19
+    }
+  },
+  "typecheck": "PASS: bounded tsc --noEmit --singleThreaded",
+  "eslint": {
+    "errors": 0,
+    "warnings": 0,
+    "scope": "changed application, test and acceptance TypeScript files"
+  },
+  "formatAndWhitespace": "PASS",
+  "builds": {
+    "frontend": "PASS; Vite large-chunk warning remains",
+    "server": "PASS"
+  },
+  "originalPdf": {
+    "sha256": "b74242bd9bfba4bf6174abe1a4d06c41cc752281874680d6f8feab8bc41bccd7",
+    "byteIdenticalRetrieval": true,
+    "independentRender": "PyMuPDF: one page, complete expected text, visually inspected"
+  },
+  "parentCommit": "671378fe3806283e74daf65851ac4391828a8be2",
+  "limitations": [
+    "Synthetic fixtures only; no production deployment or legal certification",
+    "Unknown signatures until explicit separate clinical review; uploaded scans not cryptographic authentication",
+    "Headless Chromium only; original download fallback for embedded PDF compatibility",
+    "Prior rich-form browser harnesses are historical; current UI uses simple-document-upload-acceptance.ts"
+  ],
+  "dependencyAdvisories": "npm ci: 4 moderate advisories in existing lockfile; no upgrades"
+}

@@ -4,11 +4,10 @@ import {
   documentRequest,
   documentAction,
   type PatientFile,
-  type ResponsibleDoctor,
-  type ResponsibleDoctorOptions,
 } from '../api/patient-documents.client.ts';
 
 export interface RequestConsentWorkflow {
+  refreshKey?: number;
   procedureName: string;
   disabled: boolean;
   consentStatus: string;
@@ -121,62 +120,8 @@ function DocumentWorkspace({
   const [preview, setPreview] = useState<{ url: string; mime: string; title: string } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [form, setForm] = useState({
-    title: '',
-    category: 'Consent',
-    documentType: radiologyOrderId ? 'Radiology procedure consent' : 'Treatment consent',
-    signingDate: '',
-    patientSignature: 'UNKNOWN',
-    doctorSignature: 'UNKNOWN',
-    doctorId: '',
-    notes: '',
-    reason: '',
-    previousId: '',
-  });
-  const [doctorOptions, setDoctorOptions] = useState<ResponsibleDoctorOptions | null>(null);
-  const [doctorSearch, setDoctorSearch] = useState('');
-  const [selectedDoctor, setSelectedDoctor] = useState<ResponsibleDoctor | null>(null);
-  const [doctorError, setDoctorError] = useState('');
-  const [doctorsLoading, setDoctorsLoading] = useState(true);
-  const doctorInitialized = useRef(false);
-  useEffect(() => {
-    if (!canUpload) return;
-    let active = true;
-    const timer = setTimeout(
-      () => {
-        setDoctorsLoading(true);
-        setDoctorError('');
-        documentRequest<ResponsibleDoctorOptions>(
-          `${base}/doctors?${new URLSearchParams({ search: doctorSearch })}`,
-        )
-          .then((options) => {
-            if (!active) return;
-            setDoctorOptions(options);
-            if (!doctorInitialized.current) {
-              doctorInitialized.current = true;
-              setSelectedDoctor(options.currentDoctor);
-              setForm((previous) => ({
-                ...previous,
-                doctorId: String(options.currentDoctor?.id ?? ''),
-              }));
-            }
-            setDoctorsLoading(false);
-          })
-          .catch((e) => {
-            if (!active) return;
-            setDoctorError(
-              e instanceof Error ? e.message : 'Responsible doctors could not be loaded.',
-            );
-            setDoctorsLoading(false);
-          });
-      },
-      doctorInitialized.current ? 250 : 0,
-    );
-    return () => {
-      active = false;
-      clearTimeout(timer);
-    };
-  }, [base, canUpload, doctorSearch]);
+  const [form, setForm] = useState({ title: '', notes: '', previousId: '' });
+  const [release, setRelease] = useState<{ doc: PatientFile; reason: string } | null>(null);
   const requestKey = JSON.stringify([
     base,
     portal,
@@ -186,6 +131,7 @@ function DocumentWorkspace({
     to,
     revision,
     radiologyOrderId,
+    requestWorkflow?.refreshKey,
   ]);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const loading = loadedKey !== requestKey;
@@ -243,10 +189,9 @@ function DocumentWorkspace({
     e.preventDefault();
     await run(async () => {
       if (!file) throw Error('Choose a PDF, JPG, JPEG or PNG.');
-      if (!doctorOptions || doctorError || !form.doctorId)
-        throw Error('Select an active responsible doctor before uploading.');
       const metadata = {
         ...form,
+        uploadMode: 'SIMPLE',
         filename: file.name,
         ...(radiologyOrderId ? { radiologyOrderId } : {}),
       };
@@ -258,19 +203,7 @@ function DocumentWorkspace({
         },
         body: file,
       });
-      setForm({
-        ...form,
-        title: '',
-        reason: '',
-        previousId: '',
-        signingDate: '',
-        patientSignature: 'UNKNOWN',
-        doctorSignature: 'UNKNOWN',
-        doctorId: String(doctorOptions.currentDoctor?.id ?? ''),
-        notes: '',
-      });
-      setSelectedDoctor(doctorOptions.currentDoctor);
-      setDoctorSearch('');
+      setForm({ title: '', notes: '', previousId: '' });
       setFile(null);
       setPreview(null);
       if (requestWorkflow) {
@@ -310,110 +243,32 @@ function DocumentWorkspace({
     <form
       onSubmit={(e) => void upload(e)}
       className="grid gap-3 rounded bg-slate-50 p-3 sm:grid-cols-2"
-      aria-label={requestWorkflow ? 'Upload signed procedure consent' : 'Upload signed document'}
+      aria-label="Upload document"
     >
       <h4 className="font-bold sm:col-span-2">
         {form.previousId
           ? `New version correcting document #${form.previousId}`
-          : 'Upload original document'}
+          : 'Upload document'}
       </h4>
-      {(['title', 'category', 'documentType', 'signingDate', 'notes', 'reason'] as const).map(
-        (key) => (
-          <label key={key}>
-            {
-              {
-                title: 'Document title',
-                category: 'Document category',
-                documentType: 'Consent/document type',
-                signingDate: 'Signing date',
-                notes: 'Internal notes',
-                reason: 'Document audit reason',
-              }[key]
-            }
-            <input
-              type={key === 'signingDate' ? 'date' : 'text'}
-              className={field}
-              value={form[key]}
-              required={['title', 'category', 'documentType', 'reason'].includes(key)}
-              maxLength={key === 'notes' ? 2000 : key === 'reason' ? 500 : 180}
-              onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-            />
-          </label>
-        ),
-      )}
-      <div className="space-y-2">
-        {doctorOptions?.canAssignOthers && (
-          <label>
-            Search doctors
-            <input
-              className={field}
-              value={doctorSearch}
-              maxLength={80}
-              placeholder="Search by name or designation"
-              onChange={(e) => setDoctorSearch(e.target.value)}
-            />
-          </label>
-        )}
-        <label>
-          Responsible doctor
-          <select
-            className={field}
-            required
-            value={form.doctorId}
-            disabled={busy || doctorsLoading || !doctorOptions?.canAssignOthers}
-            onChange={(e) => {
-              const value = e.target.value;
-              const doctor =
-                doctorOptions?.doctors.find((d) => String(d.id) === value) ??
-                (String(selectedDoctor?.id) === value ? selectedDoctor : null);
-              setSelectedDoctor(doctor);
-              setForm({ ...form, doctorId: value });
-            }}
-          >
-            <option value="">Select an active doctor</option>
-            {selectedDoctor && !doctorOptions?.doctors.some((d) => d.id === selectedDoctor.id) && (
-              <option value={selectedDoctor.id}>
-                {selectedDoctor.name}
-                {selectedDoctor.designation ? ` — ${selectedDoctor.designation}` : ''}
-              </option>
-            )}
-            {doctorOptions?.doctors.map((doctor) => (
-              <option key={doctor.id} value={doctor.id}>
-                {doctor.name}
-                {doctor.designation ? ` — ${doctor.designation}` : ''}
-              </option>
-            ))}
-          </select>
-        </label>
-        {doctorsLoading && <p role="status">Loading responsible doctors…</p>}
-        {doctorError && <p role="alert">{doctorError}</p>}
-        {doctorOptions && !doctorOptions.canAssignOthers && (
-          <p>
-            Only your own active Doctor identity can be assigned. Selecting another doctor requires
-            patient update permission.
-          </p>
-        )}
-        {doctorOptions?.canAssignOthers && !selectedDoctor && (
-          <p>Select an active doctor in this facility before uploading.</p>
-        )}
-        {doctorOptions?.hasMore && (
-          <p>More doctors are available. Refine the search by name or designation.</p>
-        )}
-      </div>
-      {(['patientSignature', 'doctorSignature'] as const).map((key) => (
-        <label key={key}>
-          {key === 'patientSignature' ? 'Patient signature status' : 'Doctor signature status'}
-          <select
-            className={field}
-            value={form[key]}
-            onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-          >
-            <option value="UNKNOWN">Unknown / not checked</option>
-            <option value="ABSENT">Absent</option>
-            <option value="PRESENT">Present (staff-observed)</option>
-          </select>
-        </label>
-      ))}
+      <label>
+        Document title
+        <input
+          className={field}
+          value={form.title}
+          required
+          maxLength={180}
+          onChange={(e) => setForm({ ...form, title: e.target.value })}
+        />
+      </label>
+      <label>
+        Notes (optional)
+        <textarea
+          className={field}
+          value={form.notes}
+          maxLength={2000}
+          onChange={(e) => setForm({ ...form, notes: e.target.value })}
+        />
+      </label>
       <label>
         Original file (PDF/JPG/JPEG/PNG)
         <input
@@ -449,24 +304,23 @@ function DocumentWorkspace({
           </button>
         </div>
       )}
-      <p>
-        DOCX is not supported: no safe existing preview pipeline. Server enforces configured size
-        and decoded content checks.
-      </p>
       <button
         className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
         type="submit"
-        disabled={
-          busy || doctorsLoading || !!doctorError || !form.doctorId || requestWorkflow?.disabled
-        }
+        disabled={busy || requestWorkflow?.disabled}
       >
-        {busy ? 'Saving…' : requestWorkflow ? 'Save signed consent' : 'Upload document version'}
+        {busy ? 'Uploading…' : 'Upload document'}
       </button>
       {form.previousId && (
         <button
           className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
           type="button"
-          onClick={() => setForm({ ...form, previousId: '' })}
+          onClick={() => {
+            setForm({ title: '', notes: '', previousId: '' });
+            setFile(null);
+            setPreview(null);
+            if (fileInput.current) fileInput.current.value = '';
+          }}
         >
           Cancel correction
         </button>
@@ -489,15 +343,12 @@ function DocumentWorkspace({
         {portal
           ? 'My Documents & Signed Consents'
           : requestWorkflow
-            ? 'Signed consent attachments'
+            ? 'Document attachments'
             : 'Consent & Signed Documents'}
       </h3>
       <p className="text-sm text-slate-600">
-        Original files are preserved. Signature status is recorded by staff; scans are not
-        cryptographically authenticated.{' '}
-        {portal
-          ? 'Only explicitly released documents appear here.'
-          : 'Uploading does not imply either signature is present or release a file to the patient portal.'}
+        Original files are preserved. Uploading a document does not automatically verify signatures
+        or release it to the patient portal.
       </p>
       {!canRead ? (
         <p role="alert">A facility-scoped patient-document read permission is required.</p>
@@ -510,14 +361,14 @@ function DocumentWorkspace({
           )}
           {requestWorkflow && (
             <>
-              {canUpload && (
+              {canUpload && !uploadOpen && (
                 <button
                   type="button"
                   className="rounded bg-teal-800 px-4 py-2 font-semibold text-white disabled:opacity-50"
                   disabled={busy || requestWorkflow.disabled}
                   onClick={() => setUploadOpen(true)}
                 >
-                  Upload signed consent
+                  Upload document
                 </button>
               )}
               {uploadForm}
@@ -577,66 +428,44 @@ function DocumentWorkspace({
                   key={doc.id}
                   data-patient-document={doc.id}
                 >
-                  <strong>{doc.title}</strong> · {doc.category} · {doc.document_type} · Version{' '}
-                  {doc.version}
+                  <strong>{doc.title}</strong>
                   <p>
-                    Signed: {doc.signing_date?.slice(0, 10) ?? 'Not recorded'} · Uploaded:{' '}
-                    {new Date(doc.uploaded_at).toLocaleString()}
+                    Uploaded: {new Date(doc.uploaded_at).toLocaleString()}
+                    {!portal && (
+                      <> · Uploaded by: {doc.uploader_name ?? 'Staff member (name unavailable)'}</>
+                    )}
                   </p>
+                  <p>
+                    Original filename: {doc.filename ?? 'Available on download'} · Version{' '}
+                    {doc.version}
+                    {doc.is_latest_version === false ? ' · Superseded' : ''}
+                  </p>
+                  {!portal && doc.notes && <p>{doc.notes}</p>}
                   {!portal && (
-                    <>
-                      <p>
-                        Patient signature: {doc.patient_signature}; doctor signature:{' '}
-                        {doc.doctor_signature}; responsible doctor:{' '}
-                        {doc.doctor_name ??
-                          (doc.doctor_id
-                            ? 'Previously assigned doctor (name unavailable)'
-                            : 'Not recorded')}
-                      </p>
-                      <p>
-                        Source/context:{' '}
-                        {doc.radiology_order_id
-                          ? 'Radiology consent'
-                          : /laboratory|lab report/i.test(`${doc.category} ${doc.document_type}`)
-                            ? 'Laboratory document (no linked request recorded)'
-                            : /clinical|procedure|imaging/i.test(
-                                  `${doc.category} ${doc.document_type}`,
-                                )
-                              ? 'Other clinical document (no linked request recorded)'
-                              : 'General patient document'}
-                      </p>
-                      <p>
-                        Version state:{' '}
-                        {doc.is_latest_version === false
-                          ? 'Superseded — original preserved'
-                          : 'Latest version'}{' '}
-                        ·{' '}
-                        {doc.reviewed_by_actor
-                          ? 'Original retrieved by you'
-                          : 'Original not yet retrieved by you'}
-                      </p>
-                      {requestWorkflow && (
-                        <p>
-                          Review / verification:{' '}
-                          {doc.is_latest_version === false
-                            ? 'Superseded — use latest correction'
-                            : doc.procedure_name !== requestWorkflow.procedureName
-                              ? 'Procedure changed — correction required'
-                              : requestWorkflow.consentStatus === 'VERIFIED' &&
-                                  requestWorkflow.decisionDocumentId === doc.id
-                                ? 'Verified for this request'
-                                : doc.reviewed_by_actor
-                                  ? 'Original retrieved — not verified'
-                                  : 'Review original required'}
-                        </p>
-                      )}
-                      {doc.radiology_order_id && (
-                        <p>
-                          Radiology request #{doc.radiology_order_id}: {doc.procedure_name}
-                        </p>
-                      )}
-                      <p>{doc.notes}</p>
-                    </>
+                    <p>
+                      Source/context:{' '}
+                      {doc.radiology_order_id
+                        ? 'Radiology document'
+                        : /laboratory|lab report/i.test(`${doc.category} ${doc.document_type}`)
+                          ? 'Laboratory document (no linked request recorded)'
+                          : 'General patient document'}
+                    </p>
+                  )}
+                  {!portal && doc.radiology_order_id && (
+                    <p>
+                      Imaging request #{doc.radiology_order_id}: {doc.procedure_name}
+                    </p>
+                  )}
+                  {requestWorkflow && (
+                    <p>
+                      Consent verification:{' '}
+                      {doc.is_latest_version === false
+                        ? 'Superseded — use latest correction'
+                        : requestWorkflow.consentStatus === 'VERIFIED' &&
+                            requestWorkflow.decisionDocumentId === doc.id
+                          ? 'Verified for this request'
+                          : 'Not verified'}
+                    </p>
                   )}
                   <div className="flex flex-wrap gap-3">
                     <button
@@ -702,13 +531,13 @@ function DocumentWorkspace({
                         onClick={() => {
                           setUploadOpen(true);
                           setForm({
-                            ...form,
                             title: doc.title,
-                            category: doc.category,
-                            documentType: doc.document_type,
+                            notes: doc.notes ?? '',
                             previousId: String(doc.id),
-                            reason: '',
                           });
+                          setFile(null);
+                          setPreview(null);
+                          if (fileInput.current) fileInput.current.value = '';
                         }}
                       >
                         {requestWorkflow
@@ -720,19 +549,7 @@ function DocumentWorkspace({
                       <button
                         className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
                         disabled={busy}
-                        onClick={() =>
-                          void run(async () => {
-                            if (form.reason.trim().length < 10)
-                              throw Error(
-                                'Enter a meaningful audit reason below before release or withdrawal.',
-                              );
-                            await documentAction(`${base}/${doc.id}/release`, {
-                              released: !doc.portal_released,
-                              reason: form.reason,
-                            });
-                            setRevision((v) => v + 1);
-                          })
-                        }
+                        onClick={() => setRelease({ doc, reason: '' })}
                       >
                         {doc.portal_released
                           ? 'Withdraw portal release'
@@ -835,14 +652,43 @@ function DocumentWorkspace({
               )}
             </section>
           )}
-          {!canUpload && !portal && permissions.includes('patients.documents.release') && (
-            <label>
-              Document audit reason
-              <input
-                value={form.reason}
-                onChange={(e) => setForm({ ...form, reason: e.target.value })}
-              />
-            </label>
+          {release && !portal && permissions.includes('patients.documents.release') && (
+            <form
+              aria-label="Portal release decision"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void run(async () => {
+                  await documentAction(`${base}/${release.doc.id}/release`, {
+                    released: !release.doc.portal_released,
+                    reason: release.reason,
+                  });
+                  setRelease(null);
+                  setRevision((v) => v + 1);
+                });
+              }}
+            >
+              <p>
+                {release.doc.portal_released ? 'Withdraw' : 'Release'} {release.doc.title}{' '}
+                {release.doc.portal_released ? 'from' : 'to'} the patient portal
+              </p>
+              <label>
+                Portal release reason
+                <textarea
+                  className={field}
+                  required
+                  minLength={10}
+                  maxLength={500}
+                  value={release.reason}
+                  onChange={(e) => setRelease({ ...release, reason: e.target.value })}
+                />
+              </label>
+              <button className={actionClass} disabled={busy} type="submit">
+                Confirm portal release decision
+              </button>
+              <button className={actionClass} type="button" onClick={() => setRelease(null)}>
+                Cancel release decision
+              </button>
+            </form>
           )}
           {!requestWorkflow && uploadForm}
         </>

@@ -21,6 +21,8 @@ export interface PatientFile {
   document_type: string;
   signing_date: string | null;
   uploaded_at: string;
+  uploaded_by?: number;
+  uploader_name?: string | null;
   patient_signature: string;
   doctor_signature: string;
   doctor_id: number | null;

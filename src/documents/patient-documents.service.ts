@@ -154,10 +154,14 @@ async function withDoctorNames<T extends Record<string, any>>(
   // Historical IDs are immutable; keep inactive doctors readable without making them selectable.
   const users = await c.query(
     'SELECT id,full_name FROM users WHERE tenant_id=$1 AND facility_id=$2 AND id=ANY($3::int[])',
-    [s.tenantId, s.facilityId, rows.map((d) => d.doctor_id).filter(Boolean)],
+    [s.tenantId, s.facilityId, rows.flatMap((d) => [d.doctor_id, d.uploaded_by]).filter(Boolean)],
   );
   const names = new Map(users.rows.map((u) => [u.id, u.full_name]));
-  return rows.map((d) => ({ ...d, doctor_name: names.get(d.doctor_id) ?? null }));
+  return rows.map((d) => ({
+    ...d,
+    doctor_name: names.get(d.doctor_id) ?? null,
+    uploader_name: names.get(d.uploaded_by) ?? null,
+  }));
 }
 async function withDocumentReview(
   c: PoolClient,
@@ -239,12 +243,28 @@ export async function uploadPatientDocument(
   mime: string,
 ): Promise<Record<string, any>> {
   requireDocumentPermission(s, 'patients.documents.upload', 'patients.documents.read');
+  // The simple path records an upload, not a clinician/signature assertion.
+  // Retain the explicit clinical metadata path for authorized review/version workflows.
+  const simple =
+    meta.uploadMode === 'SIMPLE' ||
+    ![
+      'category',
+      'documentType',
+      'patientSignature',
+      'doctorSignature',
+      'doctorId',
+      'signingDate',
+    ].some((key) => Object.prototype.hasOwnProperty.call(meta, key));
   const filename = text(meta.filename, 180),
     title = text(meta.title, 180),
-    category = text(meta.category, 80),
-    type = text(meta.documentType, 80),
+    category = simple ? 'Document' : text(meta.category, 80),
+    type = simple ? 'Patient document' : text(meta.documentType, 80),
     notes = text(meta.notes, 2000, false),
-    reason = auditReason(meta.reason);
+    reason = simple
+      ? meta.previousId
+        ? 'Create corrected patient document version'
+        : 'Upload original patient document'
+      : auditReason(meta.reason);
   const sig = (v: unknown) => {
     insist(
       ['PRESENT', 'ABSENT', 'UNKNOWN'].includes(String(v)),
@@ -253,9 +273,9 @@ export async function uploadPatientDocument(
     );
     return String(v);
   };
-  const patientSignature = sig(meta.patientSignature),
-    doctorSignature = sig(meta.doctorSignature);
-  const signingDate = meta.signingDate ? text(meta.signingDate, 10) : null;
+  const patientSignature = simple ? 'UNKNOWN' : sig(meta.patientSignature),
+    doctorSignature = simple ? 'UNKNOWN' : sig(meta.doctorSignature);
+  const signingDate = !simple && meta.signingDate ? text(meta.signingDate, 10) : null;
   insist(
     !signingDate ||
       (/^\d{4}-\d{2}-\d{2}$/.test(signingDate) &&
@@ -273,8 +293,8 @@ export async function uploadPatientDocument(
   await validatePatientFile(bytes, filename, mime);
   return transaction(async (c) => {
     await patient(c, s, p);
-    const responsibleDoctor = await resolveResponsibleDoctor(c, s, meta.doctorId);
-    const doctorId = responsibleDoctor.id;
+    const responsibleDoctor = simple ? null : await resolveResponsibleDoctor(c, s, meta.doctorId);
+    const doctorId = responsibleDoctor?.id ?? null;
     if (meta.previousId && !orderId)
       orderId = (await document(c, s, p, idOf(meta.previousId))).radiology_order_id;
     const o = orderId ? await order(c, s, orderId, p) : null;
@@ -288,6 +308,8 @@ export async function uploadPatientDocument(
     await c.query('SELECT pg_advisory_xact_lock($1,$2)', [s.facilityId, p]);
     let root: number | null = null,
       version = 1;
+    let savedCategory = simple && o ? 'Radiology' : category;
+    let savedType = simple && o ? 'Radiology procedure document' : type;
     if (meta.previousId) {
       const previous = await document(c, s, p, idOf(meta.previousId));
       insist(
@@ -295,6 +317,10 @@ export async function uploadPatientDocument(
         'VERSION_LINK_MISMATCH',
         'A version must retain the original radiology association.',
       );
+      if (simple) {
+        savedCategory = previous.category;
+        savedType = previous.document_type;
+      }
       root = previous.root_id ?? previous.id;
       const latest = (
         await c.query(
@@ -319,8 +345,8 @@ export async function uploadPatientDocument(
         root,
         version,
         title,
-        category,
-        type,
+        savedCategory,
+        savedType,
         signingDate,
         patientSignature,
         doctorSignature,
@@ -338,8 +364,10 @@ export async function uploadPatientDocument(
     );
     await event(c, s, p, r.rows[0].id, root ? 'NEW_VERSION' : 'UPLOAD', reason, {
       responsibleDoctorId: doctorId,
-      responsibleDoctorName: responsibleDoctor.name,
-      assignment: doctorId === s.userId ? 'SELF' : 'DELEGATED',
+      responsibleDoctorName: responsibleDoctor?.name ?? null,
+      assignment: simple ? 'NOT_ASSERTED' : doctorId === s.userId ? 'SELF' : 'DELEGATED',
+      uploadMode: simple ? 'SIMPLE' : 'CLINICAL_METADATA',
+      previousDocumentId: meta.previousId ? idOf(meta.previousId) : null,
     });
     // Preserve historical completed decisions; a new file is never substituted into them.
     // For a pending procedure invalidate verification explicitly and retain its previous snapshot.
@@ -358,7 +386,7 @@ export async function uploadPatientDocument(
         );
       }
     }
-    return { ...r.rows[0], doctor_name: responsibleDoctor.name };
+    return { ...r.rows[0], doctor_name: responsibleDoctor?.name ?? null };
   });
 }
 export async function listPatientDocuments(
