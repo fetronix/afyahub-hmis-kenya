@@ -15,7 +15,10 @@ import {
 if (process.env.REPORTING_PROGRAMME_SYNTHETIC !== 'YES' || !process.env.CHROME_EXECUTABLE_PATH)
   throw Error('Explicit synthetic reporting acceptance and Chromium required');
 await assertReportingScratch(pool);
-const out = path.resolve('docs/audits/reporting-programme-batch-1-evidence'),
+const out = path.resolve(
+    process.env.REPORTING_PROGRAMME_EVIDENCE_DIR ??
+      'docs/audits/reporting-programme-batch-1-evidence',
+  ),
   downloads = path.resolve('.tmp-tools/reporting-native-downloads'),
   base = 'http://127.0.0.1:4196';
 const checks: string[] = [],

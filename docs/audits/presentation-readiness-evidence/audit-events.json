@@ -1,0 +1,214 @@
+[
+  {
+    "action": "VIEW",
+    "document_id": null,
+    "reason": "List patient signed document versions",
+    "facts": {}
+  },
+  {
+    "action": "UPLOAD",
+    "document_id": 47,
+    "reason": "Record synthetic scanned consent without inferring signatures",
+    "facts": {}
+  },
+  {
+    "action": "VIEW",
+    "document_id": null,
+    "reason": "List patient signed document versions",
+    "facts": {}
+  },
+  {
+    "action": "VIEW",
+    "document_id": null,
+    "reason": "List patient signed document versions",
+    "facts": {}
+  },
+  {
+    "action": "VIEW",
+    "document_id": 47,
+    "reason": "Retrieve original signed document version",
+    "facts": {}
+  },
+  {
+    "action": "VIEW",
+    "document_id": 47,
+    "reason": "Retrieve original signed document version",
+    "facts": {}
+  },
+  {
+    "action": "NEW_VERSION",
+    "document_id": 48,
+    "reason": "Correct synthetic consent title while preserving the signed original",
+    "facts": {}
+  },
+  {
+    "action": "VIEW",
+    "document_id": null,
+    "reason": "List patient signed document versions",
+    "facts": {}
+  },
+  {
+    "action": "VIEW",
+    "document_id": 47,
+    "reason": "Read original document version and audit history",
+    "facts": {}
+  },
+  {
+    "action": "VIEW",
+    "document_id": 47,
+    "reason": "Read original document version and audit history",
+    "facts": {}
+  },
+  {
+    "action": "PORTAL_RELEASE",
+    "document_id": 48,
+    "reason": "Explicitly release synthetic document to its own patient",
+    "facts": {}
+  },
+  {
+    "action": "VIEW",
+    "document_id": null,
+    "reason": "List patient signed document versions",
+    "facts": {}
+  },
+  {
+    "action": "UPLOAD",
+    "document_id": 49,
+    "reason": "Synthetic image preview acceptance only",
+    "facts": {}
+  },
+  {
+    "action": "VIEW",
+    "document_id": null,
+    "reason": "List patient signed document versions",
+    "facts": {}
+  },
+  {
+    "action": "VIEW",
+    "document_id": 49,
+    "reason": "Retrieve original signed document version",
+    "facts": {}
+  },
+  {
+    "action": "PORTAL_VIEW",
+    "document_id": null,
+    "reason": "Patient accessed explicitly released own document",
+    "facts": {}
+  },
+  {
+    "action": "PORTAL_DOWNLOAD",
+    "document_id": 48,
+    "reason": "Patient accessed explicitly released own document",
+    "facts": {}
+  },
+  {
+    "action": "PORTAL_VIEW",
+    "document_id": null,
+    "reason": "Patient accessed explicitly released own document",
+    "facts": {}
+  },
+  {
+    "action": "PORTAL_DOWNLOAD",
+    "document_id": 48,
+    "reason": "Patient accessed explicitly released own document",
+    "facts": {}
+  },
+  {
+    "action": "VIEW",
+    "document_id": null,
+    "reason": "List patient signed document versions",
+    "facts": {}
+  },
+  {
+    "action": "VIEW",
+    "document_id": null,
+    "reason": "Read procedure-specific consent status",
+    "facts": {}
+  },
+  {
+    "action": "UPLOAD",
+    "document_id": 50,
+    "reason": "Upload synthetic patient and responsible doctor signed procedure consent",
+    "facts": {}
+  },
+  {
+    "action": "VIEW",
+    "document_id": null,
+    "reason": "List patient signed document versions",
+    "facts": {}
+  },
+  {
+    "action": "VIEW",
+    "document_id": null,
+    "reason": "List patient signed document versions",
+    "facts": {}
+  },
+  {
+    "action": "RADIOLOGY_VERIFIED",
+    "document_id": 50,
+    "reason": "Independently inspect synthetic signatures for this exact procedure",
+    "facts": {
+      "status": "VERIFIED",
+      "orderId": 60,
+      "documentId": 50,
+      "clinicianId": 114
+    }
+  },
+  {
+    "action": "VIEW",
+    "document_id": null,
+    "reason": "List patient signed document versions",
+    "facts": {}
+  },
+  {
+    "action": "VIEW",
+    "document_id": null,
+    "reason": "Read procedure-specific consent status",
+    "facts": {}
+  },
+  {
+    "action": "VIEW",
+    "document_id": null,
+    "reason": "Read procedure-specific consent status",
+    "facts": {}
+  },
+  {
+    "action": "VIEW",
+    "document_id": null,
+    "reason": "List patient signed document versions",
+    "facts": {}
+  },
+  {
+    "action": "RADIOLOGY_EXCEPTION",
+    "document_id": null,
+    "reason": "Synthetic urgent procedure with documented authorized exception",
+    "facts": {
+      "status": "EXCEPTION",
+      "orderId": 61,
+      "documentId": null,
+      "clinicianId": 114
+    }
+  },
+  {
+    "action": "RADIOLOGY_EXCEPTION",
+    "document_id": null,
+    "reason": "Synthetic cancellation regression fixture before cancellation",
+    "facts": {
+      "status": "EXCEPTION",
+      "orderId": 62,
+      "documentId": null,
+      "clinicianId": 114
+    }
+  },
+  {
+    "action": "RADIOLOGY_EXCEPTION",
+    "document_id": null,
+    "reason": "Synthetic authorized exception for multi-module rendering verification",
+    "facts": {
+      "status": "EXCEPTION",
+      "orderId": 63,
+      "documentId": null,
+      "clinicianId": 114
+    }
+  }
+]

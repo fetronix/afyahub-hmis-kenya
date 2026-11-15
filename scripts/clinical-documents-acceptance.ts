@@ -10,19 +10,29 @@ import puppeteer, { type Page, type ElementHandle } from 'puppeteer-core';
 import { PDFDocument } from 'pdf-lib';
 import * as XLSX from '@e965/xlsx';
 import { REPORT_ENGINES } from '../src/reporting/report-centre.types.ts';
+import { REPORT_CATEGORIES } from '../src/reporting/report-catalogue.ts';
 import { FACILITY_MODULES } from '../src/config/facility-modules.ts';
 
 if (
   process.env.CLINICAL_DOCUMENTS_SYNTHETIC !== 'YES' ||
   process.env.SQL_HOST !== '127.0.0.1' ||
   process.env.SQL_DB_NAME !== 'clinical_documents_synthetic_test' ||
+  !/^\d{1,20}$/.test(process.env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER ?? '') ||
+  !process.env.CLINICAL_TEST_PG_DATA_DIRECTORY ||
   !process.env.CHROME_EXECUTABLE_PATH
 )
   throw Error(
     'Explicit loopback clinical_documents_synthetic_test and Chromium required. Never use production.',
   );
 const root = process.cwd(),
-  out = root + '/docs/audits/clinical-documents-evidence/',
+  // Keep a new verification run separate from retained historical evidence.
+  out =
+    root +
+    '/' +
+    (
+      process.env.CLINICAL_DOCUMENTS_EVIDENCE_DIR ?? 'docs/audits/clinical-documents-evidence'
+    ).replace(/\/$/, '') +
+    '/',
   suffix = randomUUID().slice(0, 8),
   base = 'http://127.0.0.1:4195';
 const pool = new pg.Pool({
@@ -44,6 +54,15 @@ const check = (value: unknown, operation: string) => {
   console.log('PASS', operation);
 };
 async function click(page: Page, text: string, selector = 'button') {
+  await page.waitForFunction(
+    (sel, txt) =>
+      Array.from(document.querySelectorAll<HTMLButtonElement>(sel)).some(
+        (e) => e.textContent?.trim() === txt && !e.disabled,
+      ),
+    {},
+    selector,
+    text,
+  );
   const handle = await page.evaluateHandle(
     (sel, txt) =>
       Array.from(document.querySelectorAll<HTMLButtonElement>(sel)).find(
@@ -112,6 +131,18 @@ async function api(
   return { status: r.status, data, bytes, headers: r.headers };
 }
 try {
+  const identity = (
+    await pool.query(
+      "SELECT current_database() AS name,inet_server_addr()::text AS address,system_identifier::text AS cluster,current_setting('data_directory') AS directory FROM pg_control_system()",
+    )
+  ).rows[0];
+  check(
+    identity.name === 'clinical_documents_synthetic_test' &&
+      ['127.0.0.1', '127.0.0.1/32'].includes(identity.address) &&
+      identity.cluster === process.env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER &&
+      identity.directory === process.env.CLINICAL_TEST_PG_DATA_DIRECTORY,
+    'Independently attested disposable cluster, database and data directory match before fixtures',
+  );
   await mkdir(out, { recursive: true });
   const env = {
     ...process.env,
@@ -335,6 +366,9 @@ try {
   );
   await click(page, `Create correction of #${d.id}`);
   await fill(page, 'Document title', 'Synthetic corrected signed consent');
+  await fill(page, 'Signing date', '2026-10-01');
+  await fill(page, 'Patient signature status', 'PRESENT');
+  await fill(page, 'Doctor signature status', 'ABSENT');
   await fill(
     page,
     'Document audit reason',
@@ -357,6 +391,13 @@ try {
     versionHistory.versions.length === 2 && versionHistory.versions[1].version === 2,
     'Original and correction remain in the version history',
   );
+  const releasedDocument = versionHistory.versions[1];
+  check(
+    releasedDocument.patient_signature === 'PRESENT' &&
+      releasedDocument.doctor_signature === 'ABSENT' &&
+      releasedDocument.signing_date.startsWith('2026-10-01'),
+    'Independent signature assertions and signing date survive save and database reload',
+  );
   await click(page, `Version & audit history #${d.id}`);
   await page.waitForSelector('[aria-label="Document version and audit history"]');
   await page.screenshot({ path: out + '02-patient-document-audit.png', fullPage: true });
@@ -366,7 +407,7 @@ try {
     'Document audit reason',
     'Explicitly release synthetic document to its own patient',
   );
-  await click(page, `Release to patient portal #${d.id}`);
+  await click(page, `Release to patient portal #${releasedDocument.id}`);
   await idle(page);
   // Image preview is rendered directly by the browser (headless Chromium has no native PDF viewer).
   const imageFixture = root + '/.tmp-tools/clinical-audit/consent-image.png';
@@ -506,8 +547,17 @@ try {
   );
   await click(portalPage, 'My Documents & Signed Consents');
   await portalPage.waitForFunction(() =>
-    document.body.innerText.includes('Synthetic general signed consent'),
+    document.body.innerText.includes('Synthetic corrected signed consent'),
   );
+  check(
+    await portalPage.$eval('[aria-label="My Documents & Signed Consents"]', (e) =>
+      e.textContent?.includes('2026-10-01'),
+    ),
+    'Portal displays the released document signing date',
+  );
+  await click(portalPage, 'Preview Synthetic corrected signed consent');
+  await portalPage.waitForSelector('iframe[title="Signed document PDF preview"]');
+  await click(portalPage, 'Close preview');
   await portalPage.screenshot({
     path: out + '03-patient-portal-own-documents.png',
     fullPage: true,
@@ -523,6 +573,16 @@ try {
       !('uploaded_by' in portalList.data[0]),
     'Portal lists only explicitly released own document without internal notes or staff audit',
   );
+  check(
+    (
+      await api(`/api/portal/documents/${releasedDocument.id}/file`, 'GET', undefined, portalToken)
+    ).bytes.equals(original),
+    'Own released portal PDF preserves original uploaded bytes',
+  );
+  check(
+    (await api(`/api/portal/documents/${d.id}/file`, 'GET', undefined, portalToken)).status === 404,
+    'Unreleased original version is not accessible through the portal API',
+  );
   const portalOtherLogin = await api(
     '/api/portal/auth/login',
     'POST',
@@ -532,8 +592,14 @@ try {
   check(portalOtherLogin.status === 200, 'Second synthetic patient normal login');
   const otherPatientToken = portalOtherLogin.data.sessionToken ?? portalOtherLogin.data.token;
   check(
-    (await api(`/api/portal/documents/${d.id}/file`, 'GET', undefined, otherPatientToken))
-      .status === 404,
+    (
+      await api(
+        `/api/portal/documents/${releasedDocument.id}/file`,
+        'GET',
+        undefined,
+        otherPatientToken,
+      )
+    ).status === 404,
     'Real portal session for another patient cannot access released original',
   );
   // Procedure-specific consent is distinct from the general document.
@@ -660,6 +726,38 @@ try {
     ).status === 200,
     'Documented policy-authorized exception permits completion',
   );
+  const cancelled = (
+    await pool.query(
+      "INSERT INTO radiology_orders(tenant_id,facility_id,patient_id,modality,procedure_name) VALUES($1,$2,$3,'CT','Synthetic cancelled request') RETURNING id",
+      [tenant, facility, patient],
+    )
+  ).rows[0].id;
+  await api(`/api/patient-documents/radiology/${cancelled}/consent`, 'POST', {
+    status: 'EXCEPTION',
+    clinicianId: accounts.admin.id,
+    reason: 'Synthetic cancellation regression fixture before cancellation',
+  });
+  await pool.query("UPDATE radiology_orders SET status='Cancelled' WHERE id=$1", [cancelled]);
+  check(
+    (
+      await api(`/api/patient-documents/radiology/${cancelled}/consent`, 'POST', {
+        status: 'EXCEPTION',
+        clinicianId: accounts.admin.id,
+        reason: 'Attempt to authorize a cancelled synthetic procedure',
+      })
+    ).status === 409,
+    'Cancelled request refuses a new consent authorization through actual API',
+  );
+  check(
+    (
+      await api(
+        `/api/radiology-orders/${cancelled}/report?facilityId=${facility}`,
+        'PUT',
+        reportBody,
+      )
+    ).status === 409,
+    'Cancelled request with previous consent cannot be reported through actual API',
+  );
   // Existing single letterhead system: upload remains draft, then explicit activation.
   const letterhead = await PDFDocument.create();
   const lp = letterhead.addPage([595.28, 841.89]);
@@ -736,6 +834,31 @@ try {
     'Radiology and Reporting Centre share the activated facility renderer',
   );
   await writeFile(out + 'radiology-after-activation.pdf', imaging.bytes);
+  const labOrder = (
+    await pool.query(
+      "INSERT INTO lab_orders(tenant_id,facility_id,patient_id,test_name,status,completed_at) VALUES($1,$2,$3,'Synthetic presentation verified assay','Completed',now()) RETURNING id",
+      [tenant, facility, patient],
+    )
+  ).rows[0].id;
+  const labResult = (
+    await pool.query(
+      "INSERT INTO lab_results(order_id,patient_id,parameter_name,measured_value,status,verified_at) VALUES($1,$2,'Synthetic analyte','5.1','Pending Verification',NULL) RETURNING id",
+      [labOrder, patient],
+    )
+  ).rows[0].id;
+  check(
+    (await api(`/api/documents/laboratory-orders/${labOrder}/pdf`)).status === 409,
+    'Actual official lab PDF endpoint rejects unverified persisted results',
+  );
+  await pool.query("UPDATE lab_results SET status='Verified',verified_at=now() WHERE id=$1", [
+    labResult,
+  ]);
+  const labPdf = await api(`/api/documents/laboratory-orders/${labOrder}/pdf`);
+  check(
+    labPdf.status === 200 && labPdf.headers.get('x-letterhead-applied') === 'true',
+    'Verified lab report uses the same explicitly activated facility letterhead',
+  );
+  await writeFile(out + 'laboratory-after-activation.pdf', labPdf.bytes);
 
   // Capture existing administrator UI and active version.
   await click(page, 'System Configuration', 'aside button');
@@ -841,6 +964,45 @@ try {
   await (await page.$('table'))!.screenshot({
     path: out + '07b-reporting-centre-returned-rows.png',
   });
+  const downloadClient = await browser.target().createCDPSession();
+  const nativeDirectory = root + '/.tmp-tools/presentation-native-downloads';
+  await mkdir(nativeDirectory, { recursive: true });
+  await downloadClient.send('Browser.setDownloadBehavior', {
+    behavior: 'allowAndName',
+    downloadPath: nativeDirectory,
+    eventsEnabled: true,
+  });
+  for (const [label, extension] of [
+    ['PDF', 'pdf'],
+    ['Excel', 'xlsx'],
+  ] as const) {
+    const complete = new Promise<string>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        downloadClient.off('Browser.downloadProgress', handler);
+        reject(Error('Native download timed out'));
+      }, 30000);
+      const handler = (e: { state: string; guid: string }) => {
+        if (e.state === 'completed') {
+          clearTimeout(timer);
+          downloadClient.off('Browser.downloadProgress', handler);
+          resolve(e.guid);
+        }
+      };
+      downloadClient.on('Browser.downloadProgress', handler);
+    });
+    await click(page, label);
+    const guid = await complete;
+    const bytes = await readFile(nativeDirectory + '/' + guid);
+    check(bytes.length > 100, 'Actual native browser ' + extension + ' download saved');
+    await writeFile(out + 'native-inventory.' + extension, bytes);
+  }
+  await click(page, 'Next', '#report-centre-print button');
+  await idle(page);
+  check(
+    await page.$eval('table', (e) => e.textContent?.includes('Synthetic presentation item 34')),
+    'Inventory next page retains generated filters and displays final persisted row',
+  );
+  await downloadClient.detach();
   const printables = await page.evaluateHandle(() =>
     Array.from(document.querySelectorAll('button')).find((e) =>
       e.textContent?.includes('PRINTABLES'),
@@ -882,6 +1044,73 @@ try {
     path: out + '08-reporting-centre-clinical-document.png',
     fullPage: true,
   });
+  const entryScreens: Array<{
+    id: string;
+    screenOpened: boolean;
+    disclosed: boolean;
+    engine?: string;
+    workflow?: string;
+  }> = [];
+  const searchInput = 'input[placeholder="Search reports or departments"]';
+  for (const category of REPORT_CATEGORIES) {
+    for (const entry of category.reports) {
+      // Use the real search box to expand catalogue groups, then the actual catalogue button.
+      const input = await page.$(searchInput);
+      if (!input) throw Error('Catalogue search control not found');
+      await input.evaluate((node, value) => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+        setter.call(node, value);
+        node.dispatchEvent(new Event('input', { bubbles: true }));
+      }, entry.name);
+      await page.waitForFunction(
+        (name) =>
+          Array.from(document.querySelectorAll('main[aria-label="Selected report"] h2')).some(
+            (e) => e.textContent === name,
+          ) ||
+          Array.from(document.querySelectorAll('button span')).some((e) => e.textContent === name),
+        {},
+        entry.name,
+      );
+      const handle = await page.evaluateHandle(
+        (name, categoryId) =>
+          Array.from(
+            document
+              .querySelector(`[data-testid="report-category-${categoryId}"]`)!
+              .querySelectorAll('button'),
+          ).find((b) => Array.from(b.querySelectorAll('span')).some((s) => s.textContent === name)),
+        entry.name,
+        category.id,
+      );
+      if (!handle.asElement()) throw Error('Catalogue entry not found: ' + entry.id);
+      await (handle.asElement() as ElementHandle<Element>).click();
+      await handle.dispose();
+      await page.waitForFunction(
+        (name) =>
+          document.querySelector('main[aria-label="Selected report"] h2')?.textContent === name,
+        {},
+        entry.name,
+      );
+      const body = await page.$eval(
+        'main[aria-label="Selected report"]',
+        (e) => e.textContent ?? '',
+      );
+      entryScreens.push({
+        id: entry.id,
+        screenOpened: true,
+        disclosed: !!entry.engine || !!entry.workflow || /unavailable|not implemented/i.test(body),
+        engine: entry.engine ?? undefined,
+        workflow: entry.workflow ?? undefined,
+      });
+    }
+  }
+  check(
+    entryScreens.length === 144 && entryScreens.every((e) => e.screenOpened && e.disclosed),
+    'All 144 actual catalogue detail screens open and unavailable entries disclose their state',
+  );
+  await writeFile(
+    out + 'catalogue-screen-results.json',
+    JSON.stringify(entryScreens, null, 2) + '\n',
+  );
   const events = (
     await pool.query(
       'SELECT action,document_id,reason,facts FROM patient_document_events WHERE facility_id=$1 ORDER BY id',
@@ -910,11 +1139,46 @@ try {
         patient,
         order,
         exceptionOrder,
+        demoFixture: {
+          tenant,
+          facility,
+          patient,
+          otherPatient,
+          doctorUserId: accounts.admin.id,
+          mrn: 'CL-' + suffix,
+          reportedRadiologyOrder: newOrder,
+          verifiedLabOrder: labOrder,
+          letterheadId: lh.id,
+          releasedDocumentId: releasedDocument.id,
+          unreleasedDocumentId: d.id,
+        },
       },
       null,
       2,
     ) + '\n',
   );
+  if (process.env.CLINICAL_DOCUMENTS_KEEP_DEMO_ACCESS === 'YES') {
+    // Synthetic demo credentials only. Never write this private handover file to audit evidence/Git.
+    await writeFile(
+      root + '/.tmp-tools/presentation-demo-access.json',
+      JSON.stringify(
+        {
+          syntheticOnly: true,
+          base,
+          staffUsername: accounts.admin.name,
+          portalIdentifier: portalLogins[0],
+          otherPortalIdentifier: portalLogins[1],
+          password,
+          facility,
+          patient,
+          clinicianId: accounts.admin.id,
+        },
+        null,
+        2,
+      ) + '\n',
+      { mode: 0o600 },
+    );
+  }
   await rm(out + 'failure.json', { force: true });
 } catch (e) {
   await mkdir(out, { recursive: true });

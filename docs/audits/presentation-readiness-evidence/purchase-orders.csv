@@ -1,0 +1,11 @@
+﻿"JaliCare HMIS — Reporting Centre"
+"LPO summaries"
+"Facility: Synthetic clinical presentation facility"
+"Generated (UTC): 2026-11-15T08:36:15.103Z"
+"Records: 0"
+"Expected delivery date: 2026-01-01 to 2026-12-31 (inclusive)"
+"Note: Order values are recorded purchase-order amounts, not supplier invoices, payments or reconciled expenditure."
+"Note: When a delivery-date range is applied, orders without an expected delivery date are excluded and counted."
+"Note: Data is a live snapshot and may change between pages or when regenerated."
+
+"Purchase order","Supplier","Status","Expected delivery","Order value"

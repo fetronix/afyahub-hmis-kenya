@@ -1,0 +1,4654 @@
+{
+  "syntheticOnly": true,
+  "reportEngines": 20,
+  "checks": [
+    {
+      "operation": "inventory-movements.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-movements: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-movements: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-movements: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-movements: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-movements: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-movements: explicit empty state, not invented records",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: XLSX saved value for mrn",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: PDF saved row value for mrn",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: XLSX saved value for patient",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: PDF saved row value for patient",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: XLSX saved value for birthDate",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: PDF saved row value for birthDate",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: XLSX saved value for gender",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: PDF saved row value for gender",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: XLSX saved value for createdAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: PDF saved row value for createdAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: XLSX saved value for mrn",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: PDF saved row value for mrn",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: XLSX saved value for patient",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: PDF saved row value for patient",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: XLSX saved value for birthDate",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: PDF saved row value for birthDate",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: XLSX saved value for gender",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: PDF saved row value for gender",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: XLSX saved value for createdAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: PDF saved row value for createdAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "patient-registrations: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-expiry.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-expiry: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-expiry: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-expiry: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-expiry: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-expiry: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-expiry: explicit empty state, not invented records",
+      "status": "PASS"
+    },
+    {
+      "operation": "outpatient-encounters.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "outpatient-encounters: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "outpatient-encounters: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "outpatient-encounters: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "outpatient-encounters: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "outpatient-encounters: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "outpatient-encounters: explicit empty state, not invented records",
+      "status": "PASS"
+    },
+    {
+      "operation": "outpatient-diagnoses.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "outpatient-diagnoses: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "outpatient-diagnoses: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "outpatient-diagnoses: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "outpatient-diagnoses: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "outpatient-diagnoses: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "outpatient-diagnoses: explicit empty state, not invented records",
+      "status": "PASS"
+    },
+    {
+      "operation": "inpatient-admissions.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "inpatient-admissions: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "inpatient-admissions: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "inpatient-admissions: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "inpatient-admissions: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "inpatient-admissions: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "inpatient-admissions: explicit empty state, not invented records",
+      "status": "PASS"
+    },
+    {
+      "operation": "inpatient-discharges.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "inpatient-discharges: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "inpatient-discharges: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "inpatient-discharges: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "inpatient-discharges: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "inpatient-discharges: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "inpatient-discharges: explicit empty state, not invented records",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: XLSX saved value for orderId",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: PDF saved row value for orderId",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: XLSX saved value for mrn",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: PDF saved row value for mrn",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: XLSX saved value for patient",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: PDF saved row value for patient",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: XLSX saved value for test",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: PDF saved row value for test",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: XLSX saved value for specimen",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: PDF saved row value for specimen",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: XLSX saved value for orderedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: PDF saved row value for orderedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: XLSX saved value for completedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: PDF saved row value for completedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "laboratory-orders: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for requestId",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for requestId",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for mrn",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for mrn",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for patient",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for patient",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for procedure",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for procedure",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for modality",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for modality",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for requestedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for requestedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for reportedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for reportedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for requestId",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for requestId",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for mrn",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for mrn",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for patient",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for patient",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for procedure",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for procedure",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for modality",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for modality",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for requestedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for requestedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for reportedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for reportedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for requestId",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for requestId",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for mrn",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for mrn",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for patient",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for patient",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for procedure",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for procedure",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for modality",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for modality",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for requestedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for requestedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for reportedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for reportedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for requestId",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for requestId",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for mrn",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for mrn",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for patient",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for patient",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for procedure",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for procedure",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for modality",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for modality",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for requestedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for requestedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: XLSX saved value for reportedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF saved row value for reportedAt",
+      "status": "PASS"
+    },
+    {
+      "operation": "radiology-requests: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "pharmacy-dispensations.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "pharmacy-dispensations: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "pharmacy-dispensations: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "pharmacy-dispensations: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "pharmacy-dispensations: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "pharmacy-dispensations: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "pharmacy-dispensations: explicit empty state, not invented records",
+      "status": "PASS"
+    },
+    {
+      "operation": "cashier-receipts.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "cashier-receipts: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "cashier-receipts: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "cashier-receipts: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "cashier-receipts: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "cashier-receipts: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "cashier-receipts: explicit empty state, not invented records",
+      "status": "PASS"
+    },
+    {
+      "operation": "recorded-refunds.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "recorded-refunds: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "recorded-refunds: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "recorded-refunds: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "recorded-refunds: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "recorded-refunds: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "recorded-refunds: explicit empty state, not invented records",
+      "status": "PASS"
+    },
+    {
+      "operation": "invoice-balances.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "invoice-balances: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "invoice-balances: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "invoice-balances: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "invoice-balances: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "invoice-balances: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "invoice-balances: explicit empty state, not invented records",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-trial-movements.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-trial-movements: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-trial-movements: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-trial-movements: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-trial-movements: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-trial-movements: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-trial-movements: explicit empty state, not invented records",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-income.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-income: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-income: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-income: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-income: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-income: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-income: explicit empty state, not invented records",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-balance-sheet.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-balance-sheet: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-balance-sheet: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-balance-sheet: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-balance-sheet: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-balance-sheet: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "ledger-balance-sheet: explicit empty state, not invented records",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-category: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "Full 35-row inventory PDF extends beyond visible screen pagination",
+      "status": "PASS"
+    },
+    {
+      "operation": "Full 35-row inventory XLSX extends beyond visible screen pagination",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for code",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for item",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for category",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for store",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for unit",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for quantity",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for reorderLevel",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: XLSX saved value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF saved row value for status",
+      "status": "PASS"
+    },
+    {
+      "operation": "inventory-store: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "purchase-orders.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "purchase-orders: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "purchase-orders: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "purchase-orders: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "purchase-orders: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "purchase-orders: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "purchase-orders: explicit empty state, not invented records",
+      "status": "PASS"
+    },
+    {
+      "operation": "current-inpatients.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "current-inpatients: correct template repeated on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "current-inpatients: correct page numbering",
+      "status": "PASS"
+    },
+    {
+      "operation": "current-inpatients: no other facility branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "current-inpatients: no text clipped outside page geometry",
+      "status": "PASS"
+    },
+    {
+      "operation": "current-inpatients: PDF count matches query",
+      "status": "PASS"
+    },
+    {
+      "operation": "current-inpatients: explicit empty state, not invented records",
+      "status": "PASS"
+    },
+    {
+      "operation": "Before activation: no official template falsely applied",
+      "status": "PASS"
+    },
+    {
+      "operation": "Before activation: plain fallback clearly disclosed",
+      "status": "PASS"
+    },
+    {
+      "operation": "Radiology document: same active template and persisted clinical content",
+      "status": "PASS"
+    },
+    {
+      "operation": "native-inventory.xlsx contains no executable formulas",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native browser PDF has the complete35-row inventory, not just the displayed25",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item00",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item01",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item02",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item03",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item04",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item05",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item06",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item07",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item08",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item09",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item10",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item11",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item12",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item13",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item14",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item15",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item16",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item17",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item18",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item19",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item20",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item21",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item22",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item23",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item24",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item25",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item26",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item27",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item28",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item29",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item30",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item31",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item32",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item33",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF/XLSX include exactly expected item34",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel has exactly35 saved item rows",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel columns match the generated report definition",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel has exactly the full35-by8 data rectangle",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row1: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row1: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row2: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row2: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row3: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row3: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row4: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row4: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row5: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row5: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row6: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row6: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row7: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row7: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row8: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row8: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row9: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row9: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row10: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row10: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row11: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row11: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row12: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row12: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row13: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row13: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row14: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row14: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row15: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row15: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row16: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row16: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row17: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row17: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row18: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row18: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row19: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row19: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row20: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row20: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row21: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row21: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row22: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row22: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row23: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row23: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row24: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row24: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row25: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row25: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row26: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row26: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row27: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row27: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row28: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row28: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row29: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row29: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row30: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row30: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row31: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row31: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row32: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row32: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row33: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row33: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row34: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row34: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native Excel row35: every saved data value equals the fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF row35: every cell agrees with the actual native Excel row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Native PDF repeats correct activated facility letterhead on every page",
+      "status": "PASS"
+    },
+    {
+      "operation": "Lab PDF contains active facility identity, persisted verified value and final-verification disclosure",
+      "status": "PASS"
+    }
+  ]
+}

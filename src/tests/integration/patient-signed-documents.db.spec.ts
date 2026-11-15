@@ -11,6 +11,7 @@ import { generateReport } from '../../reporting/report-centre.service.ts';
 import { portalLogin } from '../../portal/portal-auth.service.ts';
 import { hashPassword } from '../../utils/password.ts';
 import { REPORT_ENGINES } from '../../reporting/report-centre.types.ts';
+import { updateRadiologyReport } from '../../db/queries/laboratory.ts';
 import type { ReportEngineId } from '../../reporting/report-catalogue.ts';
 
 const reason = 'Synthetic independently checked consent evidence';
@@ -423,6 +424,47 @@ describeDb('signed originals, procedure consent and report retrieval — disposa
     expect(history.rows[0].facts.clinicianId).toBe(a.userId);
     await expect(docs.radiologyConsent(b, o)).rejects.toMatchObject({ status: 404 });
   });
+  it.each(['Cancelled', 'CANCELLED', 'Canceled'])(
+    'denies consent decisions and performance for a %s request even with earlier consent',
+    async (status) => {
+      const o = (
+        await pool.query(
+          "INSERT INTO radiology_orders(tenant_id,facility_id,patient_id,modality,procedure_name) VALUES($1,$2,$3,'CT','Synthetic cancelled procedure') RETURNING id",
+          [a.tenantId, a.facilityId, patient],
+        )
+      ).rows[0].id;
+      await docs.setRadiologyConsentPolicy(a, { required: true, allowException: true, reason });
+      const input = { status: 'EXCEPTION', clinicianId: a.userId, reason };
+      await docs.decideRadiologyConsent(a, o, input);
+      await pool.query('UPDATE radiology_orders SET status=$2 WHERE id=$1', [o, status]);
+      expect((await docs.radiologyConsent(a, o)).status).toBe('PROCEDURE_CANCELLED');
+      await expect(docs.decideRadiologyConsent(a, o, input)).rejects.toMatchObject({
+        code: 'PROCEDURE_NOT_ACTIVE',
+        status: 409,
+      });
+      await expect(
+        updateRadiologyReport(
+          o,
+          'Synthetic findings',
+          'Synthetic impression',
+          'Synthetic clinician',
+          a.userId,
+        ),
+      ).rejects.toMatchObject({ code: 'RADIOLOGY_ORDER_CANCELLED', status: 409 });
+      expect(
+        (await pool.query('SELECT status FROM radiology_orders WHERE id=$1', [o])).rows[0].status,
+      ).toBe(status);
+      expect(
+        (
+          await pool.query(
+            "SELECT id FROM billing_charge_attempts WHERE source_id=$1 AND source_type='RADIOLOGY'",
+            [String(o)],
+          )
+        ).rowCount,
+      ).toBe(0);
+    },
+  );
+
   it('fails closed and rolls back originals if document auditing fails', async () => {
     const tag = 'doc_audit_' + suffix.replaceAll('-', '').slice(0, 16);
     const before = Number(

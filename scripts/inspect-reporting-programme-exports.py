@@ -2,6 +2,7 @@
 Requires PyMuPDF. No SQL, network, workbook calculation or production access.
 """
 import json
+import os
 import re
 import zipfile
 from pathlib import Path
@@ -9,7 +10,7 @@ import xml.etree.ElementTree as ET
 
 import pymupdf
 
-out = Path('docs/audits/reporting-programme-batch-1-evidence')
+out = Path(os.environ.get('REPORTING_PROGRAMME_EVIDENCE_DIR', 'docs/audits/reporting-programme-batch-1-evidence'))
 result = json.loads((out / 'report-result.json').read_text())
 checks = []
 ns = {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}

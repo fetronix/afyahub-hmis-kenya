@@ -1,0 +1,826 @@
+{
+  "syntheticOnly": true,
+  "actualApplication": true,
+  "adapters": false,
+  "productionAccess": false,
+  "checks": [
+    {
+      "operation": "Independently attested disposable cluster, database and data directory match before fixtures",
+      "status": "PASS"
+    },
+    {
+      "operation": "Disposable secure bootstrap",
+      "status": "PASS"
+    },
+    {
+      "operation": "Permission catalogue seeded only in disposable database",
+      "status": "PASS"
+    },
+    {
+      "operation": "Real staff username/password login",
+      "status": "PASS"
+    },
+    {
+      "operation": "Reporting Centre retrieves all 35 synthetic inventory rows before branding",
+      "status": "PASS"
+    },
+    {
+      "operation": "Generate actual plain-fallback report before activation",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual patient UI uploads original PDF",
+      "status": "PASS"
+    },
+    {
+      "operation": "Upload does not infer either signature",
+      "status": "PASS"
+    },
+    {
+      "operation": "Authorized original preview/download bytes equal the signed upload",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual patient UI creates a correction as a new version",
+      "status": "PASS"
+    },
+    {
+      "operation": "Original and correction remain in the version history",
+      "status": "PASS"
+    },
+    {
+      "operation": "Independent signature assertions and signing date survive save and database reload",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual patient UI uploads validated PNG original",
+      "status": "PASS"
+    },
+    {
+      "operation": "Authenticated original image preview is decoded by the real browser",
+      "status": "PASS"
+    },
+    {
+      "operation": "Restricted staff denied original download",
+      "status": "PASS"
+    },
+    {
+      "operation": "Cross-facility original download denied",
+      "status": "PASS"
+    },
+    {
+      "operation": "Wrong patient/document association denied",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual upload endpoint rejects unsupported executable extension",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual upload endpoint denies staff without upload permission",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual raw-body upload rejects oversized content",
+      "status": "PASS"
+    },
+    {
+      "operation": "Real patient portal username/password login",
+      "status": "PASS"
+    },
+    {
+      "operation": "Portal displays the released document signing date",
+      "status": "PASS"
+    },
+    {
+      "operation": "Portal lists only explicitly released own document without internal notes or staff audit",
+      "status": "PASS"
+    },
+    {
+      "operation": "Own released portal PDF preserves original uploaded bytes",
+      "status": "PASS"
+    },
+    {
+      "operation": "Unreleased original version is not accessible through the portal API",
+      "status": "PASS"
+    },
+    {
+      "operation": "Second synthetic patient normal login",
+      "status": "PASS"
+    },
+    {
+      "operation": "Real portal session for another patient cannot access released original",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual reporting/performance boundary blocks absent procedure consent",
+      "status": "PASS"
+    },
+    {
+      "operation": "Generic signed document does not satisfy procedure consent",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual radiology UI uploads procedure-linked consent",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual UI verifies this procedure-specific consent",
+      "status": "PASS"
+    },
+    {
+      "operation": "Verified procedure can be reported through existing workflow",
+      "status": "PASS"
+    },
+    {
+      "operation": "Procedure consent remains in patient document history",
+      "status": "PASS"
+    },
+    {
+      "operation": "Exception denied when facility policy prohibits it",
+      "status": "PASS"
+    },
+    {
+      "operation": "Explicit facility policy change recorded",
+      "status": "PASS"
+    },
+    {
+      "operation": "Authorized clinician exception recorded under permitted policy",
+      "status": "PASS"
+    },
+    {
+      "operation": "Documented policy-authorized exception permits completion",
+      "status": "PASS"
+    },
+    {
+      "operation": "Cancelled request refuses a new consent authorization through actual API",
+      "status": "PASS"
+    },
+    {
+      "operation": "Cancelled request with previous consent cannot be reported through actual API",
+      "status": "PASS"
+    },
+    {
+      "operation": "Existing letterhead upload API creates a draft version",
+      "status": "PASS"
+    },
+    {
+      "operation": "Upload is not activation",
+      "status": "PASS"
+    },
+    {
+      "operation": "Authorized letterhead preview retains original template",
+      "status": "PASS"
+    },
+    {
+      "operation": "Existing explicit letterhead activation succeeds",
+      "status": "PASS"
+    },
+    {
+      "operation": "Historical pre-activation radiology report does not acquire a later template",
+      "status": "PASS"
+    },
+    {
+      "operation": "Create post-activation imaging request through existing API",
+      "status": "PASS"
+    },
+    {
+      "operation": "Record policy-authorized exception for new rendering fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Complete post-activation imaging fixture",
+      "status": "PASS"
+    },
+    {
+      "operation": "Radiology and Reporting Centre share the activated facility renderer",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual official lab PDF endpoint rejects unverified persisted results",
+      "status": "PASS"
+    },
+    {
+      "operation": "Verified lab report uses the same explicitly activated facility letterhead",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: inventory-movements",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: inventory-movements",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: inventory-movements",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: inventory-movements",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: inventory-movements",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: inventory-movements",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: inventory-movements",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: patient-registrations",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: patient-registrations",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: patient-registrations",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: patient-registrations",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: patient-registrations",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: patient-registrations",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: patient-registrations",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: inventory-expiry",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: inventory-expiry",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: inventory-expiry",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: inventory-expiry",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: inventory-expiry",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: inventory-expiry",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: inventory-expiry",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: outpatient-encounters",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: outpatient-encounters",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: outpatient-encounters",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: outpatient-encounters",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: outpatient-encounters",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: outpatient-encounters",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: outpatient-encounters",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: outpatient-diagnoses",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: outpatient-diagnoses",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: outpatient-diagnoses",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: outpatient-diagnoses",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: outpatient-diagnoses",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: outpatient-diagnoses",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: outpatient-diagnoses",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: inpatient-admissions",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: inpatient-admissions",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: inpatient-admissions",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: inpatient-admissions",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: inpatient-admissions",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: inpatient-admissions",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: inpatient-admissions",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: inpatient-discharges",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: inpatient-discharges",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: inpatient-discharges",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: inpatient-discharges",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: inpatient-discharges",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: inpatient-discharges",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: inpatient-discharges",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: laboratory-orders",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: laboratory-orders",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: laboratory-orders",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: laboratory-orders",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: laboratory-orders",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: laboratory-orders",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: laboratory-orders",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: radiology-requests",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: radiology-requests",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: radiology-requests",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: radiology-requests",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: radiology-requests",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: radiology-requests",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: radiology-requests",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: pharmacy-dispensations",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: pharmacy-dispensations",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: pharmacy-dispensations",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: pharmacy-dispensations",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: pharmacy-dispensations",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: pharmacy-dispensations",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: pharmacy-dispensations",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: cashier-receipts",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: cashier-receipts",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: cashier-receipts",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: cashier-receipts",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: cashier-receipts",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: cashier-receipts",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: cashier-receipts",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: recorded-refunds",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: recorded-refunds",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: recorded-refunds",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: recorded-refunds",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: recorded-refunds",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: recorded-refunds",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: recorded-refunds",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: invoice-balances",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: invoice-balances",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: invoice-balances",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: invoice-balances",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: invoice-balances",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: invoice-balances",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: invoice-balances",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: ledger-trial-movements",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: ledger-trial-movements",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: ledger-trial-movements",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: ledger-trial-movements",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: ledger-trial-movements",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: ledger-trial-movements",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: ledger-trial-movements",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: ledger-income",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: ledger-income",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: ledger-income",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: ledger-income",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: ledger-income",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: ledger-income",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: ledger-income",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: ledger-balance-sheet",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: ledger-balance-sheet",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: ledger-balance-sheet",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: ledger-balance-sheet",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: ledger-balance-sheet",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: ledger-balance-sheet",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: ledger-balance-sheet",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: inventory-category",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: inventory-category",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: inventory-category",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: inventory-category",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: inventory-category",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: inventory-category",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: inventory-category",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: inventory-store",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: inventory-store",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: inventory-store",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: inventory-store",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: inventory-store",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: inventory-store",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: inventory-store",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: purchase-orders",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: purchase-orders",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: purchase-orders",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: purchase-orders",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: purchase-orders",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: purchase-orders",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: purchase-orders",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report query: current-inpatients",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual changed filter/empty query: current-inpatients",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual pdf export: current-inpatients",
+      "status": "PASS"
+    },
+    {
+      "operation": "PDF parses: current-inpatients",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual xlsx export: current-inpatients",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX contains saved report title: current-inpatients",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual csv export: current-inpatients",
+      "status": "PASS"
+    },
+    {
+      "operation": "Screen pagination does not truncate the full exported dataset",
+      "status": "PASS"
+    },
+    {
+      "operation": "XLSX includes the last row beyond the visible page",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual report workbench displays returned database rows",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual native browser pdf download saved",
+      "status": "PASS"
+    },
+    {
+      "operation": "Actual native browser xlsx download saved",
+      "status": "PASS"
+    },
+    {
+      "operation": "Inventory next page retains generated filters and displays final persisted row",
+      "status": "PASS"
+    },
+    {
+      "operation": "Reporting Centre clinical entry retrieves authorized PDF and invokes browser PDF opener",
+      "status": "PASS"
+    },
+    {
+      "operation": "All 144 actual catalogue detail screens open and unavailable entries disclose their state",
+      "status": "PASS"
+    },
+    {
+      "operation": "Persisted document, exception and patient access audit evidence",
+      "status": "PASS"
+    },
+    {
+      "operation": "No uncaught errors during real browser workflows",
+      "status": "PASS"
+    }
+  ],
+  "errors": [],
+  "facility": 61,
+  "patient": 119,
+  "order": 60,
+  "exceptionOrder": 61,
+  "demoFixture": {
+    "tenant": 37,
+    "facility": 61,
+    "patient": 119,
+    "otherPatient": 120,
+    "doctorUserId": 114,
+    "mrn": "CL-e27aa3c9",
+    "reportedRadiologyOrder": 63,
+    "verifiedLabOrder": 128,
+    "letterheadId": 30,
+    "releasedDocumentId": 48,
+    "unreleasedDocumentId": 47
+  }
+}

@@ -1,0 +1,750 @@
+[
+  {
+    "id": "printables-sick-off-certificates",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "printables-medical-notes",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "printables-referral-letters",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "printables-inpatient-statements",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "printables-discharge-summaries",
+    "screenOpened": true,
+    "disclosed": true,
+    "workflow": "discharge"
+  },
+  {
+    "id": "printables-operation-notes",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "printables-anaesthetist-notes",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "printables-bill-consent-forms",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "printables-radiology-reports",
+    "screenOpened": true,
+    "disclosed": true,
+    "workflow": "radiology"
+  },
+  {
+    "id": "printables-laboratory-reports",
+    "screenOpened": true,
+    "disclosed": true,
+    "workflow": "laboratory"
+  },
+  {
+    "id": "printables-invoices",
+    "screenOpened": true,
+    "disclosed": true,
+    "workflow": "invoice"
+  },
+  {
+    "id": "printables-receipts",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "printables-purchase-requisitions",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "printables-local-purchase-orders",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "printables-goods-received-notes",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "financial-cashier-daily-summary",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "cashier-receipts"
+  },
+  {
+    "id": "financial-all-cashier-daily-summary",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "cashier-receipts"
+  },
+  {
+    "id": "financial-department-receipt-summary",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "financial-department-receipt-breakdown",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "financial-managerial-daily-summary",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "financial-trial-balance",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "ledger-trial-movements"
+  },
+  {
+    "id": "financial-income-statement",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "ledger-income"
+  },
+  {
+    "id": "financial-balance-sheet",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "ledger-balance-sheet"
+  },
+  {
+    "id": "financial-monthly-profit-and-loss",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "financial-cash-flow-statement",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "financial-budget-management",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "financial-credit-notes",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "financial-waiver-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "financial-income-by-cashier",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "financial-departmental-revenue",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "financial-patient-outstanding-balances",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "invoice-balances"
+  },
+  {
+    "id": "financial-sha-receivables",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "financial-private-insurance-receivables",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "financial-m-pesa-reconciliation",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "financial-card-payment-reconciliation",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "financial-refund-reports",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "recorded-refunds"
+  },
+  {
+    "id": "stock-goods-stock-usage",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "stock-goods-stock-movements",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "inventory-movements"
+  },
+  {
+    "id": "stock-goods-goods-received",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "stock-goods-goods-returned",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "stock-goods-lpo-summaries",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "purchase-orders"
+  },
+  {
+    "id": "stock-goods-inward-invoices",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "stock-goods-outward-invoices",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "stock-goods-bin-cards",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "stock-goods-inventory-by-store",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "inventory-store"
+  },
+  {
+    "id": "stock-goods-inventory-by-category",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "inventory-category"
+  },
+  {
+    "id": "stock-goods-expiry-reports",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "inventory-expiry"
+  },
+  {
+    "id": "stock-goods-stock-variance",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "stock-goods-stock-transfers",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "stock-goods-goods-price-lists",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "stock-goods-supplier-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "stock-goods-stock-valuation",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "stock-goods-asset-register",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "stock-goods-asset-tracking",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "stock-goods-asset-maintenance",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-opd-opd-attendance",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "outpatient-encounters"
+  },
+  {
+    "id": "departmental-opd-consultation-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-opd-diagnosis-reports",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "outpatient-diagnoses"
+  },
+  {
+    "id": "departmental-opd-referral-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-opd-doctor-workload",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-inpatient-current-inpatient-list",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "current-inpatients"
+  },
+  {
+    "id": "departmental-inpatient-admissions",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "inpatient-admissions"
+  },
+  {
+    "id": "departmental-inpatient-discharges",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "inpatient-discharges"
+  },
+  {
+    "id": "departmental-inpatient-ward-occupancy",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-inpatient-bed-billing",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-laboratory-test-reports",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "laboratory-orders"
+  },
+  {
+    "id": "departmental-laboratory-patient-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-laboratory-specimen-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-laboratory-sample-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-laboratory-section-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-laboratory-pending-results",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-laboratory-released-results",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-laboratory-turnaround-times",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-radiology-imaging-requests",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "radiology-requests"
+  },
+  {
+    "id": "departmental-radiology-completed-procedures",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-radiology-patient-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-radiology-radiology-revenue",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-pharmacy-prescriptions",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-pharmacy-dispensing",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "pharmacy-dispensations"
+  },
+  {
+    "id": "departmental-pharmacy-drug-movement",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-pharmacy-returns",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-pharmacy-stock-and-expiry",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-theatre-procedure-lists",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-theatre-patient-procedure-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-theatre-theatre-utilization",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-maternity-mch-anc",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-maternity-mch-deliveries",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-maternity-mch-postnatal",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-maternity-mch-child-health",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-dialysis-patient-sessions",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-dialysis-treatment-records",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-dialysis-session-billing",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-social-work-waivers",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-social-work-counselling",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "departmental-social-work-patient-support-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "records-birth-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "records-death-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "records-current-inpatient-lists",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "current-inpatients"
+  },
+  {
+    "id": "records-patient-reports",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "patient-registrations"
+  },
+  {
+    "id": "records-patient-review-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "records-unregistered-patient-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "records-referral-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "records-opd-diagnosis-reports",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "outpatient-diagnoses"
+  },
+  {
+    "id": "records-ipd-diagnosis-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "records-triage-analysis",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "records-doctors-workload",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "records-nurses-workload",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "records-cashier-workload",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "records-inpatient-discharges",
+    "screenOpened": true,
+    "disclosed": true,
+    "engine": "inpatient-discharges"
+  },
+  {
+    "id": "records-moh-505-idsr",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "records-moh-705a",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "records-moh-705b",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "records-moh-717",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "records-moh-301-ipd-admissions",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "records-moh-204-opd-register",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "records-moh-240-laboratory-and-radiology-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "records-moh-financial-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "hr-employee-list",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "hr-employee-summaries",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "hr-salary-summaries",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "hr-individual-payslips",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "hr-all-payslips",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "hr-attendance",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "hr-overtime",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "hr-leave-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "hr-monthly-deductions",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "hr-monthly-bank-summaries",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "hr-individual-bank-summaries",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "hr-p9a-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "hr-p10-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "hr-p10a-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "hr-locum-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "activity-system-user-list",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "activity-queue-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "activity-complete-activity-logs",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "activity-activity-logs-by-user",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "activity-failed-login-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "activity-patient-record-access-logs",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "activity-financial-approval-logs",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "activity-sms-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "activity-notification-delivery-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "activity-messages-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "activity-custom-administrative-reports",
+    "screenOpened": true,
+    "disclosed": true
+  },
+  {
+    "id": "activity-background-job-failures",
+    "screenOpened": true,
+    "disclosed": true
+  }
+]

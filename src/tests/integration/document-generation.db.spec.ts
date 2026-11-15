@@ -687,6 +687,53 @@ describeDb('Document generation from persisted records', () => {
     expect(text).toContain('All results on this report have been verified');
   });
 
+  it.each([
+    ['unverified timestamp', 'verified_at=NULL'],
+    ['non-verified status with a stale timestamp', "status='Entered'"],
+    ['a mismatched patient', 'patient_id=' + '0'],
+  ])('refuses an official lab PDF with %s', async (_label, change) => {
+    const original = (
+      await pool.query('SELECT * FROM lab_results WHERE order_id=$1 ORDER BY id', [labOrderId])
+    ).rows[0];
+    // A second real synthetic patient preserves FK validity while testing a bad legacy link.
+    const mutation = change === 'patient_id=0' ? `patient_id=${barePatient}` : change;
+    try {
+      await pool.query(`UPDATE lab_results SET ${mutation} WHERE id=$1`, [original.id]);
+      const result = await get(`/api/documents/laboratory-orders/${labOrderId}/pdf`, printerToken);
+      expect(result.status).toBe(409);
+      expect(result.json.code).toBe('DOCUMENT_INCOMPLETE');
+    } finally {
+      await pool.query(
+        'UPDATE lab_results SET verified_at=$2,status=$3,patient_id=$4 WHERE id=$1',
+        [original.id, original.verified_at, original.status, original.patient_id],
+      );
+    }
+  });
+
+  it.each([
+    ['draft findings without a report timestamp', 'reported_at=NULL'],
+    ['a report timestamp without findings', "radiologist_findings='   '"],
+    ['a cancelled request retaining old findings', "status='CANCELLED'"],
+  ])('refuses an official radiology PDF with %s', async (_label, change) => {
+    const original = (
+      await pool.query('SELECT * FROM radiology_orders WHERE id=$1', [radiologyOrderId])
+    ).rows[0];
+    try {
+      await pool.query(`UPDATE radiology_orders SET ${change} WHERE id=$1`, [radiologyOrderId]);
+      const result = await get(
+        `/api/documents/radiology-orders/${radiologyOrderId}/pdf`,
+        printerToken,
+      );
+      expect(result.status).toBe(409);
+      expect(result.json.code).toBe('DOCUMENT_INCOMPLETE');
+    } finally {
+      await pool.query(
+        'UPDATE radiology_orders SET reported_at=$2,radiologist_findings=$3,status=$4 WHERE id=$1',
+        [radiologyOrderId, original.reported_at, original.radiologist_findings, original.status],
+      );
+    }
+  });
+
   it('prints an imaging report and refuses one that has not been reported', async () => {
     const reported = await get(
       `/api/documents/radiology-orders/${radiologyOrderId}/pdf`,

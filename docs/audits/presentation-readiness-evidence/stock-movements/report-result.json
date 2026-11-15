@@ -1,0 +1,176 @@
+{
+  "reportId": "inventory-movements",
+  "title": "Recorded stock movements",
+  "facilityId": 4,
+  "facilityName": "Synthetic Reporting Main",
+  "currency": "KES",
+  "generatedAt": "2026-11-15T08:27:27.436Z",
+  "filters": {
+    "facilityId": 4,
+    "from": "2026-01-01",
+    "to": "2026-01-31",
+    "offset": 0,
+    "limit": 25
+  },
+  "filterLabels": {},
+  "columns": [
+    {
+      "key": "movementId",
+      "label": "Movement ID"
+    },
+    {
+      "key": "movementDate",
+      "label": "Recorded movement date"
+    },
+    {
+      "key": "itemCode",
+      "label": "Current item code"
+    },
+    {
+      "key": "item",
+      "label": "Current item name"
+    },
+    {
+      "key": "unit",
+      "label": "Current item unit"
+    },
+    {
+      "key": "movementType",
+      "label": "Movement type"
+    },
+    {
+      "key": "quantityDelta",
+      "label": "Recorded quantity change"
+    },
+    {
+      "key": "stockAfter",
+      "label": "Recorded stock after movement"
+    },
+    {
+      "key": "itemNetQuantity",
+      "label": "Item net quantity in selected filters"
+    },
+    {
+      "key": "storeFrom",
+      "label": "Recorded from location"
+    },
+    {
+      "key": "storeTo",
+      "label": "Recorded to location"
+    },
+    {
+      "key": "referenceType",
+      "label": "Reference type"
+    },
+    {
+      "key": "referenceId",
+      "label": "Reference ID"
+    },
+    {
+      "key": "reason",
+      "label": "Reason code"
+    },
+    {
+      "key": "actor",
+      "label": "Recorded actor name"
+    }
+  ],
+  "rows": [
+    {
+      "movementId": 11,
+      "movementDate": "2026-01-31",
+      "itemCode": "RP-Alpha-359af7ec",
+      "item": "Synthetic Alpha",
+      "unit": "Pieces",
+      "movementType": "DISPENSE",
+      "quantityDelta": -3,
+      "stockAfter": 7,
+      "itemNetQuantity": "7",
+      "storeFrom": null,
+      "storeTo": "Synthetic Main",
+      "referenceType": "SYNTHETIC_ACCEPTANCE",
+      "referenceId": "alpha-end-359af7ec",
+      "reason": null,
+      "actor": "Synthetic recorder"
+    },
+    {
+      "movementId": 18,
+      "movementDate": "2026-01-20",
+      "itemCode": null,
+      "item": null,
+      "unit": null,
+      "movementType": "ADJUSTMENT",
+      "quantityDelta": 1,
+      "stockAfter": 1,
+      "itemNetQuantity": null,
+      "storeFrom": null,
+      "storeTo": "Synthetic Main",
+      "referenceType": "SYNTHETIC_ACCEPTANCE",
+      "referenceId": "mismatched-item-359af7ec",
+      "reason": null,
+      "actor": "Synthetic recorder"
+    },
+    {
+      "movementId": 13,
+      "movementDate": "2026-01-15",
+      "itemCode": "RP-Beta-359af7ec",
+      "item": "Synthetic Beta",
+      "unit": "mL",
+      "movementType": "WRITE_OFF",
+      "quantityDelta": -20,
+      "stockAfter": 80,
+      "itemNetQuantity": "80",
+      "storeFrom": null,
+      "storeTo": "Synthetic Main",
+      "referenceType": "SYNTHETIC_ACCEPTANCE",
+      "referenceId": "beta-loss-359af7ec",
+      "reason": null,
+      "actor": "Synthetic recorder"
+    },
+    {
+      "movementId": 12,
+      "movementDate": "2026-01-15",
+      "itemCode": "RP-Beta-359af7ec",
+      "item": "Synthetic Beta",
+      "unit": "mL",
+      "movementType": "RECEIPT",
+      "quantityDelta": 100,
+      "stockAfter": 100,
+      "itemNetQuantity": "80",
+      "storeFrom": null,
+      "storeTo": "Synthetic Main",
+      "referenceType": "SYNTHETIC_ACCEPTANCE",
+      "referenceId": "beta-receipt-359af7ec",
+      "reason": null,
+      "actor": "Synthetic recorder"
+    },
+    {
+      "movementId": 10,
+      "movementDate": "2026-01-01",
+      "itemCode": "RP-Alpha-359af7ec",
+      "item": "Synthetic Alpha",
+      "unit": "Pieces",
+      "movementType": "RECEIPT",
+      "quantityDelta": 10,
+      "stockAfter": 10,
+      "itemNetQuantity": "7",
+      "storeFrom": null,
+      "storeTo": "Synthetic Main",
+      "referenceType": "SYNTHETIC_ACCEPTANCE",
+      "referenceId": "literal_%_alpha-start-359af7ec",
+      "reason": null,
+      "actor": "Synthetic recorder"
+    }
+  ],
+  "total": 5,
+  "offset": 0,
+  "limit": 25,
+  "notes": [
+    "Only recorded movement rows are included. Historical opening/closing stock and completeness before movement capture are not established; this is not inventory valuation, purchasing spend or posted accounting.",
+    "Item code, name and unit are current same-facility metadata, not immutable movement-time snapshots. Missing or out-of-scope item links withhold those labels and the per-item net quantity.",
+    "Item net quantity sums signed deltas for that item within the selected date/search/type/item filters before pagination. It is repeated per item, not a row-additive total or closing balance. Different items/units are never totalled together.",
+    "Recorded stock after movement is retained as written; back-dated records are not replayed to reconstruct balances. Transfers retain both recorded legs. Locations and actor names are recorded text, not verified department/staff identities.",
+    "Data is a live snapshot and may change between pages or when regenerated.",
+    "1 movement(s) have missing or out-of-scope item links; current item metadata and per-item net quantity are withheld; review the source records."
+  ]
+}

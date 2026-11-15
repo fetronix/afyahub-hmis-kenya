@@ -1,5 +1,6 @@
 """Inspect only saved synthetic acceptance exports. Requires PyMuPDF; no database access."""
 import json
+import os
 import re
 import zipfile
 from pathlib import Path
@@ -7,7 +8,8 @@ import xml.etree.ElementTree as ET
 
 import pymupdf
 
-out = Path('docs/audits/clinical-documents-evidence')
+out = Path(os.environ.get('CLINICAL_DOCUMENTS_EVIDENCE_DIR', 'docs/audits/clinical-documents-evidence'))
+Path('.tmp-tools/clinical-audit').mkdir(parents=True, exist_ok=True)
 reports = json.loads((out / 'report-results.json').read_text())
 checks = []
 ns = {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
@@ -80,6 +82,37 @@ with pymupdf.open(out / 'radiology-after-activation.pdf') as pdf:
     text = '\n'.join(page.get_text() for page in pdf)
     check('SYNTHETIC CLINICAL PRESENTATION FACILITY' in text and 'Synthetic impression only' in text, 'Radiology document: same active template and persisted clinical content')
     pdf[0].get_pixmap(matrix=pymupdf.Matrix(1.3, 1.3)).save(out / 'radiology-after-activation-page1.png')
+
+# Native browser downloads are additional evidence, not substitutes for source-row tests.
+if (out / 'native-inventory.pdf').exists():
+    values = xlsx_values(out / 'native-inventory.xlsx')
+    with pymupdf.open(out / 'native-inventory.pdf') as pdf:
+        text = ' '.join(' '.join(page.get_text() for page in pdf).split())
+        check('Records: 35' in text, 'Native browser PDF has the complete35-row inventory, not just the displayed25')
+        for i in range(35):
+            name = f'Synthetic presentation item {i:02}'
+            check(name in text and name in values, f'Native PDF/XLSX include exactly expected item{i:02}')
+        check(sum(str(x).startswith('Synthetic presentation item ') for x in values) == 35, 'Native Excel has exactly35 saved item rows')
+        columns = [c['label'] for c in next(r for r in reports if r['id'] == 'inventory-category')['columns']]
+        start = values.index(columns[0])
+        check(values[start:start+len(columns)] == columns, 'Native Excel columns match the generated report definition')
+        cells = values[start+len(columns):]
+        check(len(cells) == 35 * len(columns), 'Native Excel has exactly the full35-by8 data rectangle')
+        for i in range(35):
+            row = cells[i*len(columns):(i+1)*len(columns)]
+            check(row[1:] == [f'Synthetic presentation item {i:02}', 'Synthetic supplies', 'Synthetic Main Store', 'Pieces', str(i+1), 'Not recorded', 'Active'], f'Native Excel row{i+1}: every saved data value equals the fixture')
+            section = re.split(r'\bRecord ' + str(i+1) + r'\b', text)[1]
+            if i < 34:
+                section = re.split(r'\bRecord ' + str(i+2) + r'\b', section)[0]
+            check(all(' '.join((col + ': ' + value).split()) in section for col,value in zip(columns,row)), f'Native PDF row{i+1}: every cell agrees with the actual native Excel row')
+        check(all('SYNTHETIC CLINICAL PRESENTATION FACILITY' in page.get_text() for page in pdf), 'Native PDF repeats correct activated facility letterhead on every page')
+        pdf[0].get_pixmap(matrix=pymupdf.Matrix(1.3,1.3)).save(out / 'native-inventory-first-page.png')
+        pdf[-1].get_pixmap(matrix=pymupdf.Matrix(1.3,1.3)).save(out / 'native-inventory-last-page.png')
+if (out / 'laboratory-after-activation.pdf').exists():
+    with pymupdf.open(out / 'laboratory-after-activation.pdf') as pdf:
+        text = ' '.join(' '.join(page.get_text() for page in pdf).split())
+        check('SYNTHETIC CLINICAL PRESENTATION FACILITY' in text and '5.1' in text and 'All results on this report have been verified' in text, 'Lab PDF contains active facility identity, persisted verified value and final-verification disclosure')
+        pdf[0].get_pixmap(matrix=pymupdf.Matrix(1.3,1.3)).save(out / 'laboratory-after-activation-page1.png')
 
 (out / 'export-inspection.json').write_text(json.dumps({'syntheticOnly': True, 'reportEngines': len(reports), 'checks': checks}, indent=2) + '\n')
 print(f'PASS {len(checks)} PDF/XLSX content and layout checks across {len(reports)} engines, plus clinical PDF and before/after fallback.')

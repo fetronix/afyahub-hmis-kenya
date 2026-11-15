@@ -1,0 +1,13 @@
+﻿"JaliCare HMIS — Reporting Centre"
+"Recorded inpatient discharges"
+"Facility: Synthetic clinical presentation facility"
+"Generated (UTC): 2026-11-15T08:36:13.370Z"
+"Records: 0"
+"Recorded discharge date: 2026-01-01 to 2026-12-31 (inclusive)"
+"Note: A recorded discharge time is shown alongside the status; it is not proof that all discharge work or billing is complete."
+"Note: Only valid ISO date prefixes can be filtered; invalid dates are counted and excluded when a range is applied."
+"Note: Historical discharge times are shown as recorded without inferring a timezone."
+"Note: Missing or out-of-scope patient links are not inferred or matched by name and are counted for review."
+"Note: Data is a live snapshot and may change between pages or when regenerated."
+
+"Admission ID","MRN","Patient","Recorded discharge time","Recorded admission status","Discharge type","Recorded current ward"

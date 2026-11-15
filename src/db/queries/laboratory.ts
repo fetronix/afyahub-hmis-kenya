@@ -968,6 +968,13 @@ export async function updateRadiologyReport(
       .where(eq(schema.radiologyOrders.id, id))
       .for('update');
     if (!existing) return null;
+    if (['cancelled', 'canceled'].includes(existing.status?.trim().toLowerCase() ?? '')) {
+      throw new LaboratoryDomainError(
+        'RADIOLOGY_ORDER_CANCELLED',
+        'A cancelled imaging request cannot be performed or reported. Create an authorized new request.',
+        409,
+      );
+    }
     const [updated] = await tx
       .update(schema.radiologyOrders)
       .set({

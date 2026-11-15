@@ -381,18 +381,19 @@ export async function radiologyConsent(s: AuthorizationContext, id: number) {
       policy,
       decision,
       documents: docs,
-      status:
-        (decision?.status === 'VERIFIED' &&
-        !docs.some((d) => d.id === decision.document_id && d.procedure_name === o.procedure_name)
-          ? 'AWAITING_VERIFICATION'
-          : decision?.status === 'EXCEPTION' && !policy.allow_exception
-            ? 'CONSENT_REQUIRED'
-            : decision?.status) ??
-        (docs.length
-          ? 'AWAITING_VERIFICATION'
-          : policy.required
-            ? 'CONSENT_REQUIRED'
-            : 'NOT_REQUIRED'),
+      status: ['cancelled', 'canceled'].includes(o.status?.trim().toLowerCase() ?? '')
+        ? 'PROCEDURE_CANCELLED'
+        : ((decision?.status === 'VERIFIED' &&
+          !docs.some((d) => d.id === decision.document_id && d.procedure_name === o.procedure_name)
+            ? 'AWAITING_VERIFICATION'
+            : decision?.status === 'EXCEPTION' && !policy.allow_exception
+              ? 'CONSENT_REQUIRED'
+              : decision?.status) ??
+          (docs.length
+            ? 'AWAITING_VERIFICATION'
+            : policy.required
+              ? 'CONSENT_REQUIRED'
+              : 'NOT_REQUIRED')),
     };
   });
 }
@@ -418,7 +419,13 @@ export async function decideRadiologyConsent(
     const o = await order(c, s, id);
     await clinician(c, s, clinicianId);
     insist(
-      !['Reported', 'Performed', 'Completed'].includes(o.status),
+      !['cancelled', 'canceled'].includes(o.status?.trim().toLowerCase() ?? ''),
+      'PROCEDURE_NOT_ACTIVE',
+      'Do not authorize a cancelled procedure. Create an authorized new request.',
+      409,
+    );
+    insist(
+      !['reported', 'performed', 'completed'].includes(o.status?.trim().toLowerCase() ?? ''),
       'PROCEDURE_ALREADY_COMPLETED',
       'Do not alter consent decisions after procedure completion.',
       409,

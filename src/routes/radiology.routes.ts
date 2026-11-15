@@ -171,6 +171,8 @@ router.put(
       const charge = await chargeSafely(radiologyChargeRequest(reported), billingOutboxAttemptId);
       res.json({ ...reported, billing: charge });
     } catch (err: any) {
+      if (err instanceof LaboratoryDomainError)
+        return res.status(err.status).json({ error: err.code, message: err.message });
       if (
         (err?.cause ?? err)?.code === '23514' &&
         (err?.cause ?? err)?.message?.includes('RADIOLOGY_CONSENT_REQUIRED')

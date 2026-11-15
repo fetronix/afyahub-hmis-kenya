@@ -1,0 +1,222 @@
+{
+  "assessmentDate": "2026-10-27",
+  "runtimeClockCaveat": "Sandbox PostgreSQL/browser/export timestamps show November2026; retain actual timestamps and commit/source hashes without claiming production chronology.",
+  "sourceBaseline": "9814678a0229cdeb5946a717111cddfa1ba17364",
+  "syntheticOnly": true,
+  "productionAccess": false,
+  "postgres": "16.12, newly initialized loopback cluster on55439; independent data-directory/control-file identifier checked before browser fixtures",
+  "schema": "101 existing migrations applied only to two newly created disposable databases; no schema/migration modifications",
+  "browser": "Chromium143.0.7499.0 via puppeteer-core; production-built Vite frontend and Express server; normal staff/portal password login; no HTTP/SQL mocks for browser scenarios",
+  "beforeFixReproduction": {
+    "officialPdfHttpTests": {
+      "passed": 20,
+      "failed": 6,
+      "failure": "Unsafe official lab/radiology requests returned200 instead of409"
+    },
+    "cancelledConsentTests": {
+      "passed": 39,
+      "failed": 3,
+      "failure": "Cancelled request consent decisions unexpectedly succeeded"
+    }
+  },
+  "finalVitest": {
+    "passed": 177,
+    "failed": 0,
+    "skipped": 0,
+    "files": [
+      {
+        "path": "src/tests/integration/document-generation.db.spec.ts",
+        "passed": 26,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "path": "src/tests/integration/report-centre-selectors.db.spec.ts",
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "path": "src/tests/integration/report-centre-operational.db.spec.ts",
+        "passed": 17,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "path": "src/tests/integration/report-centre-diagnoses.db.spec.ts",
+        "passed": 13,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "path": "src/tests/vitest/report-centre-ui.spec.tsx",
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "path": "src/tests/integration/letterhead-branding.db.spec.ts",
+        "passed": 13,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "path": "src/tests/integration/report-centre.db.spec.ts",
+        "passed": 11,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "path": "src/tests/integration/patient-signed-documents.db.spec.ts",
+        "passed": 42,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "path": "src/tests/integration/report-centre-ledger.db.spec.ts",
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "path": "src/tests/vitest/reporting-programme-matrix.spec.ts",
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "path": "src/tests/vitest/report-catalogue-integrity.spec.ts",
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "path": "src/tests/vitest/clinical-document-report-ui.spec.tsx",
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      {
+        "path": "src/tests/integration/report-centre-movements.db.spec.ts",
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      }
+    ],
+    "dbTests": 147,
+    "nonDbTests": 30,
+    "repeatRule": "Later42-test consent rerun overlaps the listed suite and is not added again."
+  },
+  "builtApplicationChecks": 200,
+  "batch1BuiltBrowserChecks": 32,
+  "savedExportChecks": 1162,
+  "batch1SavedExportChecks": 101,
+  "catalogueScreens": 144,
+  "engineCount": 20,
+  "engineFixtureRowCounts": {
+    "inventory-movements": 0,
+    "patient-registrations": 2,
+    "inventory-expiry": 0,
+    "outpatient-encounters": 0,
+    "outpatient-diagnoses": 0,
+    "inpatient-admissions": 0,
+    "inpatient-discharges": 0,
+    "laboratory-orders": 1,
+    "radiology-requests": 4,
+    "pharmacy-dispensations": 0,
+    "cashier-receipts": 0,
+    "recorded-refunds": 0,
+    "invoice-balances": 0,
+    "ledger-trial-movements": 0,
+    "ledger-income": 0,
+    "ledger-balance-sheet": 0,
+    "inventory-category": 35,
+    "inventory-store": 35,
+    "purchase-orders": 0,
+    "current-inpatients": 0
+  },
+  "catalogueClassification": {
+    "Complete and verified": 0,
+    "Unavailable": 97,
+    "Partially supported": 28,
+    "Blocked by missing source data or approved business definitions": 19
+  },
+  "sourceFiles": [
+    {
+      "path": "src/documents/document.service.ts",
+      "sha256": "cdb711377c934188a330a86ce7442d694a4eebaa631e87d8249dfd41ba64a230"
+    },
+    {
+      "path": "src/documents/patient-documents.service.ts",
+      "sha256": "43f78efb7a12bca9d884baf74296aeca4e69d959e75ab65b9858d03d0a0344e0"
+    },
+    {
+      "path": "src/db/queries/laboratory.ts",
+      "sha256": "4c6fe293ed3108d2c0429c2d79637cfa6ee8c118a2ba26cef7bdfe837b35d6cc"
+    },
+    {
+      "path": "src/routes/radiology.routes.ts",
+      "sha256": "6ceafc0d063eb93ebbb887a128749b72b05ef7e3f4804ab5c3e963da6e59ad11"
+    },
+    {
+      "path": "scripts/clinical-documents-acceptance.ts",
+      "sha256": "8d6e00a0e7a084878a48734a337beb51786bd9defe6cc6c290fd39f1f3e0f81b"
+    },
+    {
+      "path": "scripts/reporting-programme-acceptance.ts",
+      "sha256": "9f23515680111619626a0b69b7502f1d20b7326e8bfc58caeea1a40fdb5a499a"
+    },
+    {
+      "path": "scripts/inspect-clinical-document-exports.py",
+      "sha256": "e744a8d7a30a92c385f19e6e28d8b22a4192559f82d9122f6bf6d09dd32899f0"
+    },
+    {
+      "path": "scripts/inspect-reporting-programme-exports.py",
+      "sha256": "2d4173c59f45f86438cef6d4e4018be347e3f3ac8a94ecf94fd43000e0d6a2d6"
+    },
+    {
+      "path": "src/tests/integration/document-generation.db.spec.ts",
+      "sha256": "84fc63e7f9f6ceee413d77c6d1ce479ba6c68362e4591356708bf8e49552841f"
+    },
+    {
+      "path": "src/tests/integration/patient-signed-documents.db.spec.ts",
+      "sha256": "ccd2a53508fd1fb115238b754341aec6d8b8c043a1567013fdbf126b95b75012"
+    }
+  ],
+  "limits": [
+    "15 query engines in main browser fixture return empty results; independent seeded SQL/HTTP report regressions provide nonempty coverage, not client acceptance.",
+    "Headless PDF iframe/opener verified; saved PDFs independently parsed/rasterized. Desktop print dialogs/physical printer not tested.",
+    "Initial parallel typecheck/test attempt exhausted memory and was stopped; final single-worker regressions pass. No coverage/full-system CI claim.",
+    "No national/provider integration or production deployment/restore/security certification.",
+    "Existing0100 SQL trigger uses case-sensitive status transitions; arbitrary SQL/import writers and post-completion amendments are not certified by the mounted-API presentation tests. No historical migration was rewritten."
+  ],
+  "deliveryChecks": {
+    "typecheck": {
+      "exitCode": 0,
+      "command": "GOMAXPROCS=2 GOMEMLIMIT=1200MiB tsc --noEmit --singleThreaded"
+    },
+    "focusedEslint": {
+      "exitCode": 0
+    },
+    "consentAssertionRerun": {
+      "exitCode": 0,
+      "passed": 42,
+      "additionalUniqueTests": 0
+    },
+    "frontendBuild": {
+      "exitCode": 0,
+      "warnings": [
+        "Existing chunk larger than500kB"
+      ]
+    },
+    "serverBuild": {
+      "exitCode": 0
+    },
+    "deliveryBuildBrowserRerun": {
+      "exitCode": 0,
+      "passedChecks": 200,
+      "additionalUniqueChecks": 0,
+      "savedEvidenceReplacedWithFinalRun": true
+    }
+  }
+}

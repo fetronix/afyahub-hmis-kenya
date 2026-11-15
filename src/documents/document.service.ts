@@ -729,6 +729,22 @@ export async function buildLaboratoryReportDocument(
     );
   }
 
+  // This endpoint issues an official report, not an unverified working sheet.
+  // A stale timestamp must not turn an entered/corrected or mislinked result into a final result.
+  const verified = results.filter(
+    (result) =>
+      result.verifiedAt !== null &&
+      result.status?.trim().toUpperCase() === 'VERIFIED' &&
+      result.patientId === order.patientId,
+  ).length;
+  if (verified !== results.length) {
+    throw new DocumentError(
+      'DOCUMENT_INCOMPLETE',
+      'Every result must belong to this patient and be verified before an official laboratory report can be printed.',
+      409,
+    );
+  }
+
   const { timezone } = await presentation(order.tenantId, facility.timezone);
   const letterhead = letterheadForRender(
     await resolveLetterheadAt(
@@ -737,8 +753,6 @@ export async function buildLaboratoryReportDocument(
       order.completedAt ?? order.orderedAt,
     ),
   );
-
-  const verified = results.filter((result) => result.verifiedAt !== null).length;
 
   const model: DocumentModel = {
     kind: 'LABORATORY_REPORT',
@@ -813,7 +827,11 @@ export async function buildRadiologyReportDocument(
   if (!order) notFound('The radiology order');
   assertScope(context, order.tenantId, order.facilityId);
 
-  if (!order.reportedAt && !order.radiologistFindings) {
+  if (
+    order.status?.trim().toUpperCase() !== 'REPORTED' ||
+    !order.reportedAt ||
+    !order.radiologistFindings?.trim()
+  ) {
     throw new DocumentError(
       'DOCUMENT_INCOMPLETE',
       'This imaging request has not been reported yet, so there is no report to print.',
