@@ -4,6 +4,15 @@ import { api, ApiError, onUnauthorizedSession, type AuthenticatedUser } from '..
 
 import type { Tenant, Facility, Patient } from '../types/index.ts';
 
+/** UI handoff only; destination APIs still enforce patient/request/facility authorization. */
+export interface ClinicalDocumentTarget {
+  kind: 'repository' | 'radiology';
+  tenantId: number;
+  facilityId: number;
+  patientId: number;
+  documentId: number;
+  orderId: number;
+}
 export interface ContextInitializationError {
   kind: 'unauthorized' | 'forbidden' | 'error';
   message: string;
@@ -204,6 +213,9 @@ interface HmisContextType {
   |--------------------------------------------------------------------------
   */
 
+  clinicalDocumentTarget: ClinicalDocumentTarget | null;
+  setClinicalDocumentTarget: (target: ClinicalDocumentTarget | null) => void;
+
   selectedPatient: Patient | null;
 
   setSelectedPatient: (patient: Patient | null) => void;
@@ -377,6 +389,8 @@ export const HmisProvider: React.FC<{
   const [activeModule, setActiveModule] = useState<ModuleId>('dashboard');
   const [directorySearch, setDirectorySearch] = useState('');
 
+  const [clinicalDocumentTarget, setClinicalDocumentTarget] =
+    useState<ClinicalDocumentTarget | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
 
   const [isJourneyModalOpen, setIsJourneyModalOpen] = useState(false);
@@ -505,6 +519,7 @@ export const HmisProvider: React.FC<{
     setFacilities([]);
     setCurrentFacilityState(null);
     setDirectorySearch('');
+    setClinicalDocumentTarget(null);
   }, []);
 
   /*
@@ -1325,6 +1340,8 @@ export const HmisProvider: React.FC<{
         |--------------------------------------------------------------------------
         */
 
+        clinicalDocumentTarget,
+        setClinicalDocumentTarget,
         selectedPatient,
 
         setSelectedPatient,

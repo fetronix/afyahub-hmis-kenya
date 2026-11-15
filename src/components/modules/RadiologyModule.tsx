@@ -20,6 +20,9 @@ export const RadiologyModule: React.FC = () => {
     showToast,
     refreshKey,
     triggerRefresh,
+    clinicalDocumentTarget,
+    setClinicalDocumentTarget,
+    setActiveModule,
   } = useHmis();
   const [orders, setOrders] = useState<RadiologyOrder[]>([]);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -33,6 +36,13 @@ export const RadiologyModule: React.FC = () => {
   const [catalogueError, setCatalogueError] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<RadiologyOrder | null>(null);
   const [printing, setPrinting] = useState(false);
+  const navigationEpoch = useRef(0);
+  useEffect(() => {
+    navigationEpoch.current += 1;
+    return () => {
+      navigationEpoch.current += 1;
+    };
+  }, [currentTenant?.id, currentFacility?.id]);
   const selectedOrderRef = useRef<RadiologyOrder | null>(null);
   const [patientLookup, setPatientLookup] = useState<{
     id: number;
@@ -65,6 +75,31 @@ export const RadiologyModule: React.FC = () => {
     setReportImpression(order.impression || '');
   };
 
+  useEffect(() => {
+    if (
+      loading ||
+      clinicalDocumentTarget?.kind !== 'radiology' ||
+      clinicalDocumentTarget.tenantId !== currentTenant?.id ||
+      clinicalDocumentTarget.facilityId !== currentFacility?.id
+    )
+      return;
+    const target = orders.find(
+      (o) =>
+        o.id === clinicalDocumentTarget.orderId && o.patientId === clinicalDocumentTarget.patientId,
+    );
+    if (target) selectOrder(target);
+    else
+      showToast('The linked imaging request is unavailable in this facility.', { tone: 'warning' });
+    setClinicalDocumentTarget(null);
+  }, [
+    clinicalDocumentTarget,
+    currentTenant?.id,
+    currentFacility?.id,
+    loading,
+    orders,
+    setClinicalDocumentTarget,
+    showToast,
+  ]);
   useEffect(() => {
     let active = true;
     setExaminations([]);
@@ -447,6 +482,46 @@ export const RadiologyModule: React.FC = () => {
                 Use the facility's authorized imaging viewer to review images.
               </AlertBanner>
 
+              <RadiologyConsentPanel
+                key={`${currentFacility?.id}:${selectedOrder.id}`}
+                orderId={selectedOrder.id}
+                patientId={selectedOrder.patientId}
+                procedureName={selectedOrder.procedureName}
+                patientName={(() => {
+                  const patient =
+                    getPatient(selectedOrder.patientId) ??
+                    (patientLookup?.id === selectedOrder.patientId ? patientLookup.patient : null);
+                  return patient
+                    ? `${patient.firstName} ${patient.lastName}`
+                    : `Patient #${selectedOrder.patientId}`;
+                })()}
+                onOpenRepository={async (doc) => {
+                  const epoch = navigationEpoch.current;
+                  const patient =
+                    getPatient(selectedOrder.patientId) ??
+                    (await api.getPatient(selectedOrder.patientId));
+                  if (
+                    epoch !== navigationEpoch.current ||
+                    selectedOrderRef.current?.id !== selectedOrder.id ||
+                    !currentTenant ||
+                    !currentFacility ||
+                    patient.id !== selectedOrder.patientId
+                  )
+                    return;
+                  setSelectedPatient(patient);
+                  setClinicalDocumentTarget({
+                    kind: 'repository',
+                    tenantId: currentTenant.id,
+                    facilityId: currentFacility.id,
+                    patientId: patient.id,
+                    documentId: doc.id,
+                    orderId: selectedOrder.id,
+                  });
+                  setActiveModule('registration');
+                  setIsJourneyModalOpen(true);
+                }}
+              />
+
               {/* Radiologist Report Editor */}
               <div className="space-y-3 pt-2">
                 <div>
@@ -494,11 +569,6 @@ export const RadiologyModule: React.FC = () => {
                     Save Imaging Report
                   </button>
                 </div>
-                <RadiologyConsentPanel
-                  key={selectedOrder.id}
-                  orderId={selectedOrder.id}
-                  patientId={selectedOrder.patientId}
-                />
               </div>
             </div>
           ) : (

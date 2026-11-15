@@ -58,6 +58,7 @@ const PatientJourneyContent: React.FC = () => {
     isJourneyModalOpen,
     setIsJourneyModalOpen,
     showToast,
+    clinicalDocumentTarget,
   } = useHmis();
   const [records, setRecords] = useState<JourneyRecords | null>(null);
   const [loadState, setLoadState] = useState<{
@@ -75,6 +76,15 @@ const PatientJourneyContent: React.FC = () => {
     | 'documents'
     | 'fhir'
   >('timeline');
+  useEffect(() => {
+    if (
+      clinicalDocumentTarget?.kind === 'repository' &&
+      clinicalDocumentTarget.tenantId === currentTenant?.id &&
+      clinicalDocumentTarget.facilityId === currentFacility?.id &&
+      clinicalDocumentTarget.patientId === selectedPatient?.id
+    )
+      setActiveTab('documents');
+  }, [clinicalDocumentTarget, currentTenant?.id, currentFacility?.id, selectedPatient?.id]);
   const patientId = selectedPatient?.id;
   const facilityId = currentFacility?.id;
   const tenantId = currentTenant?.id;

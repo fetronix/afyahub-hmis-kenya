@@ -338,6 +338,21 @@ describeDb('signed originals, procedure consent and report retrieval — disposa
     });
     const consent = await docs.uploadPatientDocument(a, patient, specific, pdf, 'application/pdf');
     expect((await docs.radiologyConsent(a, order)).status).toBe('AWAITING_VERIFICATION');
+    await expect(
+      docs.decideRadiologyConsent(a, order, {
+        status: 'VERIFIED',
+        documentId: consent.id,
+        clinicianId: a.userId,
+        reason,
+      }),
+    ).rejects.toMatchObject({ code: 'CONSENT_REVIEW_REQUIRED' });
+    expect(
+      (await docs.listPatientDocuments(a, patient, { radiologyOrderId: order })).map((d) => d.id),
+    ).toEqual([consent.id]);
+    await expect(
+      docs.listPatientDocuments(a, otherPatient, { radiologyOrderId: order }),
+    ).rejects.toThrow();
+    await docs.readPatientDocument(a, patient, consent.id, false);
     await docs.decideRadiologyConsent(a, order, {
       status: 'VERIFIED',
       documentId: consent.id,
@@ -355,6 +370,7 @@ describeDb('signed originals, procedure consent and report retrieval — disposa
     await expect(
       pool.query("UPDATE radiology_orders SET status='Reported' WHERE id=$1", [order]),
     ).rejects.toThrow('RADIOLOGY_CONSENT_REQUIRED');
+    await docs.readPatientDocument(a, patient, corrected.id, false);
     await docs.decideRadiologyConsent(a, order, {
       status: 'VERIFIED',
       documentId: corrected.id,
@@ -395,6 +411,26 @@ describeDb('signed originals, procedure consent and report retrieval — disposa
     const history = await docs.documentHistory(a, patient, corrected.id);
     expect(history.events.find((e) => e.action === 'RADIOLOGY_VERIFIED').facts.clinicianId).toBe(
       a.userId,
+    );
+  });
+  it('rejects cancelled-request uploads without creating a record', async () => {
+    const cancelled = (
+      await pool.query(
+        "INSERT INTO radiology_orders(tenant_id,facility_id,patient_id,modality,procedure_name,status) VALUES($1,$2,$3,'X-Ray','Cancelled synthetic','Cancelled') RETURNING id",
+        [a.tenantId, a.facilityId, patient],
+      )
+    ).rows[0].id;
+    await expect(
+      docs.uploadPatientDocument(
+        a,
+        patient,
+        metadata({ radiologyOrderId: cancelled, doctorId: a.userId }),
+        pdf,
+        'application/pdf',
+      ),
+    ).rejects.toMatchObject({ code: 'PROCEDURE_NOT_ACTIVE' });
+    expect(await docs.listPatientDocuments(a, patient, { radiologyOrderId: cancelled })).toEqual(
+      [],
     );
   });
   it('denies exception by default; allows only explicit policy, permitted clinician and audited reason', async () => {

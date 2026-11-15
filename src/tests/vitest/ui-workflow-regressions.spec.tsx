@@ -594,7 +594,7 @@ describe('unified workflow regressions', () => {
       },
     ]);
     render(<RadiologyModule />);
-    expect(await screen.findByText('Synthetic Earlier Patient')).toBeInTheDocument();
+    expect((await screen.findAllByText('Synthetic Earlier Patient')).length).toBeGreaterThan(0);
     expect(mocks.getPatient).toHaveBeenCalledWith(99);
   });
   it('marks a failed private insurance data source unavailable and retries without hiding unrelated views', async () => {

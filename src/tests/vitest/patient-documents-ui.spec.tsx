@@ -66,6 +66,57 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe('Patient document confidentiality and explicit metadata', () => {
+  it('places the exact-request upload before attachments and excludes other request documents', async () => {
+    mocks.context.authenticatedUser.permissions = [
+      'patients.documents.read',
+      'patients.documents.upload',
+    ];
+    mocks.documents = [
+      { ...record, radiology_order_id: 44, procedure_name: 'Synthetic CT' },
+      { ...record, id: 2, radiology_order_id: 45, title: 'Other request consent' },
+    ];
+    const onOpenRepository = vi.fn();
+    render(
+      <PatientDocumentsPanel
+        patientId={7}
+        radiologyOrderId={44}
+        requestWorkflow={{
+          procedureName: 'Synthetic CT',
+          disabled: false,
+          consentStatus: 'AWAITING_VERIFICATION',
+          decisionDocumentId: null,
+          onUploaded: vi.fn(),
+          onReviewed: vi.fn(),
+          onOpenRepository,
+        }}
+      />,
+    );
+    await screen.findByText('Synthetic consent');
+    expect(screen.queryByText('Other request consent')).not.toBeInTheDocument();
+    expect(screen.queryByRole('form')).not.toBeInTheDocument();
+    const upload = screen.getByRole('button', { name: 'Upload signed consent' });
+    const attached = screen.getByText('Attached consent documents · request #44');
+    expect(
+      upload.compareDocumentPosition(attached) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    fireEvent.click(upload);
+    expect(
+      screen.getByRole('form', { name: 'Upload signed procedure consent' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('form', { name: 'Upload signed document' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Patient signature status')).toHaveValue('UNKNOWN');
+    fireEvent.click(screen.getByRole('button', { name: 'Open in Patient Management #1' }));
+    await waitFor(() =>
+      expect(onOpenRepository).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 1, radiology_order_id: 44 }),
+      ),
+    );
+    expect(mocks.request).toHaveBeenCalledWith(
+      expect.stringContaining('radiologyOrderId=44'),
+      {},
+      false,
+    );
+  });
   it('does not fetch or offer uploading without a scoped document permission', () => {
     render(<PatientDocumentsPanel patientId={7} />);
     expect(screen.getByRole('alert')).toHaveTextContent('read permission');

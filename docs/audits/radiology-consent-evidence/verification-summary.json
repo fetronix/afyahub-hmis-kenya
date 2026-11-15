@@ -1,0 +1,42 @@
+{
+  "syntheticOnly": true,
+  "productionAccess": false,
+  "browser": {
+    "checksPassed": 35,
+    "failed": 0,
+    "runtime": "Chromium 143, built Vite SPA and bundled Express, normal staff/portal login"
+  },
+  "vitest": {
+    "files": 4,
+    "passed": 94,
+    "failed": 0,
+    "skipped": 0,
+    "signedDocumentsDb": 43,
+    "responsibleDoctorDbHttp": 20,
+    "patientDocumentsUi": 12,
+    "workflowRegressions": 19
+  },
+  "typecheck": "PASS: bounded tsc --noEmit --singleThreaded",
+  "eslint": {
+    "errors": 0,
+    "warnings": 4,
+    "scope": "changed application/test/script TypeScript files"
+  },
+  "builds": {
+    "frontend": "PASS; Vite large-chunk warning",
+    "server": "PASS"
+  },
+  "formatAndWhitespace": "PASS",
+  "downloadedOriginal": {
+    "sha256": "dc5367409679b344f16068cc7f604fbefffa23a3b4865435038bf99ea33a210d",
+    "byteIdentical": true,
+    "independentInspection": "PyMuPDF text extraction and raster render; complete expected text; visually inspected"
+  },
+  "parentCommit": "71dbf32250809f151f36329592660e926dcafd88",
+  "limitations": [
+    "Disposable synthetic fixtures only; no production acceptance/deployment/legal certification",
+    "Staff signature assertions are not authenticated e-signatures",
+    "Headless Chromium only; embedded PDF compatibility varies",
+    "Source-category labels do not invent missing laboratory/other source links"
+  ]
+}

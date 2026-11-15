@@ -70,14 +70,11 @@ async function patient(c: PoolClient, s: AuthorizationContext, patientId: number
 }
 async function clinician(c: PoolClient, s: AuthorizationContext, id: number) {
   const r = await c.query(
-    "SELECT id FROM users WHERE id=$1 AND tenant_id=$2 AND facility_id=$3 AND account_status='ACTIVE'",
-    [id, s.tenantId, s.facilityId],
+    `SELECT u.id FROM users u JOIN user_roles ur ON ur.user_id=u.id
+     JOIN roles r ON r.id=ur.role_id WHERE ${activeDoctor} AND u.id=$3 LIMIT 1`,
+    [s.tenantId, s.facilityId, id],
   );
-  insist(
-    r.rowCount,
-    'INVALID_CLINICIAN',
-    'Identify an active responsible clinician in this facility.',
-  );
+  insist(r.rowCount, 'INVALID_CLINICIAN', 'Identify an active Doctor in this facility.');
 }
 // Use the same active, non-revoked, tenant-owned role boundary as staff authorization.
 // A designation or a client/session role label alone is not proof of being a doctor.
@@ -161,6 +158,24 @@ async function withDoctorNames<T extends Record<string, any>>(
   );
   const names = new Map(users.rows.map((u) => [u.id, u.full_name]));
   return rows.map((d) => ({ ...d, doctor_name: names.get(d.doctor_id) ?? null }));
+}
+async function withDocumentReview(
+  c: PoolClient,
+  s: AuthorizationContext,
+  rows: Array<Record<string, any>>,
+) {
+  const state = await c.query(
+    `SELECT d.id,
+       NOT EXISTS(SELECT 1 FROM patient_signed_documents newer
+         WHERE newer.root_id=COALESCE(d.root_id,d.id) AND newer.version>d.version) AS is_latest_version,
+       EXISTS(SELECT 1 FROM patient_document_events e WHERE e.document_id=d.id
+         AND e.tenant_id=d.tenant_id AND e.facility_id=d.facility_id AND e.actor_id=$3
+         AND e.action IN ('VIEW','DOWNLOAD') AND e.reason='Retrieve original signed document version') AS reviewed_by_actor
+     FROM patient_signed_documents d WHERE d.tenant_id=$1 AND d.facility_id=$2 AND d.id=ANY($4::int[])`,
+    [s.tenantId, s.facilityId, s.userId, rows.map((d) => d.id)],
+  );
+  const states = new Map(state.rows.map((d) => [d.id, d]));
+  return (await withDoctorNames(c, s, rows)).map((d) => ({ ...d, ...states.get(d.id) }));
 }
 async function order(c: PoolClient, s: AuthorizationContext, id: number, patientId?: number) {
   const r = await c.query(
@@ -263,6 +278,12 @@ export async function uploadPatientDocument(
     if (meta.previousId && !orderId)
       orderId = (await document(c, s, p, idOf(meta.previousId))).radiology_order_id;
     const o = orderId ? await order(c, s, orderId, p) : null;
+    insist(
+      !o || !['cancelled', 'canceled'].includes(o.status?.trim().toLowerCase() ?? ''),
+      'PROCEDURE_NOT_ACTIVE',
+      'A cancelled request cannot receive new consent. Create an authorized new request.',
+      409,
+    );
     // Serialize every version in this patient/facility, including concurrent initial uploads.
     await c.query('SELECT pg_advisory_xact_lock($1,$2)', [s.facilityId, p]);
     let root: number | null = null,
@@ -365,12 +386,14 @@ export async function listPatientDocuments(
   );
   return transaction(async (c) => {
     await patient(c, s, p);
+    const requestId = filters.radiologyOrderId ? idOf(filters.radiologyOrderId) : null;
+    if (requestId) await order(c, s, requestId, p);
     const r = await c.query(
-      `SELECT ${DOCUMENT_FIELDS},COALESCE((SELECT released FROM patient_document_releases rel WHERE rel.document_id=d.id),false) AS portal_released FROM patient_signed_documents d WHERE tenant_id=$1 AND facility_id=$2 AND patient_id=$3 AND ($4='' OR position(lower($4) in lower(title))>0) AND ($5='' OR document_type=$5) AND ($6::date IS NULL OR signing_date >= $6::date) AND ($7::date IS NULL OR signing_date <= $7::date) ORDER BY uploaded_at DESC,id DESC LIMIT 200`,
-      [s.tenantId, s.facilityId, p, search, type, ...dates],
+      `SELECT ${DOCUMENT_FIELDS},COALESCE((SELECT released FROM patient_document_releases rel WHERE rel.document_id=d.id),false) AS portal_released FROM patient_signed_documents d WHERE tenant_id=$1 AND facility_id=$2 AND patient_id=$3 AND ($4='' OR position(lower($4) in lower(title))>0) AND ($5='' OR document_type=$5) AND ($6::date IS NULL OR signing_date >= $6::date) AND ($7::date IS NULL OR signing_date <= $7::date) AND ($8::int IS NULL OR radiology_order_id=$8) ORDER BY uploaded_at DESC,id DESC LIMIT 200`,
+      [s.tenantId, s.facilityId, p, search, type, ...dates, requestId],
     );
     await event(c, s, p, null, 'VIEW', 'List patient signed document versions');
-    return withDoctorNames(c, s, r.rows);
+    return withDocumentReview(c, s, r.rows);
   });
 }
 export async function readPatientDocument(
@@ -462,7 +485,21 @@ export async function radiologyConsent(s: AuthorizationContext, id: number) {
     return {
       policy,
       decision,
-      documents: docs,
+      documents: await withDocumentReview(c, s, docs),
+      request: {
+        id: o.id,
+        patientId: o.patient_id,
+        procedureName: o.procedure_name,
+        status: o.status,
+      },
+      currentDoctor:
+        (
+          await c.query(
+            `SELECT u.id,u.full_name AS name FROM users u JOIN user_roles ur ON ur.user_id=u.id
+         JOIN roles r ON r.id=ur.role_id WHERE ${activeDoctor} AND u.id=$3 LIMIT 1`,
+            [s.tenantId, s.facilityId, s.userId],
+          )
+        ).rows[0] ?? null,
       status: ['cancelled', 'canceled'].includes(o.status?.trim().toLowerCase() ?? '')
         ? 'PROCEDURE_CANCELLED'
         : ((decision?.status === 'VERIFIED' &&
@@ -553,6 +590,13 @@ export async function decideRadiologyConsent(
         !newer.rowCount,
         'STALE_DOCUMENT_VERSION',
         'Verify the latest corrected document version.',
+        409,
+      );
+      const reviewed = (await withDocumentReview(c, s, [d]))[0];
+      insist(
+        reviewed.reviewed_by_actor,
+        'CONSENT_REVIEW_REQUIRED',
+        'Preview or download this original signed version before verifying its signature assertions.',
         409,
       );
     }

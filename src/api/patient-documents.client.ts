@@ -31,6 +31,8 @@ export interface PatientFile {
   radiology_order_id: number | null;
   procedure_name: string | null;
   portal_released?: boolean;
+  is_latest_version?: boolean;
+  reviewed_by_actor?: boolean;
 }
 export async function documentRequest<T>(
   path: string,
