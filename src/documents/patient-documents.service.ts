@@ -79,6 +79,89 @@ async function clinician(c: PoolClient, s: AuthorizationContext, id: number) {
     'Identify an active responsible clinician in this facility.',
   );
 }
+// Use the same active, non-revoked, tenant-owned role boundary as staff authorization.
+// A designation or a client/session role label alone is not proof of being a doctor.
+const activeDoctor = `u.tenant_id=$1 AND u.facility_id=$2 AND u.account_status='ACTIVE'
+  AND u.is_active=true AND u.deactivated_at IS NULL
+  AND (u.locked_until IS NULL OR u.locked_until <= now())
+  AND ur.is_active=true AND ur.revoked_at IS NULL
+  AND r.is_active=true AND r.tenant_id=u.tenant_id AND upper(r.name)='DOCTOR'`;
+export function canAssignResponsibleDoctor(s: AuthorizationContext) {
+  // Existing permission used for patient/consent editing. Upload alone allows self only.
+  return hasAllPermissions(s, ['patients.update']);
+}
+export async function responsibleDoctorOptions(
+  s: AuthorizationContext,
+  p: number,
+  search: unknown = '',
+) {
+  requireDocumentPermission(s, 'patients.documents.read', 'patients.documents.upload');
+  const query = text(search, 80, false);
+  return transaction(async (c) => {
+    await patient(c, s, p);
+    const current = await c.query(
+      `SELECT u.id,u.full_name AS name,u.designation FROM users u
+       JOIN user_roles ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id
+       WHERE ${activeDoctor} AND u.id=$3 LIMIT 1`,
+      [s.tenantId, s.facilityId, s.userId],
+    );
+    const canAssignOthers = canAssignResponsibleDoctor(s);
+    const results = await c.query(
+      `SELECT DISTINCT u.id,u.full_name AS name,u.designation FROM users u
+       JOIN user_roles ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id
+       WHERE ${activeDoctor} AND ($3::boolean OR u.id=$4)
+       AND ($5='' OR position(lower($5) in lower(u.full_name))>0
+         OR position(lower($5) in lower(COALESCE(u.designation,'')))>0)
+       ORDER BY name,u.id LIMIT 51`,
+      [s.tenantId, s.facilityId, canAssignOthers, s.userId, query],
+    );
+    return {
+      currentDoctor: current.rows[0] ?? null,
+      canAssignOthers,
+      doctors: results.rows.slice(0, 50),
+      hasMore: results.rows.length > 50,
+    };
+  });
+}
+async function resolveResponsibleDoctor(
+  c: PoolClient,
+  s: AuthorizationContext,
+  requested: unknown,
+) {
+  const explicit = requested !== undefined && requested !== null && requested !== '';
+  const selectedId = explicit ? idOf(requested) : s.userId;
+  insist(
+    selectedId === s.userId || canAssignResponsibleDoctor(s),
+    'DOCTOR_ASSIGNMENT_FORBIDDEN',
+    'Assigning another responsible doctor requires patient update permission.',
+    403,
+  );
+  const selected = await c.query(
+    `SELECT u.id,u.full_name AS name FROM users u
+     JOIN user_roles ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id
+     WHERE ${activeDoctor} AND u.id=$3 LIMIT 1 FOR SHARE OF u,ur,r`,
+    [s.tenantId, s.facilityId, selectedId],
+  );
+  insist(
+    selected.rowCount,
+    explicit ? 'INVALID_RESPONSIBLE_DOCTOR' : 'DOCTOR_REQUIRED',
+    'Select an active Doctor in this facility before uploading. Non-doctors are not assigned automatically.',
+  );
+  return selected.rows[0] as { id: number; name: string };
+}
+async function withDoctorNames<T extends Record<string, any>>(
+  c: PoolClient,
+  s: AuthorizationContext,
+  rows: T[],
+) {
+  // Historical IDs are immutable; keep inactive doctors readable without making them selectable.
+  const users = await c.query(
+    'SELECT id,full_name FROM users WHERE tenant_id=$1 AND facility_id=$2 AND id=ANY($3::int[])',
+    [s.tenantId, s.facilityId, rows.map((d) => d.doctor_id).filter(Boolean)],
+  );
+  const names = new Map(users.rows.map((u) => [u.id, u.full_name]));
+  return rows.map((d) => ({ ...d, doctor_name: names.get(d.doctor_id) ?? null }));
+}
 async function order(c: PoolClient, s: AuthorizationContext, id: number, patientId?: number) {
   const r = await c.query(
     'SELECT * FROM radiology_orders WHERE id=$1 AND tenant_id=$2 AND facility_id=$3 FOR UPDATE',
@@ -139,7 +222,7 @@ export async function uploadPatientDocument(
   meta: Record<string, unknown>,
   bytes: Buffer,
   mime: string,
-) {
+): Promise<Record<string, any>> {
   requireDocumentPermission(s, 'patients.documents.upload', 'patients.documents.read');
   const filename = text(meta.filename, 180),
     title = text(meta.title, 180),
@@ -171,17 +254,12 @@ export async function uploadPatientDocument(
     'SIGNING_DATE_REQUIRED',
     'Record the date when signatures are marked present.',
   );
-  const doctorId = meta.doctorId ? idOf(meta.doctorId) : null;
-  insist(
-    doctorSignature !== 'PRESENT' || doctorId,
-    'DOCTOR_REQUIRED',
-    'Identify the signing doctor.',
-  );
   let orderId = meta.radiologyOrderId ? idOf(meta.radiologyOrderId) : null;
   await validatePatientFile(bytes, filename, mime);
   return transaction(async (c) => {
     await patient(c, s, p);
-    if (doctorId) await clinician(c, s, doctorId);
+    const responsibleDoctor = await resolveResponsibleDoctor(c, s, meta.doctorId);
+    const doctorId = responsibleDoctor.id;
     if (meta.previousId && !orderId)
       orderId = (await document(c, s, p, idOf(meta.previousId))).radiology_order_id;
     const o = orderId ? await order(c, s, orderId, p) : null;
@@ -237,7 +315,11 @@ export async function uploadPatientDocument(
         reason,
       ],
     );
-    await event(c, s, p, r.rows[0].id, root ? 'NEW_VERSION' : 'UPLOAD', reason);
+    await event(c, s, p, r.rows[0].id, root ? 'NEW_VERSION' : 'UPLOAD', reason, {
+      responsibleDoctorId: doctorId,
+      responsibleDoctorName: responsibleDoctor.name,
+      assignment: doctorId === s.userId ? 'SELF' : 'DELEGATED',
+    });
     // Preserve historical completed decisions; a new file is never substituted into them.
     // For a pending procedure invalidate verification explicitly and retain its previous snapshot.
     if (o && !['Reported', 'Performed', 'Completed'].includes(o.status)) {
@@ -255,7 +337,7 @@ export async function uploadPatientDocument(
         );
       }
     }
-    return r.rows[0];
+    return { ...r.rows[0], doctor_name: responsibleDoctor.name };
   });
 }
 export async function listPatientDocuments(
@@ -288,7 +370,7 @@ export async function listPatientDocuments(
       [s.tenantId, s.facilityId, p, search, type, ...dates],
     );
     await event(c, s, p, null, 'VIEW', 'List patient signed document versions');
-    return r.rows;
+    return withDoctorNames(c, s, r.rows);
   });
 }
 export async function readPatientDocument(
@@ -329,7 +411,7 @@ export async function documentHistory(s: AuthorizationContext, p: number, id: nu
       )
     ).rows;
     await event(c, s, p, id, 'VIEW', 'Read original document version and audit history');
-    return { versions, events };
+    return { versions: await withDoctorNames(c, s, versions), events };
   });
 }
 export async function releasePatientDocument(

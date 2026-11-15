@@ -214,6 +214,14 @@ try {
     );
     accounts[roleName] = { id, name };
   }
+  // A facility administrator is not implicitly a doctor. This synthetic persona holds both roles.
+  const doctorRole = (
+    await pool.query("INSERT INTO roles(tenant_id,name) VALUES($1,'DOCTOR') RETURNING id", [tenant])
+  ).rows[0].id;
+  await pool.query('INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)', [
+    accounts.admin.id,
+    doctorRole,
+  ]);
   const patient = (
     await pool.query(
       "INSERT INTO patients(tenant_id,registration_facility_id,mrn,first_name,last_name,date_of_birth,gender) VALUES($1,$2,$3,'Synthetic','Consent Patient','2000-01-01','Other') RETURNING id",
@@ -638,7 +646,7 @@ try {
   await page.waitForSelector('[aria-label="Procedure-specific radiology consent"]');
   await fill(page, 'Document title', 'Synthetic procedure signed consent');
   await fill(page, 'Signing date', '2026-10-01');
-  await fill(page, 'Responsible doctor user ID', String(accounts.admin.id));
+  await fill(page, 'Responsible doctor', String(accounts.admin.id));
   await fill(page, 'Patient signature status', 'PRESENT');
   await fill(page, 'Doctor signature status', 'PRESENT');
   await fill(

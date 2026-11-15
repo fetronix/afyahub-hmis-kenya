@@ -1,0 +1,102 @@
+{
+  "assessmentDate": "2026-10-27",
+  "sandboxTimestampCaveat": "Retained screenshots show the sandbox November2026 clock, not production clinical dates.",
+  "sourceBaseline": "5182ef6307c60f3ef53945e34e84305f172e6ca4",
+  "syntheticOnly": true,
+  "productionAccess": false,
+  "database": "Newly initialized PostgreSQL16.12,loopback55439,clinical_documents_synthetic_test;101 existing migrations; independent control-file cluster/data-directory attestation",
+  "focusedVitest": {
+    "passed": 73,
+    "failed": 0,
+    "skipped": 0,
+    "suites": [
+      {
+        "file": "src/tests/integration/responsible-doctor.db.spec.ts",
+        "passed": 20,
+        "kind": "PostgreSQL + mounted Express HTTP with actual sessions"
+      },
+      {
+        "file": "src/tests/integration/patient-signed-documents.db.spec.ts",
+        "passed": 42,
+        "kind": "Existing PostgreSQL service/portal/consent regressions"
+      },
+      {
+        "file": "src/tests/vitest/patient-documents-ui.spec.tsx",
+        "passed": 11,
+        "kind": "Mocked-HTTP React DOM tests, not live-browser proof"
+      }
+    ]
+  },
+  "builtBrowser": {
+    "checks": 37,
+    "errors": [],
+    "staff500Responses": [],
+    "runtime": "Chromium143.0.7499.0, actual built Vite frontend/bundled Express/PG, normal staff and separate patient password login, no HTTP interception",
+    "scope": "Doctor A/B defaults, self-only lock,staff search/selection,actual uploads,new correction/history/refresh,server invalid/unauthorized assignment negatives,deliberate portal release/own-only UI regression"
+  },
+  "frontendBuild": {
+    "exitCode": 0,
+    "warning": "Existing Vite chunk larger than500kB"
+  },
+  "serverBuild": {
+    "exitCode": 0
+  },
+  "typecheck": {
+    "exitCode": 0,
+    "command": "GOMAXPROCS=2 GOMEMLIMIT=1200MiB npm run typecheck -- --singleThreaded"
+  },
+  "focusedEslint": {
+    "exitCode": 0
+  },
+  "prettierCheck": {
+    "exitCode": 0
+  },
+  "notRun": [
+    "Full system suite/coverage",
+    "Previous200-check broad clinical/reporting browser suite",
+    "Any actual Syrona/production preflight or patient-data access"
+  ],
+  "permissionRule": "patients.read + patients.documents.read/upload; patients.update additionally required to assign another Doctor; no grants or seed changes",
+  "sources": [
+    {
+      "path": "src/api/patient-documents.client.ts",
+      "sha256": "1d3a3f7b2f50c251c86ebf74d3c7fcaf2fcf920a146a7d8a26ca1aa13f874c22"
+    },
+    {
+      "path": "src/components/PatientDocumentsPanel.tsx",
+      "sha256": "4f1ad850b6b751f6cd86e6acf258099c9618687c6895e9cca70242e7a84189ba"
+    },
+    {
+      "path": "src/documents/patient-documents.routes.ts",
+      "sha256": "d281d9f20dce40ed0f34991dd0fa349127bdbe5c68dc4defb3e3e0cdcf8b75e1"
+    },
+    {
+      "path": "src/documents/patient-documents.service.ts",
+      "sha256": "3763801c8cdd5fd5d480010ead0c3d4128612e7763746bb39d70a21d5957fa13"
+    },
+    {
+      "path": "src/tests/integration/responsible-doctor.db.spec.ts",
+      "sha256": "23f64a0a6387b4c1d081013b574c8a75e084d06d2e23d40a87db68a60399ecac"
+    },
+    {
+      "path": "src/tests/integration/support/responsible-doctor.fixture.ts",
+      "sha256": "7c804eafdef0366333de36c63fa0f1c4d1e311cf7bcf9bf1009544547f13bbf9"
+    },
+    {
+      "path": "src/tests/integration/patient-signed-documents.db.spec.ts",
+      "sha256": "a3848d83c6f06fd4c725328a533038f4e7ae2d41993d55fca12a7f43eb5705ef"
+    },
+    {
+      "path": "src/tests/vitest/patient-documents-ui.spec.tsx",
+      "sha256": "2861cb78df1ce76abac2124fa25798d590307bc4c7c5bb0378f5d9c574e08f83"
+    },
+    {
+      "path": "scripts/responsible-doctor-acceptance.ts",
+      "sha256": "3fd23ba6dd6e9b11c93fa5a6584c917b5dbb2a7952ebd7582d12691c00232990"
+    },
+    {
+      "path": "scripts/clinical-documents-acceptance.ts",
+      "sha256": "9100c40a121ee10a02b50901a861158ffc094781108d2007bb4c85d6ea65b847"
+    }
+  ]
+}

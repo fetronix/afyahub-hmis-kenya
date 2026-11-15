@@ -1,5 +1,16 @@
 import { getSessionToken } from './clients/http.ts';
 import { getPortalToken } from './portal-client.ts';
+export interface ResponsibleDoctor {
+  id: number;
+  name: string;
+  designation: string | null;
+}
+export interface ResponsibleDoctorOptions {
+  currentDoctor: ResponsibleDoctor | null;
+  canAssignOthers: boolean;
+  doctors: ResponsibleDoctor[];
+  hasMore: boolean;
+}
 export interface PatientFile {
   id: number;
   patient_id: number;
@@ -13,6 +24,7 @@ export interface PatientFile {
   patient_signature: string;
   doctor_signature: string;
   doctor_id: number | null;
+  doctor_name?: string | null;
   notes: string | null;
   filename: string;
   mime_type: string;

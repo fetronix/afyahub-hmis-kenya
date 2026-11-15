@@ -61,6 +61,19 @@ staff.post(
     }
   },
 );
+staff.get('/patients/:patientId/doctors', async (req: AuthRequest, res) => {
+  try {
+    return res.json(
+      await svc.responsibleDoctorOptions(
+        req.authContext!,
+        svc.idOf(req.params.patientId),
+        req.query.search,
+      ),
+    );
+  } catch (e) {
+    return failure(e, res);
+  }
+});
 staff.get('/patients/:patientId', async (req: AuthRequest, res) => {
   try {
     return res.json(

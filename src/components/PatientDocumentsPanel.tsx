@@ -4,6 +4,8 @@ import {
   documentRequest,
   documentAction,
   type PatientFile,
+  type ResponsibleDoctor,
+  type ResponsibleDoctorOptions,
 } from '../api/patient-documents.client.ts';
 
 export function PatientDocumentsPanel({
@@ -73,6 +75,50 @@ function DocumentWorkspace({
     reason: '',
     previousId: '',
   });
+  const [doctorOptions, setDoctorOptions] = useState<ResponsibleDoctorOptions | null>(null);
+  const [doctorSearch, setDoctorSearch] = useState('');
+  const [selectedDoctor, setSelectedDoctor] = useState<ResponsibleDoctor | null>(null);
+  const [doctorError, setDoctorError] = useState('');
+  const [doctorsLoading, setDoctorsLoading] = useState(true);
+  const doctorInitialized = useRef(false);
+  useEffect(() => {
+    if (!canUpload) return;
+    let active = true;
+    const timer = setTimeout(
+      () => {
+        setDoctorsLoading(true);
+        setDoctorError('');
+        documentRequest<ResponsibleDoctorOptions>(
+          `${base}/doctors?${new URLSearchParams({ search: doctorSearch })}`,
+        )
+          .then((options) => {
+            if (!active) return;
+            setDoctorOptions(options);
+            if (!doctorInitialized.current) {
+              doctorInitialized.current = true;
+              setSelectedDoctor(options.currentDoctor);
+              setForm((previous) => ({
+                ...previous,
+                doctorId: String(options.currentDoctor?.id ?? ''),
+              }));
+            }
+            setDoctorsLoading(false);
+          })
+          .catch((e) => {
+            if (!active) return;
+            setDoctorError(
+              e instanceof Error ? e.message : 'Responsible doctors could not be loaded.',
+            );
+            setDoctorsLoading(false);
+          });
+      },
+      doctorInitialized.current ? 250 : 0,
+    );
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [base, canUpload, doctorSearch]);
   const requestKey = JSON.stringify([base, portal, search, type, from, to, revision]);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const loading = loadedKey !== requestKey;
@@ -124,6 +170,8 @@ function DocumentWorkspace({
     e.preventDefault();
     await run(async () => {
       if (!file) throw Error('Choose a PDF, JPG, JPEG or PNG.');
+      if (!doctorOptions || doctorError || !form.doctorId)
+        throw Error('Select an active responsible doctor before uploading.');
       const metadata = {
         ...form,
         filename: file.name,
@@ -145,9 +193,11 @@ function DocumentWorkspace({
         signingDate: '',
         patientSignature: 'UNKNOWN',
         doctorSignature: 'UNKNOWN',
-        doctorId: '',
+        doctorId: String(doctorOptions.currentDoctor?.id ?? ''),
         notes: '',
       });
+      setSelectedDoctor(doctorOptions.currentDoctor);
+      setDoctorSearch('');
       setFile(null);
       if (fileInput.current) fileInput.current.value = '';
       setRevision((v) => v + 1);
@@ -253,7 +303,11 @@ function DocumentWorkspace({
                     <>
                       <p>
                         Patient signature: {doc.patient_signature}; doctor signature:{' '}
-                        {doc.doctor_signature}; doctor ID: {doc.doctor_id ?? 'Not recorded'}
+                        {doc.doctor_signature}; responsible doctor:{' '}
+                        {doc.doctor_name ??
+                          (doc.doctor_id
+                            ? 'Previously assigned doctor (name unavailable)'
+                            : 'Not recorded')}
                       </p>
                       {doc.radiology_order_id && (
                         <p>
@@ -354,7 +408,11 @@ function DocumentWorkspace({
               </button>
               {history.versions.map((v) => (
                 <p key={v.id}>
-                  Version {v.version}: {v.title} · Original #{v.id}
+                  Version {v.version}: {v.title} · Original #{v.id} · Responsible doctor:{' '}
+                  {v.doctor_name ??
+                    (v.doctor_id
+                      ? 'Previously assigned doctor (name unavailable)'
+                      : 'Not recorded')}
                 </p>
               ))}
               {history.events.map((e) => (
@@ -416,15 +474,7 @@ function DocumentWorkspace({
                   : 'Upload original document'}
               </h4>
               {(
-                [
-                  'title',
-                  'category',
-                  'documentType',
-                  'signingDate',
-                  'doctorId',
-                  'notes',
-                  'reason',
-                ] as const
+                ['title', 'category', 'documentType', 'signingDate', 'notes', 'reason'] as const
               ).map((key) => (
                 <label key={key}>
                   {
@@ -433,13 +483,12 @@ function DocumentWorkspace({
                       category: 'Document category',
                       documentType: 'Consent/document type',
                       signingDate: 'Signing date',
-                      doctorId: 'Responsible doctor user ID',
                       notes: 'Internal notes',
                       reason: 'Document audit reason',
                     }[key]
                   }
                   <input
-                    type={key === 'signingDate' ? 'date' : key === 'doctorId' ? 'number' : 'text'}
+                    type={key === 'signingDate' ? 'date' : 'text'}
                     className={field}
                     value={form[key]}
                     required={['title', 'category', 'documentType', 'reason'].includes(key)}
@@ -448,6 +497,66 @@ function DocumentWorkspace({
                   />
                 </label>
               ))}
+              <div className="space-y-2">
+                {doctorOptions?.canAssignOthers && (
+                  <label>
+                    Search doctors
+                    <input
+                      className={field}
+                      value={doctorSearch}
+                      maxLength={80}
+                      placeholder="Search by name or designation"
+                      onChange={(e) => setDoctorSearch(e.target.value)}
+                    />
+                  </label>
+                )}
+                <label>
+                  Responsible doctor
+                  <select
+                    className={field}
+                    required
+                    value={form.doctorId}
+                    disabled={busy || doctorsLoading || !doctorOptions?.canAssignOthers}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const doctor =
+                        doctorOptions?.doctors.find((d) => String(d.id) === value) ??
+                        (String(selectedDoctor?.id) === value ? selectedDoctor : null);
+                      setSelectedDoctor(doctor);
+                      setForm({ ...form, doctorId: value });
+                    }}
+                  >
+                    <option value="">Select an active doctor</option>
+                    {selectedDoctor &&
+                      !doctorOptions?.doctors.some((d) => d.id === selectedDoctor.id) && (
+                        <option value={selectedDoctor.id}>
+                          {selectedDoctor.name}
+                          {selectedDoctor.designation ? ` — ${selectedDoctor.designation}` : ''}
+                        </option>
+                      )}
+                    {doctorOptions?.doctors.map((doctor) => (
+                      <option key={doctor.id} value={doctor.id}>
+                        {doctor.name}
+                        {doctor.designation ? ` — ${doctor.designation}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {doctorsLoading && <p role="status">Loading responsible doctors…</p>}
+                {doctorError && <p role="alert">{doctorError}</p>}
+                {doctorOptions && !doctorOptions.canAssignOthers && (
+                  <p>
+                    Only your own active Doctor identity can be assigned. Selecting another doctor
+                    requires patient update permission.
+                  </p>
+                )}
+                {doctorOptions?.canAssignOthers && !selectedDoctor && (
+                  <p>Select an active doctor in this facility before uploading.</p>
+                )}
+                {doctorOptions?.hasMore && (
+                  <p>More doctors are available. Refine the search by name or designation.</p>
+                )}
+              </div>
               {(['patientSignature', 'doctorSignature'] as const).map((key) => (
                 <label key={key}>
                   {key === 'patientSignature'
@@ -482,7 +591,7 @@ function DocumentWorkspace({
               <button
                 className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
                 type="submit"
-                disabled={busy}
+                disabled={busy || doctorsLoading || !!doctorError || !form.doctorId}
               >
                 {busy ? 'Saving…' : 'Upload document version'}
               </button>

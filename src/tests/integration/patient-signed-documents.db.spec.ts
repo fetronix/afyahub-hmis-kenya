@@ -80,6 +80,13 @@ describeDb('signed originals, procedure consent and report retrieval — disposa
           )
         ).rows[0].id,
       );
+    const doctorRole = (
+      await pool.query("INSERT INTO roles(tenant_id,name) VALUES($1,'DOCTOR') RETURNING id", [
+        tenant,
+      ])
+    ).rows[0].id;
+    for (const user of users)
+      await pool.query('INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)', [user, doctorRole]);
     const permissions = [
       'patients.read',
       'patients.documents.read',
@@ -202,7 +209,7 @@ describeDb('signed originals, procedure consent and report retrieval — disposa
       else delete process.env.PATIENT_DOCUMENT_MAX_BYTES;
     }
   });
-  it('rejects invalid signature metadata and invalid signing date', async () => {
+  it('validates signature/date metadata and resolves the signing doctor from the session', async () => {
     await expect(
       docs.uploadPatientDocument(
         a,
@@ -225,11 +232,11 @@ describeDb('signed originals, procedure consent and report retrieval — disposa
       docs.uploadPatientDocument(
         a,
         patient,
-        metadata({ doctorSignature: 'PRESENT', signingDate: '2026-01-02' }),
+        metadata({ doctorSignature: 'PRESENT', signingDate: '2026-03-02' }),
         pdf,
         'application/pdf',
       ),
-    ).rejects.toMatchObject({ code: 'DOCTOR_REQUIRED' });
+    ).resolves.toMatchObject({ doctor_id: a.userId, doctor_signature: 'PRESENT' });
   });
   it('retains originals and adds corrections with version and audit history', async () => {
     version = await docs.uploadPatientDocument(
