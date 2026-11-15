@@ -259,6 +259,7 @@ router.get(
       res.setHeader('Content-Disposition', `${disposition}; filename="${file.filename}"`);
       res.setHeader('Cache-Control', 'private, no-store');
       res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
       return res.status(200).end(file.bytes);
     } catch (error) {
       return sendError(res, error);

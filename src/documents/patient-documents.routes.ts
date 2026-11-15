@@ -160,7 +160,10 @@ staff.post('/radiology-policy', express.json({ limit: '8kb' }), async (req: Auth
 });
 staff.use((e: unknown, _req: Request, res: Response, _next: NextFunction) => {
   if (typeof e === 'object' && e && 'type' in e && e.type === 'entity.too.large') {
-    res.status(413).json({ error: 'DOCUMENT_TOO_LARGE' });
+    res.status(413).json({
+      error: 'DOCUMENT_TOO_LARGE',
+      message: 'Document exceeds the configured upload size limit.',
+    });
     return;
   }
   if (e instanceof SyntaxError) {

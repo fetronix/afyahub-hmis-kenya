@@ -1,0 +1,46 @@
+{
+  "syntheticOnly": true,
+  "renderer": "PyMuPDF 1.26.6 (test only, no application normalization)",
+  "rendered": [
+    {
+      "name": "scanned-letterhead",
+      "sha256": "5699db598654895d6bc276b98cde7ce13eb56f13ba7738f56a106589bd02be6d",
+      "pages": 1,
+      "widthPt": 595.280029296875,
+      "heightPt": 841.8900146484375,
+      "renderedWidth": 893,
+      "renderedHeight": 1263,
+      "extractedText": "SYNTHETIC PDF COMPATIBILITY - scanned-letterhead"
+    },
+    {
+      "name": "scanned-signature",
+      "sha256": "a1fa730ca69d7fe680c0b56097204df1ac740e9b05f909a8912438dbc305b84a",
+      "pages": 1,
+      "widthPt": 595.280029296875,
+      "heightPt": 841.8900146484375,
+      "renderedWidth": 893,
+      "renderedHeight": 1263,
+      "extractedText": "SYNTHETIC PDF COMPATIBILITY - scanned-signature\nScanned signature sample - not proof of consent"
+    },
+    {
+      "name": "type3-glyph-A",
+      "sha256": "3934ba47c9f724ef90b317e1b6697d707afea68cfdec2fed06bad4c00f913301",
+      "pages": 1,
+      "widthPt": 595.280029296875,
+      "heightPt": 841.8900146484375,
+      "renderedWidth": 893,
+      "renderedHeight": 1263,
+      "extractedText": "SYNTHETIC PDF COMPATIBILITY - type3-glyph-A\nA"
+    },
+    {
+      "name": "static-annotations",
+      "sha256": "91d2a25a3741ca8ec36aa910874425dbf4a90e3f1b24b2efad06260d62c7db8a",
+      "pages": 1,
+      "widthPt": 595.280029296875,
+      "heightPt": 841.8900146484375,
+      "renderedWidth": 893,
+      "renderedHeight": 1263,
+      "extractedText": "SYNTHETIC PDF COMPATIBILITY - static-annotations"
+    }
+  ]
+}

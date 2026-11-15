@@ -634,8 +634,9 @@ function DocumentWorkspace({
               {preview.mime === 'application/pdf' ? (
                 <>
                   <p className="text-xs text-slate-600">
-                    PDF preview uses your browser’s viewer. If it is unavailable, use Download to
-                    open the unchanged original in a trusted PDF viewer.
+                    Preview of the unchanged uploaded original, not a normalized copy or proof of
+                    signature authenticity. PDF preview uses your browser’s viewer. If it is
+                    unavailable, use Download to open the original in a trusted PDF viewer.
                   </p>
                   <iframe
                     title="Signed document PDF preview"

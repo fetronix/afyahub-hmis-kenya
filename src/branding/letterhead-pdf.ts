@@ -4,8 +4,8 @@
  * A letterhead becomes the background of every invoice, receipt and report the
  * facility issues, so a malformed file is not a cosmetic problem: it would
  * corrupt documents that have already been given to a patient or a payer. This
- * module is the only door the bytes come through, and it refuses everything it
- * cannot account for.
+ * module validates uploads structurally; it is not an antivirus or a complete
+ * proof of rendering safety in every external PDF viewer.
  *
  * WHAT IS CHECKED, AND WHY EACH CHECK EXISTS
  * ------------------------------------------
@@ -17,18 +17,21 @@
  *    ends in `.pdf` is not a PDF.
  * 3. End-of-file marker. A truncated upload is the commonest real failure: the
  *    signature is fine and the last page is missing. `%%EOF` within the final
- *    kilobyte catches a cut-off transfer that pdf-lib would otherwise accept
+ *    two kilobytes catches a cut-off transfer that pdf-lib would otherwise accept
  *    for the pages it can still see.
  * 4. Size. Zero bytes is not a document; more than 8 MB is not a letterhead,
  *    and every generated document would pay for it.
  * 5. Parse. pdf-lib must be able to load it, which is the same code path the
- *    renderer will use — a file that parses here cannot fail later.
+ *    renderer uses. Parsing is required, but does not guarantee later rendering.
+ *    Shared structural policy rejects scripts/actions, attachments and unsupported
+ *    interactivity while recognizing static glyph, attribute and appearance maps.
  * 6. Page geometry. Documents are laid out A4-compatible, so the letterhead
- *    must be a single portrait page of a sane, A4-like size. A landscape or
+ *    first page must have sane, portrait A4-like dimensions. A landscape or
  *    oversized page would silently produce documents of a different format.
  */
 
 import { PDFDocument } from 'pdf-lib';
+import { inspectStaticPdf, PdfContentError } from '../security/pdf-static-content.ts';
 
 /** 8 MB. Large enough for a scanned letterhead, small enough to read per render. */
 export const LETTERHEAD_MAX_BYTES = 8 * 1024 * 1024;
@@ -44,6 +47,7 @@ export type LetterheadErrorCode =
   | 'LETTERHEAD_SIGNATURE_INVALID'
   | 'LETTERHEAD_TRUNCATED'
   | 'LETTERHEAD_UNREADABLE'
+  | 'LETTERHEAD_UNSAFE_CONTENT'
   | 'LETTERHEAD_ENCRYPTED'
   | 'LETTERHEAD_PAGES_INVALID'
   | 'LETTERHEAD_PAGE_SIZE_INVALID'
@@ -154,7 +158,7 @@ export async function inspectLetterheadPdf(
   // 5. Parse with the same library the renderer uses.
   let pdf: PDFDocument;
   try {
-    pdf = await PDFDocument.load(bytes, { updateMetadata: false });
+    pdf = await PDFDocument.load(bytes, { updateMetadata: false, throwOnInvalidObject: true });
   } catch (error) {
     const message = String((error as Error)?.message ?? '');
     if (/encrypt/i.test(message)) {
@@ -166,6 +170,19 @@ export async function inspectLetterheadPdf(
     throw new LetterheadError(
       'LETTERHEAD_UNREADABLE',
       'The PDF could not be read. Re-export it as a standard PDF and try again.',
+    );
+  }
+
+  // Shared structural inspection: a letterhead must not introduce actions/attachments
+  // into either its original preview or the documents using its printable artwork.
+  try {
+    inspectStaticPdf(pdf);
+  } catch (error) {
+    if (error instanceof PdfContentError)
+      throw new LetterheadError('LETTERHEAD_UNSAFE_CONTENT', error.message);
+    throw new LetterheadError(
+      'LETTERHEAD_UNREADABLE',
+      'PDF could not be safely parsed. Re-export a static PDF from a trusted application.',
     );
   }
 

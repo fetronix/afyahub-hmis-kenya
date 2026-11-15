@@ -1,4 +1,5 @@
-import { PDFArray, PDFDict, PDFDocument, PDFName, PDFStream } from 'pdf-lib';
+import { PDFDocument } from 'pdf-lib';
+import { inspectStaticPdf, PdfContentError } from '../security/pdf-static-content.ts';
 import sharp from 'sharp';
 
 export class PatientDocumentError extends Error {
@@ -65,42 +66,13 @@ export async function validatePatientFile(bytes: Buffer, filename: string, mime:
         'INVALID_PDF',
         'PDF must contain 1–100 pages.',
       );
-      // Walk parsed dictionaries, including decoded object streams and escaped PDF names.
-      const forbidden = new Set([
-        'JS',
-        'JavaScript',
-        'AA',
-        'OpenAction',
-        'A',
-        'EmbeddedFiles',
-        'EF',
-        'XFA',
-        'RichMedia',
-        'Collection',
-      ]);
-      const visited = new Set<unknown>();
-      const walk = (obj: unknown) => {
-        if (!obj || visited.has(obj)) return;
-        visited.add(obj);
-        if (obj instanceof PDFStream) walk(obj.dict);
-        if (obj instanceof PDFDict)
-          for (const [key, value] of obj.entries()) {
-            insist(
-              !forbidden.has(key.decodeText()),
-              'UNSAFE_PDF',
-              'Active content, actions and embedded attachments are not supported.',
-            );
-            if (value instanceof PDFName)
-              insist(
-                !['Filespec', 'EmbeddedFile'].includes(value.decodeText()),
-                'UNSAFE_PDF',
-                'Embedded files are not supported.',
-              );
-            walk(value);
-          }
-        if (obj instanceof PDFArray) obj.asArray().forEach(walk);
-      };
-      pdf.context.enumerateIndirectObjects().forEach(([, obj]) => walk(obj));
+      try {
+        inspectStaticPdf(pdf);
+      } catch (error) {
+        if (error instanceof PdfContentError)
+          throw new PatientDocumentError('UNSAFE_PDF', error.message);
+        throw error;
+      }
       for (const page of pdf.getPages())
         insist(
           page.getWidth() > 0 &&
@@ -128,7 +100,9 @@ export async function validatePatientFile(bytes: Buffer, filename: string, mime:
     if (error instanceof PatientDocumentError) throw error;
     throw new PatientDocumentError(
       'MALFORMED_DOCUMENT',
-      'Document cannot be decoded safely; re-export a standard PDF or image.',
+      mime === 'application/pdf'
+        ? 'PDF could not be safely parsed. Re-export an unencrypted, static PDF from a trusted application.'
+        : 'Image could not be decoded safely. Re-export a standard PNG or JPEG.',
     );
   }
 }
