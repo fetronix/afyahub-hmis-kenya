@@ -59,7 +59,7 @@
     "scopeCaveat": "Catalogue children are output-specific requirements; shared reporting controls are separate cross-cutting acceptance contracts. No percentage of original client completion can be calculated.",
     "scopeInclusionRequiredForClosure": true,
     "countsCaveat": "271 tracked units include52 secondary-client requirement units,31 workflow-implied contracts,29 unconfirmed audit topics,144 engineering report outputs,6 recommendations,8 external-dependency units and1 optional unit. These types are disjoint here; dependencies can also block any type. Original contractual total remains unknown.",
-    "gitCheckpointPolicy": "Commit/push only the two assessment Markdown documents per explicit checkpoint limit. JSON companion retained locally uncommitted. Clarification prompt skipped; repeated request retains ambiguity.",
+    "gitCheckpointPolicy": "Initial checkpoint committed the two Markdown assessments. A subsequent explicit user instruction to push all changes authorized the JSON companion publication in d0aee8de123777ab6139e63f853cbdb573dc9646. All three deliverables are now tracked on the current branch.",
     "countsByModuleAndStatus": {
       "Accounting": {
         "UNVERIFIED": 1,
@@ -20198,7 +20198,15 @@
     "markdown": "Prettier parser/format check;271 requirement and11 workflow heading parity with JSON; no unbalanced fenced code",
     "coverage": "144 catalogue IDs exact; all24 secondary clauses mapped; all271 primary phase assignments exactly once; all16 dependencies present",
     "preservation": "All1707 baseline blobs match unchanged; only the three explicitly requested documentation deliverables are untracked; no staged files prior to checkpoint",
-    "limitation": "This validates documentation integrity and evidence links, not unexecuted workflows or contractual authenticity"
+    "limitation": "This validates documentation integrity and evidence links, not unexecuted workflows or contractual authenticity",
+    "repeatRequestVerification": {
+      "verifiedPublishedCommit": "d0aee8de123777ab6139e63f853cbdb573dc9646",
+      "remoteTrackedFilesCompared": 1710,
+      "worktreeContentDifferencesBeforeDocumentationUpdate": 0,
+      "sourceDiffFromAssessedCommit": "Only the three assessment deliverables differ from d5098ab36241fb5d82043ae6b2beccdfa2da0161; no application/schema/migration/test changes.",
+      "checks": "Revalidated JSON schema fields, status/module/provenance totals, source and evidence paths, 131 document hashes, 23 workbook paths, 24 secondary clauses, 11 workflows, 144 report mappings and 271 phase assignments.",
+      "executionLimit": "No application tests reexecuted for this documentation-only revalidation. The reported 313 passed/1 failed/13 skipped are retained results from the initial assessment, not another run. No new CI/provider/browser/database/production success is claimed."
+    }
   },
   "reportingImplementationInventory": {
     "distinctEngineCount": 20,
