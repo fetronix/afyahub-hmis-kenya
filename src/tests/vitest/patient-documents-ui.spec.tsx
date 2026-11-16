@@ -307,6 +307,26 @@ describe('Staff patient documents and portal release workflow', () => {
     );
     expect(result).toHaveTextContent('Second letter (#2): Patient or document not found');
   });
+  it('keeps the panel open and shows a server refusal where the operator clicked', async () => {
+    mocks.context.authenticatedUser.permissions = canRelease;
+    mocks.documents = [record];
+    mocks.action.mockRejectedValueOnce(
+      new Error('Portal release needs the "Release patient documents to portal" permission.'),
+    );
+    render(<PatientDocumentsPanel patientId={7} />);
+    await screen.findByText('Synthetic document');
+    fireEvent.click(screen.getByRole('button', { name: 'Release to patient portal #1' }));
+    const dialog = screen.getByRole('form', { name: 'Portal release decision' });
+    fireEvent.change(within(dialog).getByLabelText('Portal release reason'), {
+      target: { value: 'Explicit synthetic refused release' },
+    });
+    fireEvent.submit(dialog);
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Portal release needs the "Release patient documents to portal" permission.',
+    );
+    expect(screen.getByRole('form', { name: 'Portal release decision' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Portal release result')).not.toBeInTheDocument();
+  });
   it('sends one decision when the confirmation is clicked twice', async () => {
     mocks.context.authenticatedUser.permissions = canRelease;
     mocks.documents = [record];
