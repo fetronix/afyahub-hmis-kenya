@@ -293,13 +293,20 @@ describeDb('signed originals, procedure consent and report retrieval — disposa
       sessionId: 1,
       loginIdentifier: 'synthetic',
     };
-    expect(await docs.portalPatientDocuments(s)).toEqual([]);
-    await docs.releasePatientDocument(a, patient, doc.id, true, reason);
-    const list = await docs.portalPatientDocuments(s);
-    expect(list).toHaveLength(1);
-    expect(list[0]).not.toHaveProperty('notes');
-    expect(list[0]).not.toHaveProperty('uploaded_by');
-    expect(list[0]).not.toHaveProperty('sha256');
+    expect((await docs.portalDocumentPage(s)).documents).toEqual([]);
+    expect((await docs.portalDocumentPage(s)).empty_state).toBe('AWAITING_RELEASE');
+    // A consent document cannot be released until the original was reviewed.
+    await expect(
+      docs.releasePatientDocument(a, patient, doc.id, true, reason),
+    ).rejects.toMatchObject({ code: 'CONSENT_REVIEW_REQUIRED', status: 409 });
+    await docs.releasePatientDocument(a, patient, doc.id, true, reason, true);
+    const page = await docs.portalDocumentPage(s);
+    expect(page.documents).toHaveLength(1);
+    expect(page.page.total).toBe(1);
+    expect(page.documents[0]).not.toHaveProperty('notes');
+    expect(page.documents[0]).not.toHaveProperty('uploaded_by');
+    expect(page.documents[0]).not.toHaveProperty('sha256');
+    expect(page.documents[0]).not.toHaveProperty('reason');
     expect((await docs.portalPatientDocuments(s, doc.id, true)).original_bytes.equals(pdf)).toBe(
       true,
     );
@@ -310,7 +317,7 @@ describeDb('signed originals, procedure consent and report retrieval — disposa
       docs.portalPatientDocuments({ ...s, facilityId: b.facilityId }, doc.id, true),
     ).rejects.toMatchObject({ status: 404 });
     await docs.releasePatientDocument(a, patient, doc.id, false, reason);
-    expect(await docs.portalPatientDocuments(s)).toEqual([]);
+    expect((await docs.portalDocumentPage(s)).documents).toEqual([]);
   });
   it('defaults to consent required and blocks real completion SQL without consent', async () => {
     expect((await docs.radiologyConsent(a, order)).status).toBe('CONSENT_REQUIRED');
@@ -545,7 +552,7 @@ describeDb('signed originals, procedure consent and report retrieval — disposa
       sessionId: 1,
       loginIdentifier: 'synthetic',
     };
-    await docs.releasePatientDocument(a, patient, doc.id, true, reason);
+    await docs.releasePatientDocument(a, patient, doc.id, true, reason, true);
     await pool.query(
       'INSERT INTO patient_portal_settings(tenant_id,facility_id,allow_downloads) VALUES($1,$2,false)',
       [a.tenantId, a.facilityId],

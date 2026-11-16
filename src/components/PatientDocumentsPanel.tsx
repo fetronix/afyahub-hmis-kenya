@@ -4,9 +4,28 @@ import { useHmis } from '../context/HmisContext.tsx';
 import {
   documentRequest,
   documentAction,
+  type DocumentPageInfo,
   type PatientFile,
+  type StaffDocumentPage,
 } from '../api/patient-documents.client.ts';
 
+const CONSENT_PATTERN = /consent|authoris|authoriz/i;
+/** A display aid only: the server decides the category and enforces consent review. */
+function isConsentDocument(doc: PatientFile) {
+  if (doc.radiology_order_id) return doc.radiology_attachment_context !== 'POST_REPORTING_HISTORICAL';
+  return CONSENT_PATTERN.test(`${doc.title} ${doc.category} ${doc.document_type}`);
+}
+function releaseStatus(doc: PatientFile) {
+  if (doc.portal_release_status === 'RELEASED')
+    return doc.portal_released_at
+      ? `Released to patient portal on ${new Date(doc.portal_released_at).toLocaleString()}`
+      : 'Released to patient portal';
+  if (doc.portal_release_status === 'REVOKED')
+    return doc.portal_revoked_at
+      ? `Release revoked on ${new Date(doc.portal_revoked_at).toLocaleString()}`
+      : 'Release revoked';
+  return 'Not released to the patient portal';
+}
 export function PatientDocumentsPanel({ patientId }: { patientId: number }) {
   const {
     authenticatedUser,
@@ -55,30 +74,31 @@ export function PatientDocumentsPanel({ patientId }: { patientId: number }) {
     />
   );
 }
-export function PortalSignedDocuments() {
-  return <DocumentWorkspace portal permissions={[]} />;
-}
 function DocumentWorkspace({
   patientId,
   permissions,
   focusDocumentId,
   onOpenOrigin,
-  portal = false,
 }: {
-  patientId?: number;
+  patientId: number;
   permissions: string[];
-  portal?: boolean;
   focusDocumentId?: number;
   onOpenOrigin?: (doc: PatientFile) => void;
 }) {
-  const canRead = portal || permissions.includes('patients.documents.read');
-  const canUpload = !portal && permissions.includes('patients.documents.upload') && canRead;
-  const base = portal ? '' : `/patients/${patientId}`;
+  const canRead = permissions.includes('patients.documents.read');
+  const canUpload = permissions.includes('patients.documents.upload') && canRead;
+  const canRelease = permissions.includes('patients.documents.release') && canRead;
+  const base = `/patients/${patientId}`;
   const [details, setDetails] = useState<PatientFile | null>(null);
   const [documents, setDocuments] = useState<PatientFile[]>([]),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
     [revision, setRevision] = useState(0);
+  const [page, setPage] = useState<DocumentPageInfo | null>(null);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [selected, setSelected] = useState<number[]>([]);
   const [search, setSearch] = useState(''),
     [type, setType] = useState(''),
     [from, setFrom] = useState(''),
@@ -102,37 +122,54 @@ function DocumentWorkspace({
   const fileInput = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [form, setForm] = useState({ title: '', notes: '', previousId: '' });
-  const [release, setRelease] = useState<{ doc: PatientFile; reason: string } | null>(null);
-  const requestKey = JSON.stringify([base, portal, search, type, from, to, revision]);
-  const [loadedKey, setLoadedKey] = useState<string | null>(null);
-  const loading = loadedKey !== requestKey;
-  const visibleDocuments = loading ? [] : documents;
+  const [release, setRelease] = useState<{
+    docs: PatientFile[];
+    released: boolean;
+    reason: string;
+    reviewed: boolean;
+    previewId?: number;
+  } | null>(null);
+  const requestKey = JSON.stringify([base, search, type, from, to, revision, cursor]);
   useEffect(() => {
     let active = true;
     if (!canRead) return;
-    documentRequest<PatientFile[]>(
-      `${base}${portal ? '' : `?${new URLSearchParams({ search, type, from, to })}`}`,
-      {},
-      portal,
-    )
-      .then((rows) => {
-        if (active) {
-          setDocuments(rows);
-          setLoadedKey(requestKey);
-          setError('');
-        }
+    setLoading(true);
+    const query = new URLSearchParams({
+      search,
+      type,
+      from,
+      to,
+      limit: '25',
+      paginate: '1',
+    });
+    if (cursor) query.set('cursor', cursor);
+    documentRequest<StaffDocumentPage>(`${base}?${query.toString()}`)
+      .then((result) => {
+        if (!active) return;
+        setDocuments((current) =>
+          cursor
+            ? [...current, ...result.documents.filter((d) => !current.some((c) => c.id === d.id))]
+            : result.documents,
+        );
+        setPage(result.page);
+        setError('');
       })
-      .catch((e) => {
+      .catch((e: Error) => {
+        if (!active) return;
+        if (!cursor) setDocuments([]);
+        setError(e.message);
+      })
+      .finally(() => {
         if (active) {
-          setDocuments([]);
-          setLoadedKey(requestKey);
-          setError(e.message);
+          setLoading(false);
+          setLoadingMore(false);
         }
       });
     return () => {
       active = false;
     };
-  }, [base, canRead, portal, search, type, from, to, requestKey]);
+    // `requestKey` covers every request input.
+  }, [base, canRead, requestKey]);
   useEffect(() => {
     if (!loading && focusDocumentId)
       document
@@ -145,6 +182,8 @@ function DocumentWorkspace({
     },
     [preview],
   );
+  const visibleDocuments = loading ? [] : documents;
+  const consentSelection = release?.docs.filter(isConsentDocument) ?? [];
   async function run(fn: () => Promise<void>) {
     setError('');
     setBusy(true);
@@ -160,12 +199,8 @@ function DocumentWorkspace({
     e.preventDefault();
     await run(async () => {
       if (!file) throw Error('Choose a PDF, JPG, JPEG or PNG.');
-      const metadata = {
-        ...form,
-        uploadMode: 'SIMPLE',
-        filename: file.name,
-      };
-      const saved = await documentRequest<PatientFile>(base, {
+      const metadata = { ...form, uploadMode: 'SIMPLE', filename: file.name };
+      await documentRequest<PatientFile>(base, {
         method: 'POST',
         headers: {
           'Content-Type': file.type,
@@ -185,7 +220,6 @@ function DocumentWorkspace({
       const blob = await documentRequest<Blob>(
         `${base}/${doc.id}/file${download ? '?download=1' : '?preview=1'}`,
         {},
-        portal,
       );
       if (download) {
         const url = URL.createObjectURL(blob);
@@ -203,6 +237,47 @@ function DocumentWorkspace({
           derived: (blob as Blob & { derivedPreview?: boolean }).derivedPreview,
         });
     });
+  }
+  async function previewForRelease(doc: PatientFile) {
+    await run(async () => {
+      const blob = await documentRequest<Blob>(`${base}/${doc.id}/file?preview=1`);
+      if (release?.previewId && release.previewId !== doc.id) URL.revokeObjectURL(preview?.url ?? '');
+      setPreview({
+        url: URL.createObjectURL(blob),
+        mime: doc.mime_type,
+        title: `Release review: ${doc.title}`,
+        derived: (blob as Blob & { derivedPreview?: boolean }).derivedPreview,
+      });
+      setRelease((current) => (current ? { ...current, previewId: doc.id } : current));
+    });
+  }
+  async function submitRelease(e: React.FormEvent) {
+    e.preventDefault();
+    if (!release) return;
+    await run(async () => {
+      const body = {
+        released: release.released,
+        reason: release.reason,
+        reviewedOriginal: release.reviewed,
+      };
+      if (release.docs.length === 1)
+        await documentAction(`${base}/${release.docs[0].id}/release`, body);
+      else
+        await documentAction(`${base}/releases`, {
+          ...body,
+          documentIds: release.docs.map((d) => d.id),
+        });
+      setRelease(null);
+      setSelected([]);
+      setPreview(null);
+      setCursor(null);
+      setRevision((v) => v + 1);
+    });
+  }
+  function toggleSelected(id: number) {
+    setSelected((current) =>
+      current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
+    );
   }
   const field = 'rounded border border-slate-300 p-2 text-sm w-full';
   const actionClass =
@@ -308,13 +383,8 @@ function DocumentWorkspace({
   );
 
   return (
-    <section
-      aria-label={portal ? 'My Documents & Signed Consents' : 'Consent & Signed Documents'}
-      className="space-y-4 rounded border bg-white p-4"
-    >
-      <h3 className="text-lg font-bold">
-        {portal ? 'My Documents & Signed Consents' : 'Consent & Signed Documents'}
-      </h3>
+    <section aria-label="Consent & Signed Documents" className="space-y-4 rounded border bg-white p-4">
+      <h3 className="text-lg font-bold">Consent &amp; Signed Documents</h3>
       <p className="text-sm text-slate-600">
         Original files are preserved. Uploading a document does not automatically verify signatures
         or release it to the patient portal.
@@ -328,48 +398,96 @@ function DocumentWorkspace({
               {error}
             </p>
           )}
-          {uploadForm}
-          {!portal && (
-            <div className="grid gap-2 sm:grid-cols-4">
-              <label>
-                Search title
-                <input
-                  className={field}
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </label>
-              <label>
-                Document type filter
-                <input className={field} value={type} onChange={(e) => setType(e.target.value)} />
-              </label>
-              <label>
-                Signing date from
-                <input
-                  type="date"
-                  className={field}
-                  value={from}
-                  onChange={(e) => setFrom(e.target.value)}
-                />
-              </label>
-              <label>
-                Signing date to
-                <input
-                  type="date"
-                  className={field}
-                  value={to}
-                  onChange={(e) => setTo(e.target.value)}
-                />
-              </label>
-            </div>
+          {canRead && !canRelease && (
+            <p className="rounded bg-amber-50 p-3 text-sm text-amber-900">
+              You can view and upload documents but not release them. Portal release needs the
+              “Release patient documents to portal” permission; a facility administrator can grant it
+              under System Configuration → Staff Roles.
+            </p>
           )}
-          <button
-            className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
-            disabled={busy}
-            onClick={() => setRevision((v) => v + 1)}
-          >
-            Refresh documents
-          </button>
+          {uploadForm}
+          <div className="grid gap-2 sm:grid-cols-4">
+            <label>
+              Search title
+              <input className={field} value={search} onChange={(e) => setSearch(e.target.value)} />
+            </label>
+            <label>
+              Document type filter
+              <input className={field} value={type} onChange={(e) => setType(e.target.value)} />
+            </label>
+            <label>
+              Signing date from
+              <input
+                type="date"
+                className={field}
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+              />
+            </label>
+            <label>
+              Signing date to
+              <input type="date" className={field} value={to} onChange={(e) => setTo(e.target.value)} />
+            </label>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+              disabled={busy}
+              onClick={() => setRevision((v) => v + 1)}
+            >
+              Refresh documents
+            </button>
+            {canRelease && selected.length > 0 && (
+              <>
+                <button
+                  className="mr-2 my-1 rounded bg-teal-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                  disabled={busy}
+                  onClick={() =>
+                    setRelease({
+                      docs: documents.filter((d) => selected.includes(d.id)),
+                      released: true,
+                      reason: '',
+                      reviewed: false,
+                    })
+                  }
+                >
+                  Release selected ({selected.length}) to patient portal
+                </button>
+                {documents.some(
+                  (d) => selected.includes(d.id) && d.portal_release_status === 'RELEASED',
+                ) && (
+                  <button
+                    className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium"
+                    disabled={busy}
+                    onClick={() =>
+                      setRelease({
+                        docs: documents.filter(
+                          (d) => selected.includes(d.id) && d.portal_release_status === 'RELEASED',
+                        ),
+                        released: false,
+                        reason: '',
+                        reviewed: false,
+                      })
+                    }
+                  >
+                    Withdraw selected releases
+                  </button>
+                )}
+              </>
+            )}
+            {canRelease && documents.length > 0 && (
+              <button
+                className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm"
+                onClick={() =>
+                  setSelected(
+                    selected.length === documents.length ? [] : documents.map((d) => d.id),
+                  )
+                }
+              >
+                {selected.length === documents.length ? 'Clear selection' : 'Select all visible'}
+              </button>
+            )}
+          </div>
           {loading && <p role="status">Loading authorized document versions…</p>}
           <ul className="space-y-3">
             {visibleDocuments.map((doc) => (
@@ -378,30 +496,48 @@ function DocumentWorkspace({
                 key={doc.id}
                 data-patient-document={doc.id}
               >
+                {canRelease && (
+                  <label className="mb-2 block text-sm">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${doc.title} #${doc.id}`}
+                      checked={selected.includes(doc.id)}
+                      onChange={() => toggleSelected(doc.id)}
+                    />{' '}
+                    Select for portal release
+                  </label>
+                )}
                 <strong>{doc.title}</strong>
                 <p>
-                  Uploaded: {new Date(doc.uploaded_at).toLocaleString()}
-                  {!portal && (
-                    <> · Uploaded by: {doc.uploader_name ?? 'Staff member (name unavailable)'}</>
-                  )}
+                  Uploaded: {new Date(doc.uploaded_at).toLocaleString()} · Uploaded by:{' '}
+                  {doc.uploader_name ?? 'Staff member (name unavailable)'}
                 </p>
                 <p>
                   Original filename: {doc.filename ?? 'Available on download'} · Version{' '}
                   {doc.version}
                   {doc.is_latest_version === false ? ' · Superseded' : ''}
                 </p>
-                {!portal && doc.notes && <p>{doc.notes}</p>}
-                {!portal && (
-                  <p>
-                    Source/context:{' '}
-                    {doc.radiology_order_id
-                      ? 'Radiology document'
-                      : /laboratory|lab report/i.test(`${doc.category} ${doc.document_type}`)
-                        ? 'Laboratory document (no linked request recorded)'
-                        : 'General patient document'}
-                  </p>
-                )}
-                {!portal && doc.radiology_order_id && (
+                <p
+                  className={
+                    doc.portal_release_status === 'RELEASED'
+                      ? 'text-emerald-800'
+                      : doc.portal_release_status === 'REVOKED'
+                        ? 'text-rose-800'
+                        : 'text-slate-600'
+                  }
+                >
+                  Portal: {releaseStatus(doc)}
+                </p>
+                {doc.notes && <p>{doc.notes}</p>}
+                <p>
+                  Source/context:{' '}
+                  {doc.radiology_order_id
+                    ? 'Radiology document'
+                    : /laboratory|lab report/i.test(`${doc.category} ${doc.document_type}`)
+                      ? 'Laboratory document (no linked request recorded)'
+                      : 'General patient document'}
+                </p>
+                {doc.radiology_order_id && (
                   <p>
                     Imaging request #{doc.radiology_order_id}: {doc.procedure_name}
                   </p>
@@ -421,29 +557,25 @@ function DocumentWorkspace({
                   >
                     Download {doc.title}
                   </button>
-                  {!portal && (
-                    <button className={actionClass} disabled={busy} onClick={() => setDetails(doc)}>
-                      View document details #{doc.id}
-                    </button>
-                  )}
-                  {!portal && doc.radiology_order_id && onOpenOrigin && (
+                  <button className={actionClass} disabled={busy} onClick={() => setDetails(doc)}>
+                    View document details #{doc.id}
+                  </button>
+                  {doc.radiology_order_id && onOpenOrigin && (
                     <button className={actionClass} onClick={() => onOpenOrigin(doc)}>
                       Open imaging request #{doc.radiology_order_id}
                     </button>
                   )}
-                  {!portal && (
-                    <button
-                      className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
-                      disabled={busy}
-                      onClick={() =>
-                        void run(async () =>
-                          setHistory(await documentRequest(`${base}/${doc.id}/history`)),
-                        )
-                      }
-                    >
-                      Version & audit history #{doc.id}
-                    </button>
-                  )}
+                  <button
+                    className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () =>
+                        setHistory(await documentRequest(`${base}/${doc.id}/history`)),
+                      )
+                    }
+                  >
+                    Version & audit history #{doc.id}
+                  </button>
                   {canUpload && (
                     <button
                       className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
@@ -462,13 +594,20 @@ function DocumentWorkspace({
                       Create correction of #{doc.id}
                     </button>
                   )}
-                  {!portal && permissions.includes('patients.documents.release') && (
+                  {canRelease && (
                     <button
                       className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
                       disabled={busy}
-                      onClick={() => setRelease({ doc, reason: '' })}
+                      onClick={() =>
+                        setRelease({
+                          docs: [doc],
+                          released: doc.portal_release_status !== 'RELEASED',
+                          reason: '',
+                          reviewed: false,
+                        })
+                      }
                     >
-                      {doc.portal_released
+                      {doc.portal_release_status === 'RELEASED'
                         ? 'Withdraw portal release'
                         : 'Release to patient portal'}{' '}
                       #{doc.id}
@@ -480,11 +619,30 @@ function DocumentWorkspace({
           </ul>
           {!loading && visibleDocuments.length === 0 && !error && (
             <p>
-              No authorized documents found. The list is limited to 200 versions; narrow signing
-              dates for larger histories.
+              {search || type || from || to
+                ? 'No documents match these filters.'
+                : 'No documents have been uploaded for this patient yet.'}
             </p>
           )}
-          {details && !portal && (
+          {page && page.total > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm text-slate-600">
+                Showing {documents.length} of {page.total} document versions.
+              </p>
+              <button
+                className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm"
+                disabled={loadingMore || !page.has_more}
+                onClick={() => {
+                  if (!page.next_cursor) return;
+                  setLoadingMore(true);
+                  setCursor(page.next_cursor);
+                }}
+              >
+                {page.has_more ? 'Load more documents' : 'All document versions loaded'}
+              </button>
+            </div>
+          )}
+          {details && (
             <div aria-label="Signed document details" className="rounded border p-3 break-words">
               <h4 className="font-semibold">
                 {details.title} · document #{details.id}
@@ -500,6 +658,7 @@ function DocumentWorkspace({
                 Responsible doctor: {details.doctor_name ?? 'Not recorded'} · Patient signature:{' '}
                 {details.patient_signature} · Doctor signature: {details.doctor_signature}
               </p>
+              <p>{releaseStatus(details)}</p>
               <p>
                 {details.radiology_order_id
                   ? `Radiology request #${details.radiology_order_id}: ${details.procedure_name}`
@@ -574,26 +733,62 @@ function DocumentWorkspace({
               )}
             </section>
           )}
-          {release && !portal && permissions.includes('patients.documents.release') && (
+          {release && canRelease && (
             <form
               aria-label="Portal release decision"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void run(async () => {
-                  await documentAction(`${base}/${release.doc.id}/release`, {
-                    released: !release.doc.portal_released,
-                    reason: release.reason,
-                  });
-                  setRelease(null);
-                  setRevision((v) => v + 1);
-                });
-              }}
+              onSubmit={(e) => void submitRelease(e)}
+              className="space-y-2 rounded border border-teal-700 p-3"
             >
-              <p>
-                {release.doc.portal_released ? 'Withdraw' : 'Release'} {release.doc.title}{' '}
-                {release.doc.portal_released ? 'from' : 'to'} the patient portal
+              <h4 className="font-semibold">
+                {release.released ? 'Release' : 'Withdraw'} {release.docs.length} document
+                {release.docs.length === 1 ? '' : 's'} {release.released ? 'to' : 'from'} the patient
+                portal
+              </h4>
+              <p className="text-sm text-slate-600">
+                Releasing makes the original available to this patient only. It does not mark the
+                document signed or verified.
               </p>
-              <label>
+              <ul className="space-y-2">
+                {release.docs.map((doc) => (
+                  <li key={doc.id} className="rounded bg-slate-50 p-2 text-sm">
+                    <p>
+                      <strong>{doc.title}</strong> · {doc.document_type} · Version {doc.version}
+                    </p>
+                    <p>
+                      Recorded signing date: {doc.signing_date ?? 'Not recorded'} · Recorded patient
+                      signature: {doc.patient_signature} · Recorded doctor signature:{' '}
+                      {doc.doctor_signature}
+                    </p>
+                    <button
+                      type="button"
+                      className="rounded border border-slate-300 bg-white px-2 py-1 text-sm"
+                      disabled={busy}
+                      onClick={() => void previewForRelease(doc)}
+                    >
+                      Review original #{doc.id}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {release.released && consentSelection.length > 0 && (
+                <label className="block text-sm">
+                  <input
+                    type="checkbox"
+                    required
+                    aria-label="Reviewed original consent document"
+                    checked={release.reviewed}
+                    onChange={(e) =>
+                      setRelease((current) =>
+                        current ? { ...current, reviewed: e.target.checked } : current,
+                      )
+                    }
+                  />{' '}
+                  I reviewed the original consent document
+                  {consentSelection.length === 1 ? '' : 's'} ({consentSelection.length}) before
+                  releasing {consentSelection.length === 1 ? 'it' : 'them'}.
+                </label>
+              )}
+              <label className="block text-sm">
                 Portal release reason
                 <textarea
                   className={field}
@@ -601,7 +796,11 @@ function DocumentWorkspace({
                   minLength={10}
                   maxLength={500}
                   value={release.reason}
-                  onChange={(e) => setRelease({ ...release, reason: e.target.value })}
+                  onChange={(e) =>
+                    setRelease((current) =>
+                      current ? { ...current, reason: e.target.value } : current,
+                    )
+                  }
                 />
               </label>
               <button className={actionClass} disabled={busy} type="submit">

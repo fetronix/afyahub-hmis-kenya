@@ -35,8 +35,62 @@ export interface PatientFile {
   radiology_attachment_context?: 'PRE_PROCEDURE' | 'POST_REPORTING_HISTORICAL' | null;
   historical?: boolean;
   portal_released?: boolean;
+  portal_release_status?: 'NOT_RELEASED' | 'RELEASED' | 'REVOKED';
+  portal_released_at?: string | null;
+  portal_revoked_at?: string | null;
+  portal_reviewed_original?: boolean;
   is_latest_version?: boolean;
   reviewed_by_actor?: boolean;
+}
+export interface DocumentPageInfo {
+  limit: number;
+  total: number;
+  returned: number;
+  has_more: boolean;
+  next_cursor: string | null;
+}
+export interface StaffDocumentPage {
+  documents: PatientFile[];
+  page: DocumentPageInfo;
+}
+export type PortalDocumentGroup = 'CONSENT' | 'CLINICAL' | 'OTHER';
+export interface PortalDocument {
+  id: number;
+  title: string;
+  group: PortalDocumentGroup;
+  group_label: string;
+  kind: string;
+  document_type: string;
+  category: string;
+  signing_date: string | null;
+  uploaded_at: string;
+  version: number;
+  is_superseded: boolean;
+  has_versions: boolean;
+  mime_type: string;
+  source: string;
+  procedure_name: string | null;
+}
+export interface PortalDocumentPage {
+  documents: PortalDocument[];
+  page: DocumentPageInfo;
+  groups: { ALL: number; CONSENT: number; CLINICAL: number; OTHER: number };
+  empty_state: 'NONE_RELEASED' | 'AWAITING_RELEASE' | 'NO_MATCHES' | null;
+  filters: { search: string; group: string; from: string | null; to: string | null };
+  downloads_enabled: boolean;
+}
+export interface PortalDocumentVersion {
+  id: number;
+  version: number;
+  title: string;
+  uploaded_at: string;
+  signing_date: string | null;
+  is_superseded?: boolean;
+  current?: boolean;
+}
+export interface PortalDocumentDetail {
+  document: PortalDocument;
+  versions: PortalDocumentVersion[];
 }
 export async function documentRequest<T>(
   path: string,

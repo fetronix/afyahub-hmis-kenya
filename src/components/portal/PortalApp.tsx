@@ -1,4 +1,4 @@
-import { PortalSignedDocuments } from '../PatientDocumentsPanel.tsx';
+import { PortalDocuments } from './PortalDocuments.tsx';
 /**
  * JaliCare HMIS
  * Patient digital health record portal
@@ -1594,7 +1594,7 @@ function PortalDashboard({ onSignedOut }: { onSignedOut: (message?: string) => v
         ) : null}
 
         {tab === 'records' ? <PortalRecords overview={overview} /> : null}
-        {tab === 'documents' ? <PortalSignedDocuments /> : null}
+        {tab === 'documents' ? <PortalDocuments /> : null}
         {tab === 'share' ? <PortalSharing /> : null}
         {tab === 'account' ? <PortalAccount me={me} onSignedOut={onSignedOut} /> : null}
       </div>

@@ -715,6 +715,13 @@
       "when": 1796352000000,
       "tag": "0101_radiology_consent_simplification",
       "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1796438400000,
+      "tag": "0102_portal_document_release",
+      "breakpoints": true
     }
   ]
 }

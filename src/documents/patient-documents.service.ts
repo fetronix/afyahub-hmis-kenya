@@ -5,12 +5,87 @@ import type { AuthorizationContext } from '../auth/authorization.types.ts';
 import { hasAllPermissions } from '../auth/authorization.service.ts';
 import type { PortalSession } from '../portal/portal-auth.service.ts';
 import { loadPortalPolicy } from '../portal/portal.service.ts';
-import { insist, validatePatientFile } from './patient-file-validation.ts';
+import { insist, PatientDocumentError, validatePatientFile } from './patient-file-validation.ts';
 
 export const DOCUMENT_FIELDS =
   'id,patient_id,root_id,version,title,category,document_type,signing_date,patient_signature,doctor_signature,doctor_id,notes,filename,mime_type,sha256,uploaded_by,uploaded_at,radiology_order_id,procedure_name,reason,radiology_attachment_context';
+/**
+ * Portal projection. Staff notes, uploader/doctor identities, hashes, ages,
+ * reasons and audit history never leave the facility: a patient receives only
+ * what identifies their own document.
+ */
 export const PORTAL_DOCUMENT_FIELDS =
-  'd.id,d.title,d.category,d.document_type,d.signing_date,d.uploaded_at,d.mime_type,d.version';
+  'd.id,d.root_id,d.title,d.category,d.document_type,d.signing_date,d.uploaded_at,d.mime_type,d.version,d.procedure_name,d.radiology_attachment_context,(d.radiology_order_id IS NOT NULL) AS radiology_linked';
+export type PortalDocumentGroup = 'CONSENT' | 'CLINICAL' | 'OTHER';
+export const PORTAL_GROUP_LABELS: Record<PortalDocumentGroup, string> = {
+  CONSENT: 'Consent forms',
+  CLINICAL: 'Clinical documents',
+  OTHER: 'Other documents',
+};
+/**
+ * Category shown in the portal. Documents are immutable, so classifying from
+ * the recorded title/type/link at read time cannot drift from what was stored.
+ * This is a display grouping, not a claim that anything was signed or verified.
+ */
+export function portalDocumentGroup(d: {
+  title?: unknown;
+  category?: unknown;
+  document_type?: unknown;
+  radiology_linked?: unknown;
+  radiology_attachment_context?: unknown;
+}): PortalDocumentGroup {
+  if (d.radiology_linked)
+    return d.radiology_attachment_context === 'POST_REPORTING_HISTORICAL' ? 'CLINICAL' : 'CONSENT';
+  if (d.category === 'Radiology') return 'CLINICAL';
+  const text = `${d.title ?? ''} ${d.category ?? ''} ${d.document_type ?? ''}`.toLowerCase();
+  if (/consent|authoris|authoriz/.test(text)) return 'CONSENT';
+  if (
+    /laborator|patholog|histolog|\blab\b|radiolog|imaging|scan|x-ray|ultrasound|clinical|discharge|referral|summary|report/.test(
+      text,
+    )
+  )
+    return 'CLINICAL';
+  return 'OTHER';
+}
+export function portalDocumentKind(d: {
+  title?: unknown;
+  document_type?: unknown;
+  radiology_linked?: unknown;
+  radiology_attachment_context?: unknown;
+}): string {
+  const text = `${d.title ?? ''} ${d.document_type ?? ''}`.toLowerCase();
+  if (d.radiology_linked)
+    return d.radiology_attachment_context === 'POST_REPORTING_HISTORICAL'
+      ? 'Radiology supporting document'
+      : 'Radiology / procedure consent';
+  if (portalDocumentGroup(d) === 'CONSENT')
+    return /treatment/.test(text) ? 'Treatment consent' : 'Signed consent form';
+  if (/laborator|patholog|histolog|\blab\b/.test(text)) return 'Laboratory document';
+  if (/radiolog|imaging|scan|x-ray|ultrasound|report/.test(text)) return 'Radiology report';
+  if (portalDocumentGroup(d) === 'CLINICAL') return 'Clinical document';
+  return 'General patient document';
+}
+export function portalDocumentSource(d: {
+  title?: unknown;
+  document_type?: unknown;
+  radiology_linked?: unknown;
+}): string {
+  if (d.radiology_linked) return 'Radiology & Imaging';
+  if (/laborator|patholog|histolog|\blab\b/i.test(`${d.title ?? ''} ${d.document_type ?? ''}`))
+    return 'Laboratory & Pathology';
+  return 'Patient records';
+}
+/**
+ * The same three-way grouping in SQL, so search, category filters and the
+ * server-side page all run over the full authorized set instead of a slice.
+ */
+const PORTAL_GROUP_SQL = `CASE
+ WHEN d.radiology_order_id IS NOT NULL AND COALESCE(d.radiology_attachment_context,'PRE_PROCEDURE')='PRE_PROCEDURE' THEN 'CONSENT'
+ WHEN d.radiology_order_id IS NOT NULL THEN 'CLINICAL'
+ WHEN d.category='Radiology' THEN 'CLINICAL'
+ WHEN concat_ws(' ',d.title,d.category,d.document_type) ~* '(consent|authoris|authoriz)' THEN 'CONSENT'
+ WHEN concat_ws(' ',d.title,d.category,d.document_type) ~* '(laborator|patholog|histolog|\\ylab\\y|radiolog|imaging|scan|x-ray|ultrasound|clinical|discharge|referral|summary|report)' THEN 'CLINICAL'
+ ELSE 'OTHER' END`;
 const completedRadiologyStatuses = ['reported', 'performed', 'completed'];
 export function radiologyRequestCompleted(status: unknown): boolean {
   return completedRadiologyStatuses.includes(
@@ -47,6 +122,72 @@ export function auditReason(v: unknown) {
   const s = text(v, 500);
   insist(s.length >= 10, 'REASON_REQUIRED', 'Explain the operation in 10–500 characters.');
   return s;
+}
+export interface DocumentPageInfo {
+  limit: number;
+  total: number;
+  returned: number;
+  has_more: boolean;
+  next_cursor: string | null;
+}
+export interface DocumentCursor {
+  uploadedAt: string;
+  id: number;
+}
+/** Page size for list/search. Bounded so one request cannot walk a whole history. */
+export function pageLimit(raw: unknown, fallback = 50, max = 100): number {
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  const n = Number(raw);
+  insist(
+    Number.isSafeInteger(n) && n >= 1 && n <= max,
+    'INVALID_LIMIT',
+    `Choose between 1 and ${max} documents per page.`,
+  );
+  return n;
+}
+/**
+ * Keyset cursor over (uploaded_at, id) newest first. A cursor is opaque to the
+ * browser and only ever narrows the caller's own authorized scope, so changing
+ * it cannot widen what is returned.
+ */
+export function encodeDocumentCursor(row: { uploaded_at: unknown; id: number }): string {
+  return Buffer.from(
+    JSON.stringify({ t: new Date(String(row.uploaded_at)).toISOString(), i: row.id }),
+  ).toString('base64url');
+}
+export function decodeDocumentCursor(raw: unknown): DocumentCursor | null {
+  if (raw === undefined || raw === null || raw === '') return null;
+  insist(
+    typeof raw === 'string' && raw.length <= 200,
+    'INVALID_CURSOR',
+    'The document page cursor is invalid.',
+  );
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as {
+      t?: unknown;
+      i?: unknown;
+    };
+    insist(
+      typeof parsed?.t === 'string' &&
+        !isNaN(Date.parse(parsed.t)) &&
+        Number.isSafeInteger(parsed.i) &&
+        Number(parsed.i) > 0,
+      'INVALID_CURSOR',
+      'The document page cursor is invalid.',
+    );
+    return { uploadedAt: new Date(parsed.t).toISOString(), id: Number(parsed.i) };
+  } catch (error) {
+    if (error instanceof PatientDocumentError) throw error;
+    throw new PatientDocumentError('INVALID_CURSOR', 'The document page cursor is invalid.', 400);
+  }
+}
+export type PortalReleaseStatus = 'NOT_RELEASED' | 'RELEASED' | 'REVOKED';
+export function portalReleaseStatus(row: {
+  released?: unknown;
+  document_id?: unknown;
+}): PortalReleaseStatus {
+  if (!row || row.document_id === null || row.document_id === undefined) return 'NOT_RELEASED';
+  return row.released === true ? 'RELEASED' : 'REVOKED';
 }
 export function requireDocumentPermission(context: AuthorizationContext, ...permissions: string[]) {
   insist(
@@ -463,10 +604,11 @@ export async function uploadPatientDocument(
     };
   });
 }
-export async function listPatientDocuments(
+async function listDocuments(
   s: AuthorizationContext,
   p: number,
-  filters: Record<string, unknown> = {},
+  filters: Record<string, unknown>,
+  paginate: boolean,
 ) {
   requireDocumentPermission(s, 'patients.documents.read');
   const search = text(filters.search, 80, false),
@@ -486,17 +628,88 @@ export async function listPatientDocuments(
     'INVALID_DATE_FILTER',
     'Signing-date range is reversed.',
   );
+  // The page envelope carries the full authorized history; the plain array
+  // stays for facility tooling that already reads the flat response.
+  const limit = paginate ? pageLimit(filters.limit, 50, 200) : 200;
+  const cursor = paginate ? decodeDocumentCursor(filters.cursor) : null;
+  const scope = `d.tenant_id=$1 AND d.facility_id=$2 AND d.patient_id=$3
+    AND ($4='' OR position(lower($4) in lower(d.title))>0)
+    AND ($5='' OR d.document_type=$5)
+    AND ($6::date IS NULL OR d.signing_date >= $6::date)
+    AND ($7::date IS NULL OR d.signing_date <= $7::date)
+    AND ($8::int IS NULL OR d.radiology_order_id=$8)`;
+  const cursorSql = cursor ? ' AND (d.uploaded_at, d.id) < ($9::timestamptz, $10::int)' : '';
   return transaction(async (c) => {
     await patient(c, s, p);
     const requestId = filters.radiologyOrderId ? idOf(filters.radiologyOrderId) : null;
     if (requestId) await order(c, s, requestId, p);
+    const values = cursor
+      ? [s.tenantId, s.facilityId, p, search, type, ...dates, requestId, cursor.uploadedAt, cursor.id]
+      : [s.tenantId, s.facilityId, p, search, type, ...dates, requestId];
     const r = await c.query(
-      `SELECT ${DOCUMENT_FIELDS},COALESCE((SELECT released FROM patient_document_releases rel WHERE rel.document_id=d.id),false) AS portal_released FROM patient_signed_documents d WHERE tenant_id=$1 AND facility_id=$2 AND patient_id=$3 AND ($4='' OR position(lower($4) in lower(title))>0) AND ($5='' OR document_type=$5) AND ($6::date IS NULL OR signing_date >= $6::date) AND ($7::date IS NULL OR signing_date <= $7::date) AND ($8::int IS NULL OR radiology_order_id=$8) ORDER BY uploaded_at DESC,id DESC LIMIT 200`,
-      [s.tenantId, s.facilityId, p, search, type, ...dates, requestId],
+      `SELECT ${DOCUMENT_FIELDS.split(',')
+        .map((field) => `d.${field}`)
+        .join(',')},
+        rel.document_id AS portal_release_document_id,
+        COALESCE(rel.released,false) AS portal_released,
+        rel.released_at AS portal_released_at,
+        rel.revoked_at AS portal_revoked_at,
+        rel.reviewed_original AS portal_reviewed_original
+       FROM patient_signed_documents d
+       LEFT JOIN patient_document_releases rel ON rel.document_id=d.id
+       WHERE ${scope}${cursorSql}
+       ORDER BY d.uploaded_at DESC,d.id DESC LIMIT ${limit + 1}`,
+      values,
     );
+    const rows = r.rows.slice(0, limit);
     await event(c, s, p, null, 'VIEW', 'List patient signed document versions');
-    return withDocumentReview(c, s, r.rows);
+    const documents = (await withDocumentReview(c, s, rows)).map((row) => {
+      const { portal_release_document_id, ...d } = row;
+      return {
+        ...d,
+        portal_release_status: portalReleaseStatus({
+          document_id: portal_release_document_id,
+          released: d.portal_released,
+        }),
+      };
+    });
+    if (!paginate) return documents;
+    const total = Number(
+      (
+        await c.query(
+          `SELECT count(*)::int AS n FROM patient_signed_documents d WHERE ${scope}`,
+          values.slice(0, 8),
+        )
+      ).rows[0].n,
+    );
+    const page: DocumentPageInfo = {
+      limit,
+      total,
+      returned: documents.length,
+      has_more: r.rows.length > limit,
+      next_cursor: r.rows.length > limit ? encodeDocumentCursor(rows[rows.length - 1]) : null,
+    };
+    return { documents, page };
   });
+}
+/** Flat list, newest first, capped at one page of 200 versions. */
+export async function listPatientDocuments(
+  s: AuthorizationContext,
+  p: number,
+  filters: Record<string, unknown> = {},
+): Promise<Record<string, any>[]> {
+  return (await listDocuments(s, p, filters, false)) as Record<string, any>[];
+}
+/** Paged list with the explicit portal-release state for each version. */
+export async function listPatientDocumentPage(
+  s: AuthorizationContext,
+  p: number,
+  filters: Record<string, unknown> = {},
+): Promise<{ documents: Record<string, any>[]; page: DocumentPageInfo }> {
+  return (await listDocuments(s, p, filters, true)) as {
+    documents: Record<string, any>[];
+    page: DocumentPageInfo;
+  };
 }
 export async function readPatientDocument(
   s: AuthorizationContext,
@@ -539,24 +752,113 @@ export async function documentHistory(s: AuthorizationContext, p: number, id: nu
     return { versions: await withDoctorNames(c, s, versions), events };
   });
 }
+/**
+ * Record one explicit release decision. Uploading never releases, and a
+ * release never claims a signature: the recorded signature states are copied
+ * into the audit facts exactly as they were stored.
+ */
+async function applyPortalRelease(
+  c: PoolClient,
+  s: AuthorizationContext,
+  p: number,
+  d: Record<string, any>,
+  released: boolean,
+  reason: string,
+  reviewedOriginal: boolean,
+) {
+  const consent = portalDocumentGroup(d) === 'CONSENT';
+  if (released && consent && !reviewedOriginal)
+    throw new PatientDocumentError(
+      'CONSENT_REVIEW_REQUIRED',
+      'Open and review the original consent document before releasing it to the patient portal.',
+      409,
+    );
+  const r = await c.query(
+    `INSERT INTO patient_document_releases(document_id,released,actor_id,reason,released_at,revoked_at,reviewed_original)
+     VALUES($1,$2,$3,$4,CASE WHEN $2 THEN now() END,CASE WHEN $2 THEN NULL ELSE now() END,$5)
+     ON CONFLICT(document_id) DO UPDATE SET
+       released=excluded.released,actor_id=excluded.actor_id,reason=excluded.reason,
+       released_at=CASE WHEN excluded.released THEN now() ELSE patient_document_releases.released_at END,
+       revoked_at=CASE WHEN excluded.released THEN NULL ELSE now() END,
+       reviewed_original=(patient_document_releases.reviewed_original OR excluded.reviewed_original),
+       updated_at=now()
+     RETURNING released,released_at,revoked_at,reviewed_original`,
+    [d.id, released, s.userId, reason, reviewedOriginal],
+  );
+  const row = r.rows[0];
+  await event(c, s, p, d.id, released ? 'PORTAL_RELEASE' : 'PORTAL_WITHDRAW', reason, {
+    documentVersion: d.version,
+    documentGroup: portalDocumentGroup(d),
+    consentDocument: consent,
+    consentReviewed: consent ? reviewedOriginal : false,
+    // Recorded, not verified: these are the stored states, nothing more.
+    recordedPatientSignature: d.patient_signature,
+    recordedDoctorSignature: d.doctor_signature,
+    recordedSigningDate: d.signing_date,
+  });
+  return {
+    document_id: d.id,
+    released,
+    portal_release_status: (released ? 'RELEASED' : 'REVOKED') as PortalReleaseStatus,
+    released_at: row.released_at,
+    revoked_at: row.revoked_at,
+    reviewed_original: row.reviewed_original === true,
+    consent_document: consent,
+  };
+}
 export async function releasePatientDocument(
   s: AuthorizationContext,
   p: number,
   id: number,
   released: unknown,
   why: unknown,
+  reviewedOriginal: unknown = false,
 ) {
   requireDocumentPermission(s, 'patients.documents.release', 'patients.documents.read');
   insist(typeof released === 'boolean', 'INVALID_RELEASE', 'Specify release or withdrawal.');
+  insist(
+    reviewedOriginal === undefined || typeof reviewedOriginal === 'boolean',
+    'INVALID_RELEASE',
+    'Specify whether the original was reviewed.',
+  );
   const reason = auditReason(why);
   return transaction(async (c) => {
-    await document(c, s, p, id);
-    await c.query(
-      'INSERT INTO patient_document_releases(document_id,released,actor_id) VALUES($1,$2,$3) ON CONFLICT(document_id) DO UPDATE SET released=excluded.released,actor_id=excluded.actor_id,updated_at=now()',
-      [id, released, s.userId],
-    );
-    await event(c, s, p, id, released ? 'PORTAL_RELEASE' : 'PORTAL_WITHDRAW', reason);
-    return { released };
+    const d = await document(c, s, p, id);
+    return applyPortalRelease(c, s, p, d, released, reason, reviewedOriginal === true);
+  });
+}
+/** Release or withdraw a staff selection in one authorized transaction. */
+export async function releasePatientDocuments(
+  s: AuthorizationContext,
+  p: number,
+  ids: unknown,
+  released: unknown,
+  why: unknown,
+  reviewedOriginal: unknown = false,
+) {
+  requireDocumentPermission(s, 'patients.documents.release', 'patients.documents.read');
+  insist(Array.isArray(ids), 'INVALID_RELEASE', 'Select the documents to release.');
+  const documentIds = [...new Set(ids.map((id) => idOf(id)))];
+  insist(
+    documentIds.length >= 1 && documentIds.length <= 50,
+    'INVALID_RELEASE',
+    'Select between one and fifty documents.',
+  );
+  insist(typeof released === 'boolean', 'INVALID_RELEASE', 'Specify release or withdrawal.');
+  insist(
+    reviewedOriginal === undefined || typeof reviewedOriginal === 'boolean',
+    'INVALID_RELEASE',
+    'Specify whether the originals were reviewed.',
+  );
+  const reason = auditReason(why);
+  return transaction(async (c) => {
+    await patient(c, s, p);
+    const rows = [];
+    for (const id of documentIds) {
+      const d = await document(c, s, p, id);
+      rows.push(await applyPortalRelease(c, s, p, d, released, reason, reviewedOriginal === true));
+    }
+    return { released, documents: rows };
   });
 }
 
@@ -836,37 +1138,259 @@ export async function setRadiologyConsentPolicy(
   });
 }
 
-/** Portal projection intentionally excludes staff notes, identifiers, hashes and internal audit. */
+/**
+ * Portal projection intentionally excludes staff notes, uploader/doctor
+ * identities, hashes, release reasons and internal audit. A patient only ever
+ * reads their own explicitly released versions inside their own facility.
+ */
+function portalScope(s: PortalSession) {
+  insist(
+    s.facilityId,
+    'PORTAL_FACILITY_REQUIRED',
+    'Your portal account is not linked to a facility yet. Ask the facility to finish your portal setup.',
+    409,
+  );
+  return s.facilityId as number;
+}
+function portalItem(row: Record<string, any>) {
+  const group = portalDocumentGroup(row);
+  return {
+    id: row.id,
+    title: row.title,
+    group,
+    group_label: PORTAL_GROUP_LABELS[group],
+    kind: portalDocumentKind(row),
+    document_type: row.document_type,
+    category: row.category,
+    signing_date: row.signing_date,
+    uploaded_at: row.uploaded_at,
+    version: row.version,
+    is_superseded: row.is_superseded === true,
+    has_versions: row.has_versions === true,
+    mime_type: row.mime_type,
+    source: portalDocumentSource(row),
+    procedure_name: row.procedure_name ?? null,
+  };
+}
+const portalVersionSql = `EXISTS(SELECT 1 FROM patient_signed_documents newer
+   WHERE newer.root_id=COALESCE(d.root_id,d.id) AND newer.version>d.version) AS is_superseded,
+ EXISTS(SELECT 1 FROM patient_signed_documents sibling
+   JOIN patient_document_releases sr ON sr.document_id=sibling.id AND sr.released=true
+   WHERE sibling.root_id=COALESCE(d.root_id,d.id) AND sibling.version<>d.version) AS has_versions`;
+async function portalAudit(
+  c: PoolClient,
+  s: PortalSession,
+  id: number | null,
+  download: boolean,
+  reason: string,
+) {
+  await c.query(
+    'INSERT INTO patient_document_events(document_id,tenant_id,facility_id,patient_id,portal_account_id,action,reason) VALUES($1,$2,$3,$4,$5,$6,$7)',
+    [
+      id,
+      s.tenantId,
+      s.facilityId,
+      s.patientId,
+      s.accountId,
+      download ? 'PORTAL_DOWNLOAD' : 'PORTAL_VIEW',
+      reason,
+    ],
+  );
+  await c.query(
+    "INSERT INTO patient_record_access_logs(patient_id,tenant_id,facility_id,user_id,action,access_channel,record_type,record_id,purpose) VALUES($1,$2,$3,NULL,$4,'PATIENT_PORTAL','SIGNED_DOCUMENT',$5,'PATIENT_REQUEST')",
+    [s.patientId, s.tenantId, s.facilityId, download ? 'DOWNLOAD' : 'VIEW', id],
+  );
+}
+/**
+ * One server-side page of the authenticated patient's released documents.
+ * Search, category and date filters run in SQL over the whole authorized set,
+ * so an older release can never fall outside a fixed 200-row window.
+ */
+export async function portalDocumentPage(s: PortalSession, query: Record<string, unknown> = {}) {
+  const facilityId = portalScope(s);
+  const policy = await loadPortalPolicy(facilityId);
+  const search = text(query.search, 80, false);
+  const group = String(query.group ?? 'ALL').toUpperCase();
+  insist(
+    ['ALL', 'CONSENT', 'CLINICAL', 'OTHER'].includes(group),
+    'INVALID_FILTER',
+    'Choose a document category.',
+  );
+  const dates = [query.from, query.to].map((v) => (v ? text(v, 10) : null));
+  for (const d of dates)
+    insist(
+      !d ||
+        (/^\d{4}-\d{2}-\d{2}$/.test(d) &&
+          !isNaN(Date.parse(d)) &&
+          new Date(d).toISOString().slice(0, 10) === d),
+      'INVALID_DATE_FILTER',
+      'Use ISO upload-date filters.',
+    );
+  insist(
+    !dates[0] || !dates[1] || dates[0] <= dates[1],
+    'INVALID_DATE_FILTER',
+    'Upload-date range is reversed.',
+  );
+  const limit = pageLimit(query.limit, 50, 100);
+  const cursor = decodeDocumentCursor(query.cursor);
+  const filtered = Boolean(search || dates[0] || dates[1] || group !== 'ALL');
+  const scope = `d.tenant_id=$1 AND d.facility_id=$2 AND d.patient_id=$3 AND r.released=true
+    AND ($4='' OR position(lower($4) in lower(d.title))>0 OR position(lower($4) in lower(d.document_type))>0)
+    AND ($5::date IS NULL OR d.uploaded_at >= $5::date)
+    AND ($6::date IS NULL OR d.uploaded_at < ($6::date + interval '1 day'))`;
+  return transaction(async (c) => {
+    const base = [s.tenantId, facilityId, s.patientId, search, dates[0], dates[1]];
+    const groupSql = group === 'ALL' ? '' : ` AND ${PORTAL_GROUP_SQL} = $7`;
+    const values = group === 'ALL' ? base : [...base, group];
+    const cursorSql = cursor
+      ? ` AND (d.uploaded_at, d.id) < ($${values.length + 1}::timestamptz, $${values.length + 2}::int)`
+      : '';
+    const rows = await c.query(
+      `SELECT ${PORTAL_DOCUMENT_FIELDS},${portalVersionSql}
+       FROM patient_signed_documents d
+       JOIN patient_document_releases r ON r.document_id=d.id AND r.released=true
+       WHERE ${scope}${groupSql}${cursorSql}
+       ORDER BY d.uploaded_at DESC,d.id DESC LIMIT ${limit + 1}`,
+      cursor ? [...values, cursor.uploadedAt, cursor.id] : values,
+    );
+    const pageRows = rows.rows.slice(0, limit);
+    const total = Number(
+      (
+        await c.query(
+          `SELECT count(*)::int AS n FROM patient_signed_documents d
+           JOIN patient_document_releases r ON r.document_id=d.id AND r.released=true
+           WHERE ${scope}${groupSql}`,
+          values,
+        )
+      ).rows[0].n,
+    );
+    const groupRows = (
+      await c.query(
+        `SELECT ${PORTAL_GROUP_SQL} AS portal_group,count(*)::int AS n
+         FROM patient_signed_documents d
+         JOIN patient_document_releases r ON r.document_id=d.id AND r.released=true
+         WHERE ${scope}
+         GROUP BY 1`,
+        base,
+      )
+    ).rows;
+    const groups: Record<string, number> = { ALL: 0, CONSENT: 0, CLINICAL: 0, OTHER: 0 };
+    for (const row of groupRows) {
+      groups[row.portal_group] = Number(row.n);
+      groups.ALL += Number(row.n);
+    }
+    let emptyState: 'NONE_RELEASED' | 'AWAITING_RELEASE' | 'NO_MATCHES' | null = null;
+    if (total === 0) {
+      if (filtered) emptyState = 'NO_MATCHES';
+      else {
+        const awaiting = await c.query(
+          `SELECT EXISTS(SELECT 1 FROM patient_signed_documents d
+             LEFT JOIN patient_document_releases r ON r.document_id=d.id
+             WHERE d.tenant_id=$1 AND d.facility_id=$2 AND d.patient_id=$3
+               AND COALESCE(r.released,false)=false) AS awaiting`,
+          [s.tenantId, facilityId, s.patientId],
+        );
+        emptyState = awaiting.rows[0].awaiting ? 'AWAITING_RELEASE' : 'NONE_RELEASED';
+      }
+    }
+    await portalAudit(c, s, null, false, 'Patient viewed their released documents');
+    return {
+      documents: pageRows.map(portalItem),
+      page: {
+        limit,
+        total,
+        returned: pageRows.length,
+        has_more: rows.rowCount! > limit,
+        next_cursor:
+          rows.rowCount! > limit ? encodeDocumentCursor(pageRows[pageRows.length - 1]) : null,
+      } satisfies DocumentPageInfo,
+      groups,
+      empty_state: emptyState,
+      filters: { search, group, from: dates[0], to: dates[1] },
+      downloads_enabled: policy.allowDownloads,
+    };
+  });
+}
+/** Details of one released document plus the other released versions of it. */
+export async function portalDocumentDetail(s: PortalSession, id: number) {
+  const facilityId = portalScope(s);
+  return transaction(async (c) => {
+    const found = await c.query(
+      `SELECT ${PORTAL_DOCUMENT_FIELDS},${portalVersionSql}
+       FROM patient_signed_documents d
+       JOIN patient_document_releases r ON r.document_id=d.id AND r.released=true
+       WHERE d.tenant_id=$1 AND d.facility_id=$2 AND d.patient_id=$3 AND d.id=$4`,
+      [s.tenantId, facilityId, s.patientId, id],
+    );
+    insist(found.rowCount, 'DOCUMENT_NOT_FOUND', 'Document not found.', 404);
+    const target = found.rows[0];
+    const versions = await c.query(
+      `SELECT ${PORTAL_DOCUMENT_FIELDS},${portalVersionSql}
+       FROM patient_signed_documents d
+       JOIN patient_document_releases r ON r.document_id=d.id AND r.released=true
+       WHERE d.tenant_id=$1 AND d.facility_id=$2 AND d.patient_id=$3
+         AND COALESCE(d.root_id,d.id)=$4
+       ORDER BY d.version`,
+      [s.tenantId, facilityId, s.patientId, target.root_id ?? target.id],
+    );
+    await portalAudit(c, s, id, false, 'Patient viewed a released document and its versions');
+    return {
+      document: portalItem(target),
+      versions: versions.rows.map((row) => {
+        const item = portalItem(row);
+        return {
+          id: item.id,
+          version: item.version,
+          title: item.title,
+          uploaded_at: item.uploaded_at,
+          signing_date: item.signing_date,
+          is_superseded: item.is_superseded,
+          current: item.id === target.id,
+        };
+      }),
+    };
+  });
+}
+/** Released versions of the same document, newest last. */
+export async function portalDocumentHistory(s: PortalSession, id: number) {
+  const detail = await portalDocumentDetail(s, id);
+  return {
+    document_id: detail.document.id,
+    versions: detail.versions.map(({ current, ...version }) => version),
+  };
+}
 export async function portalPatientDocuments(s: PortalSession, id?: number, download = false) {
-  insist(s.facilityId, 'DOCUMENT_NOT_FOUND', 'Document not found.', 404);
-  const policy = await loadPortalPolicy(s.facilityId);
+  const facilityId = portalScope(s);
+  const policy = await loadPortalPolicy(facilityId);
   insist(
     !download || policy.allowDownloads,
     'DOWNLOAD_DISABLED',
     'The facility has disabled portal downloads.',
     403,
   );
+  insist(
+    Number.isSafeInteger(id) && Number(id) > 0,
+    'INVALID_ID',
+    'A positive identifier is required.',
+  );
   return transaction(async (c) => {
     const result = await c.query(
-      `SELECT ${PORTAL_DOCUMENT_FIELDS}${id ? ',d.original_bytes,d.filename' : ''} FROM patient_signed_documents d JOIN patient_document_releases r ON r.document_id=d.id AND r.released=true WHERE d.tenant_id=$1 AND d.facility_id=$2 AND d.patient_id=$3 ${id ? 'AND d.id=$4' : ''} ORDER BY d.uploaded_at DESC LIMIT 200`,
-      id ? [s.tenantId, s.facilityId, s.patientId, id] : [s.tenantId, s.facilityId, s.patientId],
+      `SELECT ${PORTAL_DOCUMENT_FIELDS},d.original_bytes,d.filename
+       FROM patient_signed_documents d
+       JOIN patient_document_releases r ON r.document_id=d.id AND r.released=true
+       WHERE d.tenant_id=$1 AND d.facility_id=$2 AND d.patient_id=$3 AND d.id=$4`,
+      [s.tenantId, facilityId, s.patientId, id],
     );
-    if (id) insist(result.rowCount, 'DOCUMENT_NOT_FOUND', 'Document not found.', 404);
-    await c.query(
-      "INSERT INTO patient_document_events(document_id,tenant_id,facility_id,patient_id,portal_account_id,action,reason) VALUES($1,$2,$3,$4,$5,$6,'Patient accessed explicitly released own document')",
-      [
-        id ?? null,
-        s.tenantId,
-        s.facilityId,
-        s.patientId,
-        s.accountId,
-        download ? 'PORTAL_DOWNLOAD' : 'PORTAL_VIEW',
-      ],
+    insist(result.rowCount, 'DOCUMENT_NOT_FOUND', 'Document not found.', 404);
+    await portalAudit(
+      c,
+      s,
+      Number(id),
+      download,
+      download
+        ? 'Patient downloaded their released original document'
+        : 'Patient accessed their released original document',
     );
-    await c.query(
-      "INSERT INTO patient_record_access_logs(patient_id,tenant_id,facility_id,user_id,action,access_channel,record_type,record_id,purpose) VALUES($1,$2,$3,NULL,$4,'PATIENT_PORTAL','SIGNED_DOCUMENT',$5,'PATIENT_REQUEST')",
-      [s.patientId, s.tenantId, s.facilityId, download ? 'DOWNLOAD' : 'VIEW', id ?? null],
-    );
-    return id ? result.rows[0] : result.rows;
+    return result.rows[0];
   });
 }

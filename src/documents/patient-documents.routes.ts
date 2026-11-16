@@ -85,8 +85,12 @@ staff.get('/patients/:patientId/doctors', async (req: AuthRequest, res) => {
 });
 staff.get('/patients/:patientId', async (req: AuthRequest, res) => {
   try {
+    const patientId = svc.idOf(req.params.patientId);
+    // `paginate=1` returns the page envelope; otherwise the flat array is kept.
     return res.json(
-      await svc.listPatientDocuments(req.authContext!, svc.idOf(req.params.patientId), req.query),
+      ['1', 'true'].includes(String(req.query.paginate ?? ''))
+        ? await svc.listPatientDocumentPage(req.authContext!, patientId, req.query)
+        : await svc.listPatientDocuments(req.authContext!, patientId, req.query),
     );
   } catch (e) {
     return failure(e, res);
@@ -134,6 +138,27 @@ staff.post(
           svc.idOf(req.params.id),
           req.body?.released,
           req.body?.reason,
+          req.body?.reviewedOriginal,
+        ),
+      );
+    } catch (e) {
+      return failure(e, res);
+    }
+  },
+);
+staff.post(
+  '/patients/:patientId/releases',
+  express.json({ limit: '8kb' }),
+  async (req: AuthRequest, res) => {
+    try {
+      return res.json(
+        await svc.releasePatientDocuments(
+          req.authContext!,
+          svc.idOf(req.params.patientId),
+          req.body?.documentIds,
+          req.body?.released,
+          req.body?.reason,
+          req.body?.reviewedOriginal,
         ),
       );
     } catch (e) {
@@ -193,7 +218,23 @@ portal.get('/', async (req: PortalRequest, res) => {
   try {
     return res
       .set('Cache-Control', 'private, no-store')
-      .json(await svc.portalPatientDocuments(req.portalSession!));
+      .json(await svc.portalDocumentPage(req.portalSession!, req.query));
+  } catch (e) {
+    return failure(e, res);
+  }
+});
+portal.get('/:id/history', async (req: PortalRequest, res) => {
+  try {
+    return res.json(
+      await svc.portalDocumentHistory(req.portalSession!, svc.idOf(req.params.id)),
+    );
+  } catch (e) {
+    return failure(e, res);
+  }
+});
+portal.get('/:id', async (req: PortalRequest, res) => {
+  try {
+    return res.json(await svc.portalDocumentDetail(req.portalSession!, svc.idOf(req.params.id)));
   } catch (e) {
     return failure(e, res);
   }
