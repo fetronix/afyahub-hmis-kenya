@@ -7,6 +7,7 @@ import { StaffInvitationsPanel } from './StaffInvitationsPanel.tsx';
 import { StaffRolesPanel } from './StaffRolesPanel.tsx';
 import { FacilityServicesManager } from './FacilityServicesManager.tsx';
 import { BrandingDocumentsPanel } from './BrandingDocumentsPanel.tsx';
+import { RadiologyConsentPolicyPanel } from './RadiologyConsentPolicyPanel.tsx';
 import { FacilityIntegrationHub } from './FacilityIntegrationHub.tsx';
 import {
   FACILITY_MODULES,
@@ -119,6 +120,7 @@ export const ConfigurationModule: React.FC = () => {
     | 'integrations'
     | 'staff'
     | 'approvals'
+    | 'radiology-consent'
     | 'branding'
   >(integrationOnly ? 'integrations' : staffOnly ? 'staff' : 'facility');
 
@@ -284,6 +286,7 @@ export const ConfigurationModule: React.FC = () => {
           { id: 'integrations', label: 'Integration Hub', icon: CreditCard },
           { id: 'tariffs', label: 'Facility Services & Tariffs', icon: DollarSign },
           { id: 'approvals', label: 'Approval Policies', icon: ShieldCheck },
+          { id: 'radiology-consent', label: 'Radiology Consent', icon: ShieldCheck },
           { id: 'branding', label: 'Branding & Documents', icon: FileText },
         ]
           .filter((tab) => {
@@ -304,6 +307,8 @@ export const ConfigurationModule: React.FC = () => {
              * branding permission has no business seeing another facility's
              * stationery list.
              */
+            if (tab.id === 'radiology-consent')
+              return Boolean(currentFacility?.id) && permissions.has('radiology.consent.policy');
             if (tab.id === 'branding')
               return (
                 Boolean(currentFacility?.id) &&
@@ -596,6 +601,10 @@ export const ConfigurationModule: React.FC = () => {
           facilityId={currentFacility.id}
           canManage={canManageApprovalPolicies}
         />
+      )}
+
+      {activeTab === 'radiology-consent' && currentFacility?.id && (
+        <RadiologyConsentPolicyPanel canManage={permissions.has('radiology.consent.policy')} />
       )}
 
       {activeTab === 'branding' && currentFacility?.id && (

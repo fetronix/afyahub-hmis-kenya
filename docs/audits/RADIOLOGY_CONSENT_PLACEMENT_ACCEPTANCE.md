@@ -1,5 +1,7 @@
 # Radiology consent placement and central document visibility
 
+> **Superseded (UI):** the signature-metadata upload form and its browser harness were replaced by the simplified upload and doctor self-verification described in [RADIOLOGY_CONSENT_SIMPLIFICATION_ACCEPTANCE.md](RADIOLOGY_CONSENT_SIMPLIFICATION_ACCEPTANCE.md). The evidence below is retained as the historical record of that earlier delivery and is not a current test result.
+
 ## Outcome and location
 
 On the existing **Radiology & Imaging → selected request → Radiology Report** screen, the retained **Procedure-specific radiology consent · request #…** panel now appears **above Findings/Impression**. Its internal sequence is:

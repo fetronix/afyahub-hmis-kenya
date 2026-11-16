@@ -7,25 +7,7 @@ import {
   type PatientFile,
 } from '../api/patient-documents.client.ts';
 
-export interface RequestConsentWorkflow {
-  refreshKey?: number;
-  procedureName: string;
-  disabled: boolean;
-  consentStatus: string;
-  decisionDocumentId: number | null;
-  onUploaded: (doc: PatientFile) => void;
-  onReviewed: (doc: PatientFile) => void;
-  onOpenRepository: (doc: PatientFile) => void | Promise<void>;
-}
-export function PatientDocumentsPanel({
-  patientId,
-  radiologyOrderId,
-  requestWorkflow,
-}: {
-  patientId: number;
-  radiologyOrderId?: number;
-  requestWorkflow?: RequestConsentWorkflow;
-}) {
+export function PatientDocumentsPanel({ patientId }: { patientId: number }) {
   const {
     authenticatedUser,
     currentFacility,
@@ -37,11 +19,9 @@ export function PatientDocumentsPanel({
   } = useHmis();
   return (
     <DocumentWorkspace
-      key={`${authenticatedUser?.id}:${currentFacility?.id}:${patientId}:${radiologyOrderId ?? ''}:${authenticatedUser?.permissions?.join(',')}`}
+      key={`${authenticatedUser?.id}:${currentFacility?.id}:${patientId}:${authenticatedUser?.permissions?.join(',')}`}
       patientId={patientId}
-      radiologyOrderId={radiologyOrderId}
       permissions={authenticatedUser?.permissions ?? []}
-      requestWorkflow={requestWorkflow}
       focusDocumentId={
         clinicalDocumentTarget?.kind === 'repository' &&
         clinicalDocumentTarget.patientId === patientId &&
@@ -80,25 +60,20 @@ export function PortalSignedDocuments() {
 }
 function DocumentWorkspace({
   patientId,
-  radiologyOrderId,
   permissions,
-  requestWorkflow,
   focusDocumentId,
   onOpenOrigin,
   portal = false,
 }: {
   patientId?: number;
-  radiologyOrderId?: number;
   permissions: string[];
   portal?: boolean;
-  requestWorkflow?: RequestConsentWorkflow;
   focusDocumentId?: number;
   onOpenOrigin?: (doc: PatientFile) => void;
 }) {
   const canRead = portal || permissions.includes('patients.documents.read');
   const canUpload = !portal && permissions.includes('patients.documents.upload') && canRead;
   const base = portal ? '' : `/patients/${patientId}`;
-  const [uploadOpen, setUploadOpen] = useState(!requestWorkflow);
   const [details, setDetails] = useState<PatientFile | null>(null);
   const [documents, setDocuments] = useState<PatientFile[]>([]),
     [error, setError] = useState(''),
@@ -128,17 +103,7 @@ function DocumentWorkspace({
   const [file, setFile] = useState<File | null>(null);
   const [form, setForm] = useState({ title: '', notes: '', previousId: '' });
   const [release, setRelease] = useState<{ doc: PatientFile; reason: string } | null>(null);
-  const requestKey = JSON.stringify([
-    base,
-    portal,
-    search,
-    type,
-    from,
-    to,
-    revision,
-    radiologyOrderId,
-    requestWorkflow?.refreshKey,
-  ]);
+  const requestKey = JSON.stringify([base, portal, search, type, from, to, revision]);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const loading = loadedKey !== requestKey;
   const visibleDocuments = loading ? [] : documents;
@@ -146,7 +111,7 @@ function DocumentWorkspace({
     let active = true;
     if (!canRead) return;
     documentRequest<PatientFile[]>(
-      `${base}${portal ? '' : `?${new URLSearchParams({ search, type, from, to, ...(radiologyOrderId ? { radiologyOrderId: String(radiologyOrderId) } : {}) })}`}`,
+      `${base}${portal ? '' : `?${new URLSearchParams({ search, type, from, to })}`}`,
       {},
       portal,
     )
@@ -167,7 +132,7 @@ function DocumentWorkspace({
     return () => {
       active = false;
     };
-  }, [base, canRead, portal, search, type, from, to, requestKey, radiologyOrderId]);
+  }, [base, canRead, portal, search, type, from, to, requestKey]);
   useEffect(() => {
     if (!loading && focusDocumentId)
       document
@@ -199,7 +164,6 @@ function DocumentWorkspace({
         ...form,
         uploadMode: 'SIMPLE',
         filename: file.name,
-        ...(radiologyOrderId ? { radiologyOrderId } : {}),
       };
       const saved = await documentRequest<PatientFile>(base, {
         method: 'POST',
@@ -212,10 +176,6 @@ function DocumentWorkspace({
       setForm({ title: '', notes: '', previousId: '' });
       setFile(null);
       setPreview(null);
-      if (requestWorkflow) {
-        setUploadOpen(false);
-        requestWorkflow.onUploaded(saved);
-      }
       if (fileInput.current) fileInput.current.value = '';
       setRevision((v) => v + 1);
     });
@@ -242,16 +202,12 @@ function DocumentWorkspace({
           title: doc.title,
           derived: (blob as Blob & { derivedPreview?: boolean }).derivedPreview,
         });
-      if (requestWorkflow) {
-        requestWorkflow.onReviewed(doc);
-        setRevision((v) => v + 1);
-      }
     });
   }
   const field = 'rounded border border-slate-300 p-2 text-sm w-full';
   const actionClass =
     'mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-50';
-  const uploadForm = canUpload && uploadOpen && (
+  const uploadForm = canUpload && (
     <form
       onSubmit={(e) => void upload(e)}
       className="grid gap-3 rounded bg-slate-50 p-3 sm:grid-cols-2"
@@ -330,7 +286,7 @@ function DocumentWorkspace({
       <button
         className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
         type="submit"
-        disabled={busy || requestWorkflow?.disabled}
+        disabled={busy}
       >
         {busy ? 'Uploading…' : 'Upload document'}
       </button>
@@ -353,21 +309,11 @@ function DocumentWorkspace({
 
   return (
     <section
-      aria-label={
-        portal
-          ? 'My Documents & Signed Consents'
-          : requestWorkflow
-            ? 'Request consent attachments'
-            : 'Consent & Signed Documents'
-      }
+      aria-label={portal ? 'My Documents & Signed Consents' : 'Consent & Signed Documents'}
       className="space-y-4 rounded border bg-white p-4"
     >
       <h3 className="text-lg font-bold">
-        {portal
-          ? 'My Documents & Signed Consents'
-          : requestWorkflow
-            ? 'Document attachments'
-            : 'Consent & Signed Documents'}
+        {portal ? 'My Documents & Signed Consents' : 'Consent & Signed Documents'}
       </h3>
       <p className="text-sm text-slate-600">
         Original files are preserved. Uploading a document does not automatically verify signatures
@@ -382,25 +328,8 @@ function DocumentWorkspace({
               {error}
             </p>
           )}
-          {requestWorkflow && (
-            <>
-              {canUpload && !uploadOpen && (
-                <button
-                  type="button"
-                  className="rounded bg-teal-800 px-4 py-2 font-semibold text-white disabled:opacity-50"
-                  disabled={busy || requestWorkflow.disabled}
-                  onClick={() => setUploadOpen(true)}
-                >
-                  Upload document
-                </button>
-              )}
-              {uploadForm}
-              <h4 className="font-semibold">
-                Attached consent documents · request #{radiologyOrderId}
-              </h4>
-            </>
-          )}
-          {!portal && !requestWorkflow && (
+          {uploadForm}
+          {!portal && (
             <div className="grid gap-2 sm:grid-cols-4">
               <label>
                 Search title
@@ -443,146 +372,111 @@ function DocumentWorkspace({
           </button>
           {loading && <p role="status">Loading authorized document versions…</p>}
           <ul className="space-y-3">
-            {visibleDocuments
-              .filter((d) => !radiologyOrderId || d.radiology_order_id === radiologyOrderId)
-              .map((doc) => (
-                <li
-                  className={`rounded border p-3 break-words ${focusDocumentId === doc.id ? 'ring-2 ring-teal-700' : ''}`}
-                  key={doc.id}
-                  data-patient-document={doc.id}
-                >
-                  <strong>{doc.title}</strong>
-                  <p>
-                    Uploaded: {new Date(doc.uploaded_at).toLocaleString()}
-                    {!portal && (
-                      <> · Uploaded by: {doc.uploader_name ?? 'Staff member (name unavailable)'}</>
-                    )}
-                  </p>
-                  <p>
-                    Original filename: {doc.filename ?? 'Available on download'} · Version{' '}
-                    {doc.version}
-                    {doc.is_latest_version === false ? ' · Superseded' : ''}
-                  </p>
-                  {!portal && doc.notes && <p>{doc.notes}</p>}
+            {visibleDocuments.map((doc) => (
+              <li
+                className={`rounded border p-3 break-words ${focusDocumentId === doc.id ? 'ring-2 ring-teal-700' : ''}`}
+                key={doc.id}
+                data-patient-document={doc.id}
+              >
+                <strong>{doc.title}</strong>
+                <p>
+                  Uploaded: {new Date(doc.uploaded_at).toLocaleString()}
                   {!portal && (
-                    <p>
-                      Source/context:{' '}
-                      {doc.radiology_order_id
-                        ? 'Radiology document'
-                        : /laboratory|lab report/i.test(`${doc.category} ${doc.document_type}`)
-                          ? 'Laboratory document (no linked request recorded)'
-                          : 'General patient document'}
-                    </p>
+                    <> · Uploaded by: {doc.uploader_name ?? 'Staff member (name unavailable)'}</>
                   )}
-                  {!portal && doc.radiology_order_id && (
-                    <p>
-                      Imaging request #{doc.radiology_order_id}: {doc.procedure_name}
-                    </p>
+                </p>
+                <p>
+                  Original filename: {doc.filename ?? 'Available on download'} · Version{' '}
+                  {doc.version}
+                  {doc.is_latest_version === false ? ' · Superseded' : ''}
+                </p>
+                {!portal && doc.notes && <p>{doc.notes}</p>}
+                {!portal && (
+                  <p>
+                    Source/context:{' '}
+                    {doc.radiology_order_id
+                      ? 'Radiology document'
+                      : /laboratory|lab report/i.test(`${doc.category} ${doc.document_type}`)
+                        ? 'Laboratory document (no linked request recorded)'
+                        : 'General patient document'}
+                  </p>
+                )}
+                {!portal && doc.radiology_order_id && (
+                  <p>
+                    Imaging request #{doc.radiology_order_id}: {doc.procedure_name}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+                    disabled={busy}
+                    onClick={() => void retrieve(doc, false)}
+                  >
+                    Preview {doc.title}
+                  </button>
+                  <button
+                    className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+                    disabled={busy}
+                    onClick={() => void retrieve(doc, true)}
+                  >
+                    Download {doc.title}
+                  </button>
+                  {!portal && (
+                    <button className={actionClass} disabled={busy} onClick={() => setDetails(doc)}>
+                      View document details #{doc.id}
+                    </button>
                   )}
-                  {requestWorkflow && (
-                    <p>
-                      Consent verification:{' '}
-                      {doc.is_latest_version === false
-                        ? 'Superseded — use latest correction'
-                        : requestWorkflow.consentStatus === 'VERIFIED' &&
-                            requestWorkflow.decisionDocumentId === doc.id
-                          ? 'Verified for this request'
-                          : 'Not verified'}
-                    </p>
+                  {!portal && doc.radiology_order_id && onOpenOrigin && (
+                    <button className={actionClass} onClick={() => onOpenOrigin(doc)}>
+                      Open imaging request #{doc.radiology_order_id}
+                    </button>
                   )}
-                  <div className="flex flex-wrap gap-3">
+                  {!portal && (
                     <button
                       className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
                       disabled={busy}
-                      onClick={() => void retrieve(doc, false)}
+                      onClick={() =>
+                        void run(async () =>
+                          setHistory(await documentRequest(`${base}/${doc.id}/history`)),
+                        )
+                      }
                     >
-                      {requestWorkflow ? `Preview original #${doc.id}` : `Preview ${doc.title}`}
+                      Version & audit history #{doc.id}
                     </button>
+                  )}
+                  {canUpload && (
+                    <button
+                      className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
+                      disabled={busy || doc.is_latest_version === false}
+                      onClick={() => {
+                        setForm({
+                          title: doc.title,
+                          notes: doc.notes ?? '',
+                          previousId: String(doc.id),
+                        });
+                        setFile(null);
+                        setPreview(null);
+                        if (fileInput.current) fileInput.current.value = '';
+                      }}
+                    >
+                      Create correction of #{doc.id}
+                    </button>
+                  )}
+                  {!portal && permissions.includes('patients.documents.release') && (
                     <button
                       className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
                       disabled={busy}
-                      onClick={() => void retrieve(doc, true)}
+                      onClick={() => setRelease({ doc, reason: '' })}
                     >
-                      Download {doc.title}
+                      {doc.portal_released
+                        ? 'Withdraw portal release'
+                        : 'Release to patient portal'}{' '}
+                      #{doc.id}
                     </button>
-                    {!portal && (
-                      <button
-                        className={actionClass}
-                        disabled={busy}
-                        onClick={() => setDetails(doc)}
-                      >
-                        View document details #{doc.id}
-                      </button>
-                    )}
-                    {requestWorkflow && (
-                      <button
-                        className={actionClass}
-                        disabled={busy}
-                        onClick={() =>
-                          void run(async () => {
-                            await requestWorkflow.onOpenRepository(doc);
-                          })
-                        }
-                      >
-                        Open in Patient Management #{doc.id}
-                      </button>
-                    )}
-                    {!portal && !requestWorkflow && doc.radiology_order_id && onOpenOrigin && (
-                      <button className={actionClass} onClick={() => onOpenOrigin(doc)}>
-                        Open imaging request #{doc.radiology_order_id}
-                      </button>
-                    )}
-                    {!portal && (
-                      <button
-                        className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
-                        disabled={busy}
-                        onClick={() =>
-                          void run(async () =>
-                            setHistory(await documentRequest(`${base}/${doc.id}/history`)),
-                          )
-                        }
-                      >
-                        Version & audit history #{doc.id}
-                      </button>
-                    )}
-                    {canUpload && (
-                      <button
-                        className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
-                        disabled={
-                          busy || requestWorkflow?.disabled || doc.is_latest_version === false
-                        }
-                        onClick={() => {
-                          setUploadOpen(true);
-                          setForm({
-                            title: doc.title,
-                            notes: doc.notes ?? '',
-                            previousId: String(doc.id),
-                          });
-                          setFile(null);
-                          setPreview(null);
-                          if (fileInput.current) fileInput.current.value = '';
-                        }}
-                      >
-                        {requestWorkflow
-                          ? `Correct consent version #${doc.id}`
-                          : `Create correction of #${doc.id}`}
-                      </button>
-                    )}
-                    {!portal && permissions.includes('patients.documents.release') && (
-                      <button
-                        className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
-                        disabled={busy}
-                        onClick={() => setRelease({ doc, reason: '' })}
-                      >
-                        {doc.portal_released
-                          ? 'Withdraw portal release'
-                          : 'Release to patient portal'}{' '}
-                        #{doc.id}
-                      </button>
-                    )}
-                  </div>
-                </li>
-              ))}
+                  )}
+                </div>
+              </li>
+            ))}
           </ul>
           {!loading && visibleDocuments.length === 0 && !error && (
             <p>
@@ -718,7 +612,6 @@ function DocumentWorkspace({
               </button>
             </form>
           )}
-          {!requestWorkflow && uploadForm}
         </>
       )}
     </section>

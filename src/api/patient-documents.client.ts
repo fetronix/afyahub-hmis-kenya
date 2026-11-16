@@ -32,6 +32,8 @@ export interface PatientFile {
   mime_type: string;
   radiology_order_id: number | null;
   procedure_name: string | null;
+  radiology_attachment_context?: 'PRE_PROCEDURE' | 'POST_REPORTING_HISTORICAL' | null;
+  historical?: boolean;
   portal_released?: boolean;
   is_latest_version?: boolean;
   reviewed_by_actor?: boolean;

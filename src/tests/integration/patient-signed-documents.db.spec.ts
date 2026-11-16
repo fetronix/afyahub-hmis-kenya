@@ -328,14 +328,8 @@ describeDb('signed originals, procedure consent and report retrieval — disposa
       }),
     ).rejects.toMatchObject({ code: 'CONSENT_INCOMPLETE' });
   });
-  it('links consent to procedure/patient/doctor, records verification, invalidates correction, then allows completion', async () => {
-    const specific = metadata({
-      radiologyOrderId: order,
-      patientSignature: 'PRESENT',
-      doctorSignature: 'PRESENT',
-      doctorId: a.userId,
-      signingDate: '2026-01-02',
-    });
+  it('links simple consent to procedure/patient, records the signed-in doctor, invalidates correction, then allows completion', async () => {
+    const specific = { ...metadata(), uploadMode: 'SIMPLE', radiologyOrderId: order };
     const consent = await docs.uploadPatientDocument(a, patient, specific, pdf, 'application/pdf');
     expect((await docs.radiologyConsent(a, order)).status).toBe('AWAITING_VERIFICATION');
     await expect(

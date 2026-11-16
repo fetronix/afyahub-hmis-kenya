@@ -179,10 +179,15 @@ describeDb('Simple document uploads — attested disposable DB and real mounted 
     expect(r.status).toBe(200);
     expect(Buffer.from(await r.arrayBuffer())).toEqual(bytes);
   });
-  it('does not allow unknown signatures or a general document to verify consent', async () => {
-    expect((await verify(order, linked.id)).status).toBe(400);
+  it('requires an exact request document and a doctor review, not invented signature fields', async () => {
     expect((await verify(order, general.id)).status).toBe(400);
     expect((await verify(other, linked.id)).status).toBe(400);
+    expect((await verify(order, linked.id)).status).toBe(409);
+    const reviewed = await fetch(`${server.baseUrl}${base()}/${linked.id}/file`, {
+      headers: { Authorization: `Bearer ${f.doctorA.token}` },
+    });
+    expect(reviewed.status).toBe(200);
+    expect((await verify(order, linked.id)).status).toBe(200);
   });
   it('rejects wrong patient request linkage, file retrieval and cross-facility access', async () => {
     expect((await upload({ radiologyOrderId: order }, f.staff.token, otherPatient)).status).toBe(

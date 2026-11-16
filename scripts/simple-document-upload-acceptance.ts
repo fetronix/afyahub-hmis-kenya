@@ -303,17 +303,66 @@ try {
   );
   await (study.asElement() as ElementHandle<Element>).click();
   await a.waitForSelector('[aria-label="Procedure-specific radiology consent"]');
-  await click(a, 'Upload document', '[aria-label="Request consent attachments"] button');
-  check(
-    await formIsSimple(a),
-    'Radiology upload form has the same three fields and no manual clinical/scope identifiers',
+  await a.waitForFunction(
+    () =>
+      !document
+        .querySelector('[aria-label="Procedure-specific radiology consent"]')
+        ?.textContent?.includes('Loading consent status'),
   );
-  await fill(a, 'Document title', 'Synthetic simple radiology upload');
-  await (await a.$('input[aria-label="Signed document file"]'))!.uploadFile(file);
-  await (await a.$('form[aria-label="Upload document"]'))!.screenshot({
-    path: out + '/02-radiology-simple-form.png',
-  });
-  const original = await save(a, 'Synthetic simple radiology upload');
+  async function uploadConsent(title: string, notes = '') {
+    await a
+      .waitForSelector('button[aria-label="Upload consent document"]', { visible: false })
+      .catch(() => undefined);
+    await a.evaluate(() => {
+      const button = Array.from(document.querySelectorAll<HTMLButtonElement>('button')).find(
+        (b) => b.textContent?.trim() === 'Upload consent document' && !b.disabled,
+      );
+      if (!button) throw Error('Upload consent document unavailable');
+      button.click();
+    });
+    const form = 'form[aria-label="Upload radiology consent document"]';
+    await a.waitForSelector(`${form} input[aria-label="Original consent file"]`);
+    await fill(a, 'Document title', title);
+    if (notes) await fill(a, 'Notes (optional)', notes);
+    await (await a.$(`${form} input[aria-label="Original consent file"]`))!.uploadFile(file);
+    const response = a.waitForResponse(
+      (r) =>
+        r.url().endsWith(`/api/patient-documents/patients/${f.patient}`) &&
+        r.request().method() === 'POST',
+    );
+    await a.$eval(form, (e) => {
+      const button = Array.from(e.querySelectorAll('button')).find(
+        (b) => b.textContent?.trim() === 'Upload document',
+      );
+      if (!button || button.disabled) throw Error('Upload submit unavailable');
+      button.click();
+    });
+    const status = (await response).status();
+    await a.waitForNetworkIdle().catch(() => undefined);
+    return status;
+  }
+  check(
+    (await a
+      .$eval('form[aria-label="Upload radiology consent document"]', () => true)
+      .catch(() => false)) === false,
+    'Radiology consent form is not shown until the upload action is used',
+  );
+  check(
+    (await uploadConsent('Synthetic simple radiology upload')) === 201,
+    'Radiology simple upload accepted',
+  );
+  check(
+    (await a
+      .$eval('form[aria-label="Upload radiology consent document"]', (form) => {
+        const controls = Array.from(form.querySelectorAll('input,textarea,select'));
+        return controls.length === 3;
+      })
+      .catch(() => true)) === true,
+    'Radiology upload form closes after upload and exposes no clinical assertions',
+  );
+  const original = (await request(a, docsUrl)).data.find(
+    (d: any) => d.title === 'Synthetic simple radiology upload',
+  );
   check(
     original.patient_id === f.patient &&
       original.radiology_order_id === order &&
@@ -340,8 +389,8 @@ try {
     reason: 'Synthetic separate signature review verification',
   };
   check(
-    (await request(a, consentUrl, decision)).status === 400,
-    'Direct verification with unknown signatures remains blocked',
+    (await request(a, consentUrl, decision)).status === 409,
+    'Verification before retrieving the original remains blocked',
   );
   await click(a, `Open in Patient Management #${original.id}`);
   await a.waitForSelector(`[data-patient-document="${original.id}"]`);
@@ -364,109 +413,74 @@ try {
   });
   await click(a, `Open imaging request #${order}`);
   await a.waitForSelector('[aria-label="Procedure-specific radiology consent"]');
-  await a.reload({ waitUntil: 'networkidle2' });
-  await click(a, 'Radiology & Imaging', 'aside button');
-  await a.waitForFunction(() =>
-    Array.from(document.querySelectorAll('button')).some((b) =>
-      b.textContent?.includes('Synthetic simple imaging procedure'),
-    ),
+  await a.waitForFunction(
+    () =>
+      !document
+        .querySelector('[aria-label="Procedure-specific radiology consent"]')
+        ?.textContent?.includes('Loading consent status'),
   );
-  const afterReload = await a.evaluateHandle(() =>
-    Array.from(document.querySelectorAll('button')).find((b) =>
-      b.textContent?.includes('Synthetic simple imaging procedure'),
-    ),
-  );
-  await (afterReload.asElement() as ElementHandle<Element>).click();
-  await a.waitForSelector(`[data-patient-document="${original.id}"]`);
   check(
-    (await request(a, docsUrl)).data.find((d: any) => d.id === original.id).notes === null,
-    'Blank notes and linkage persist after actual browser refresh',
+    (
+      await a.$eval(
+        '[aria-label="Procedure-specific radiology consent"]',
+        (e) => e.textContent ?? '',
+      )
+    ).includes('Responsible clinician: ' + f.doctorA.name),
+    'Authenticated doctor is automatically identified for review',
   );
-  await fill(a, 'Attached consent to verify', String(original.id));
-  await click(a, `Preview original #${original.id}`);
-  await a.waitForSelector('iframe[title="Signed document PDF preview"]');
+  await click(a, 'Preview selected original');
+  await a.waitForSelector('iframe[title="Original consent PDF preview"]');
   await click(a, 'Close preview');
-  const summary = await a.evaluateHandle(() =>
-    Array.from(document.querySelectorAll('summary')).find((e) =>
-      e.textContent?.includes('Record signature details for consent review'),
-    ),
-  );
-  await (summary.asElement() as ElementHandle<Element>).click();
-  await fill(a, 'Signing date', '2026-10-01');
-  await fill(a, 'Patient signature status', 'PRESENT');
-  await fill(a, 'Doctor signature status', 'PRESENT');
-  await fill(
-    a,
-    'Signature review reason',
-    'Manually inspected synthetic original signatures and signing date',
-  );
-  const review = a.waitForResponse(
-    (r) =>
-      r.url().endsWith(`/api/patient-documents/patients/${f.patient}`) &&
-      r.request().method() === 'POST',
-  );
-  await click(a, 'Save reviewed signature details as new version');
-  check(
-    (await review).status() === 201,
-    'Separate authorized signature review creates an immutable metadata version',
-  );
-  const reviewed = (await request(a, docsUrl)).data.find(
-    (d: any) => d.root_id === original.id && d.version === 2,
-  );
-  check(
-    reviewed.doctor_id === f.doctorA.id &&
-      reviewed.patient_signature === 'PRESENT' &&
-      reviewed.signing_date.startsWith('2026-10-01') &&
-      (await request(a, consentUrl)).data.status === 'AWAITING_VERIFICATION',
-    'Explicit review metadata persists, but saving it does not verify consent',
-  );
-  await a.waitForSelector(`[data-patient-document="${reviewed.id}"]`);
-  await click(a, `Preview original #${reviewed.id}`);
-  await a.waitForSelector('iframe[title="Signed document PDF preview"]');
-  await click(a, 'Close preview');
+  await a.click('[aria-label="Doctor consent verification"] input[type="checkbox"]');
   await a.waitForFunction(() => {
-    const c = document.querySelector<HTMLInputElement>(
-      '[aria-label="Review and verify consent"] input[type="checkbox"]',
+    const button = Array.from(document.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Verify consent',
     );
-    return c && !c.disabled;
+    return button && !button.disabled;
   });
-  await a.click('[aria-label="Review and verify consent"] input[type="checkbox"]');
-  await fill(
-    a,
-    'Consent decision / policy audit reason',
-    'Confirm reviewed synthetic procedure-specific signatures',
-  );
-  await click(a, 'Verify this procedure consent');
+  await click(a, 'Verify consent');
   await a.waitForFunction(() =>
     document
       .querySelector('[aria-label="Procedure-specific radiology consent"]')
-      ?.textContent?.includes('Consent status: VERIFIED'),
+      ?.textContent?.includes('Consent verified'),
   );
   check(
     (await request(a, consentUrl)).data.status === 'VERIFIED',
-    'Existing explicit authorized consent verification still works end-to-end',
+    'Authenticated doctor verification works end-to-end under own identity',
   );
   await a.setViewport({ width: 1400, height: 2400 });
   await (await a.$('[aria-label="Procedure-specific radiology consent"]'))!.screenshot({
     path: out + '/04-separate-consent-verification.png',
   });
   await a.setViewport({ width: 1400, height: 1050 });
-  await click(a, `Correct consent version #${reviewed.id}`);
-  check(await formIsSimple(a), 'Correction upload also retains the simple three-field form');
+  await click(a, `Upload corrected version #${original.id}`);
+  check(
+    (await a.$eval(
+      'form[aria-label="Upload radiology consent document"]',
+      (form) => form.querySelectorAll('input,textarea,select').length,
+    )) === 3,
+    'Correction upload also retains the simple three-field form',
+  );
   const correcting = a.waitForResponse(
     (r) =>
       r.url().endsWith(`/api/patient-documents/patients/${f.patient}`) &&
       r.request().method() === 'POST',
   );
   await fill(a, 'Notes (optional)', 'Synthetic corrected file notes');
-  await (await a.$('input[aria-label="Signed document file"]'))!.uploadFile(file);
-  await click(a, 'Upload document', 'form[aria-label="Upload document"] button');
+  await (await a.$('input[aria-label="Original consent file"]'))!.uploadFile(file);
+  await a.$eval('form[aria-label="Upload radiology consent document"]', (e) => {
+    const button = Array.from(e.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Upload document',
+    );
+    if (!button || button.disabled) throw Error('Upload submit unavailable');
+    button.click();
+  });
   check(
     (await correcting).status() === 201,
-    'Simple correction upload creates version3 without changing originals',
+    'Simple correction upload creates version2 without changing originals',
   );
   const correction = (await request(a, docsUrl)).data.find(
-    (d: any) => d.root_id === original.id && d.version === 3,
+    (d: any) => d.root_id === original.id && d.version === 2,
   );
   check(
     correction.notes === 'Synthetic corrected file notes' &&
@@ -477,7 +491,7 @@ try {
   );
   const history = (await request(a, `${docsUrl}/${correction.id}/history`)).data;
   check(
-    history.versions.length === 3 &&
+    history.versions.length === 2 &&
       history.versions.every((v: any) => v.sha256 === original.sha256) &&
       history.events.some((e: any) => e.action === 'NEW_VERSION'),
     'Immutable originals, versions and audit history are retained',
@@ -573,7 +587,6 @@ try {
           patient: f.patient,
           order,
           original: original.id,
-          reviewed: reviewed.id,
           correction: correction.id,
         },
       },

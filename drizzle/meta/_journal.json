@@ -708,6 +708,13 @@
       "when": 1796265600000,
       "tag": "0100_patient_signed_documents",
       "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1796352000000,
+      "tag": "0101_radiology_consent_simplification",
+      "breakpoints": true
     }
   ]
 }

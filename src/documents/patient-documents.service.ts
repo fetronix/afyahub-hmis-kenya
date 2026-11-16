@@ -8,9 +8,17 @@ import { loadPortalPolicy } from '../portal/portal.service.ts';
 import { insist, validatePatientFile } from './patient-file-validation.ts';
 
 export const DOCUMENT_FIELDS =
-  'id,patient_id,root_id,version,title,category,document_type,signing_date,patient_signature,doctor_signature,doctor_id,notes,filename,mime_type,sha256,uploaded_by,uploaded_at,radiology_order_id,procedure_name,reason';
+  'id,patient_id,root_id,version,title,category,document_type,signing_date,patient_signature,doctor_signature,doctor_id,notes,filename,mime_type,sha256,uploaded_by,uploaded_at,radiology_order_id,procedure_name,reason,radiology_attachment_context';
 export const PORTAL_DOCUMENT_FIELDS =
   'd.id,d.title,d.category,d.document_type,d.signing_date,d.uploaded_at,d.mime_type,d.version';
+const completedRadiologyStatuses = ['reported', 'performed', 'completed'];
+export function radiologyRequestCompleted(status: unknown): boolean {
+  return completedRadiologyStatuses.includes(
+    String(status ?? '')
+      .trim()
+      .toLowerCase(),
+  );
+}
 export function idOf(raw: unknown): number {
   const n = Number(raw);
   insist(Number.isSafeInteger(n) && n > 0, 'INVALID_ID', 'A positive identifier is required.');
@@ -31,6 +39,11 @@ function text(v: unknown, max: number, required = true): string {
   return typeof v === 'string' ? v.trim() : '';
 }
 export function auditReason(v: unknown) {
+  insist(
+    typeof v === 'string' && v.trim().length > 0,
+    'REASON_REQUIRED',
+    'Explain the operation in 10–500 characters.',
+  );
   const s = text(v, 500);
   insist(s.length >= 10, 'REASON_REQUIRED', 'Explain the operation in 10–500 characters.');
   return s;
@@ -161,6 +174,7 @@ async function withDoctorNames<T extends Record<string, any>>(
     ...d,
     doctor_name: names.get(d.doctor_id) ?? null,
     uploader_name: names.get(d.uploaded_by) ?? null,
+    historical: d.radiology_attachment_context === 'POST_REPORTING_HISTORICAL',
   }));
 }
 async function withDocumentReview(
@@ -244,27 +258,46 @@ export async function uploadPatientDocument(
 ): Promise<Record<string, any>> {
   requireDocumentPermission(s, 'patients.documents.upload', 'patients.documents.read');
   // The simple path records an upload, not a clinician/signature assertion.
-  // Retain the explicit clinical metadata path for authorized review/version workflows.
+  // Historical attachments are always simple and carry an explicit reason.
+  const historicalRequested = meta.radiologyAttachmentMode === 'HISTORICAL';
+  insist(
+    meta.radiologyAttachmentMode === undefined || historicalRequested,
+    'INVALID_METADATA',
+    'Unsupported radiology attachment mode.',
+  );
+  const clinicalKeys = [
+    'category',
+    'documentType',
+    'patientSignature',
+    'doctorSignature',
+    'doctorId',
+    'signingDate',
+  ];
+  insist(
+    !historicalRequested ||
+      !clinicalKeys.some((key) => Object.prototype.hasOwnProperty.call(meta, key)),
+    'INVALID_METADATA',
+    'A historical supporting document is recorded without clinical assertions.',
+  );
   const simple =
+    historicalRequested ||
     meta.uploadMode === 'SIMPLE' ||
-    ![
-      'category',
-      'documentType',
-      'patientSignature',
-      'doctorSignature',
-      'doctorId',
-      'signingDate',
-    ].some((key) => Object.prototype.hasOwnProperty.call(meta, key));
+    !clinicalKeys.some((key) => Object.prototype.hasOwnProperty.call(meta, key));
   const filename = text(meta.filename, 180),
     title = text(meta.title, 180),
     category = simple ? 'Document' : text(meta.category, 80),
     type = simple ? 'Patient document' : text(meta.documentType, 80),
     notes = text(meta.notes, 2000, false),
-    reason = simple
-      ? meta.previousId
-        ? 'Create corrected patient document version'
-        : 'Upload original patient document'
-      : auditReason(meta.reason);
+    reason = historicalRequested
+      ? `Historical supporting document attached after reporting: ${auditReason(meta.reason)}`.slice(
+          0,
+          500,
+        )
+      : simple
+        ? meta.previousId
+          ? 'Create corrected patient document version'
+          : 'Upload original patient document'
+        : auditReason(meta.reason);
   const sig = (v: unknown) => {
     insist(
       ['PRESENT', 'ABSENT', 'UNKNOWN'].includes(String(v)),
@@ -304,6 +337,30 @@ export async function uploadPatientDocument(
       'A cancelled request cannot receive new consent. Create an authorized new request.',
       409,
     );
+    const completed = o ? radiologyRequestCompleted(o.status) : false;
+    insist(
+      !historicalRequested || o,
+      'HISTORICAL_NOT_APPLICABLE',
+      'Historical supporting documents require an imaging request.',
+      400,
+    );
+    insist(
+      !completed || historicalRequested,
+      'RADIOLOGY_REQUEST_COMPLETED',
+      'This request is already reported. Attach a historical supporting document instead; it cannot count as pre-procedure consent.',
+      409,
+    );
+    insist(
+      !historicalRequested || completed,
+      'HISTORICAL_NOT_APPLICABLE',
+      'This request is not reported. Upload a normal consent document instead.',
+      409,
+    );
+    const attachmentContext = historicalRequested
+      ? 'POST_REPORTING_HISTORICAL'
+      : o
+        ? 'PRE_PROCEDURE'
+        : null;
     // Serialize every version in this patient/facility, including concurrent initial uploads.
     await c.query('SELECT pg_advisory_xact_lock($1,$2)', [s.facilityId, p]);
     let root: number | null = null,
@@ -337,7 +394,7 @@ export async function uploadPatientDocument(
       version = previous.version + 1;
     }
     const r = await c.query(
-      `INSERT INTO patient_signed_documents(tenant_id,facility_id,patient_id,root_id,version,title,category,document_type,signing_date,patient_signature,doctor_signature,doctor_id,notes,filename,mime_type,sha256,original_bytes,uploaded_by,radiology_order_id,procedure_name,reason) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING ${DOCUMENT_FIELDS}`,
+      `INSERT INTO patient_signed_documents(tenant_id,facility_id,patient_id,root_id,version,title,category,document_type,signing_date,patient_signature,doctor_signature,doctor_id,notes,filename,mime_type,sha256,original_bytes,uploaded_by,radiology_order_id,procedure_name,reason,radiology_attachment_context) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22) RETURNING ${DOCUMENT_FIELDS}`,
       [
         s.tenantId,
         s.facilityId,
@@ -360,18 +417,31 @@ export async function uploadPatientDocument(
         orderId,
         o?.procedure_name ?? null,
         reason,
+        attachmentContext,
       ],
     );
-    await event(c, s, p, r.rows[0].id, root ? 'NEW_VERSION' : 'UPLOAD', reason, {
-      responsibleDoctorId: doctorId,
-      responsibleDoctorName: responsibleDoctor?.name ?? null,
-      assignment: simple ? 'NOT_ASSERTED' : doctorId === s.userId ? 'SELF' : 'DELEGATED',
-      uploadMode: simple ? 'SIMPLE' : 'CLINICAL_METADATA',
-      previousDocumentId: meta.previousId ? idOf(meta.previousId) : null,
-    });
+    if (historicalRequested && o) {
+      await event(c, s, p, r.rows[0].id, 'HISTORICAL_ATTACHMENT', reason, {
+        orderId: o.id,
+        orderStatus: o.status,
+        reportedAt: o.reported_at ?? null,
+        attachmentContext: 'POST_REPORTING_HISTORICAL',
+        preProcedureConsentSatisfied: false,
+        uploadMode: 'SIMPLE',
+        previousDocumentId: meta.previousId ? idOf(meta.previousId) : null,
+      });
+    } else {
+      await event(c, s, p, r.rows[0].id, root ? 'NEW_VERSION' : 'UPLOAD', reason, {
+        responsibleDoctorId: doctorId,
+        responsibleDoctorName: responsibleDoctor?.name ?? null,
+        assignment: simple ? 'NOT_ASSERTED' : doctorId === s.userId ? 'SELF' : 'DELEGATED',
+        uploadMode: simple ? 'SIMPLE' : 'CLINICAL_METADATA',
+        previousDocumentId: meta.previousId ? idOf(meta.previousId) : null,
+      });
+    }
     // Preserve historical completed decisions; a new file is never substituted into them.
     // For a pending procedure invalidate verification explicitly and retain its previous snapshot.
-    if (o && !['Reported', 'Performed', 'Completed'].includes(o.status)) {
+    if (o && !completed) {
       const previousDecision = (
         await c.query('SELECT * FROM radiology_consent_decisions WHERE order_id=$1', [o.id])
       ).rows[0];
@@ -386,7 +456,11 @@ export async function uploadPatientDocument(
         );
       }
     }
-    return { ...r.rows[0], doctor_name: responsibleDoctor?.name ?? null };
+    return {
+      ...r.rows[0],
+      doctor_name: responsibleDoctor?.name ?? null,
+      historical: historicalRequested,
+    };
   });
 }
 export async function listPatientDocuments(
@@ -503,65 +577,136 @@ export async function radiologyConsent(s: AuthorizationContext, id: number) {
           [id, s.tenantId, s.facilityId],
         )
       ).rows[0] ?? null;
-    const docs = (
-      await c.query(
-        `SELECT ${DOCUMENT_FIELDS} FROM patient_signed_documents WHERE radiology_order_id=$1 AND tenant_id=$2 AND facility_id=$3 AND patient_id=$4 ORDER BY id DESC`,
-        [id, s.tenantId, s.facilityId, o.patient_id],
-      )
-    ).rows;
+    const documents = await withDocumentReview(
+      c,
+      s,
+      (
+        await c.query(
+          `SELECT ${DOCUMENT_FIELDS} FROM patient_signed_documents WHERE radiology_order_id=$1 AND tenant_id=$2 AND facility_id=$3 AND patient_id=$4 ORDER BY id DESC`,
+          [id, s.tenantId, s.facilityId, o.patient_id],
+        )
+      ).rows,
+    );
+    const currentDoctor =
+      (
+        await c.query(
+          `SELECT u.id,u.full_name AS name FROM users u JOIN user_roles ur ON ur.user_id=u.id
+           JOIN roles r ON r.id=ur.role_id WHERE ${activeDoctor} AND u.id=$3 LIMIT 1`,
+          [s.tenantId, s.facilityId, s.userId],
+        )
+      ).rows[0] ?? null;
+    // Non-doctors may identify who should review, but cannot attest for that doctor.
+    const reviewDoctors = currentDoctor
+      ? []
+      : (
+          await c.query(
+            `SELECT DISTINCT u.id,u.full_name AS name,u.designation FROM users u
+             JOIN user_roles ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id
+             WHERE ${activeDoctor} ORDER BY u.full_name,u.id LIMIT 50`,
+            [s.tenantId, s.facilityId],
+          )
+        ).rows;
     await event(c, s, o.patient_id, null, 'VIEW', 'Read procedure-specific consent status');
+    const decisionDocument = decision
+      ? documents.find((d: any) => d.id === decision.document_id)
+      : null;
+    const verifiedDocumentCurrent = Boolean(
+      decision?.status === 'VERIFIED' &&
+      decisionDocument &&
+      decision.clinician_id === decision.decided_by &&
+      decisionDocument.procedure_name === o.procedure_name &&
+      decisionDocument.radiology_attachment_context !== 'POST_REPORTING_HISTORICAL' &&
+      decisionDocument.is_latest_version !== false,
+    );
+    const cancelled = ['cancelled', 'canceled'].includes(o.status?.trim().toLowerCase() ?? '');
+    const completed = radiologyRequestCompleted(o.status);
+    const status = cancelled
+      ? 'PROCEDURE_CANCELLED'
+      : verifiedDocumentCurrent
+        ? 'VERIFIED'
+        : decision?.status === 'REJECTED'
+          ? 'REJECTED'
+          : decision?.status === 'EXCEPTION'
+            ? policy.allow_exception
+              ? 'EXCEPTION'
+              : completed
+                ? 'COMPLETED_UNVERIFIED'
+                : 'CONSENT_REQUIRED'
+            : completed
+              ? 'COMPLETED_UNVERIFIED'
+              : documents.length
+                ? 'AWAITING_VERIFICATION'
+                : policy.required
+                  ? 'CONSENT_REQUIRED'
+                  : 'NOT_REQUIRED';
     return {
       policy,
       decision,
-      documents: await withDocumentReview(c, s, docs),
+      documents,
+      currentDoctor,
+      viewerIsDoctor: Boolean(currentDoctor),
+      reviewDoctors,
       request: {
         id: o.id,
         patientId: o.patient_id,
         procedureName: o.procedure_name,
         status: o.status,
+        reportedAt: o.reported_at ?? null,
+        completed,
       },
-      currentDoctor:
-        (
-          await c.query(
-            `SELECT u.id,u.full_name AS name FROM users u JOIN user_roles ur ON ur.user_id=u.id
-         JOIN roles r ON r.id=ur.role_id WHERE ${activeDoctor} AND u.id=$3 LIMIT 1`,
-            [s.tenantId, s.facilityId, s.userId],
-          )
-        ).rows[0] ?? null,
-      status: ['cancelled', 'canceled'].includes(o.status?.trim().toLowerCase() ?? '')
-        ? 'PROCEDURE_CANCELLED'
-        : ((decision?.status === 'VERIFIED' &&
-          !docs.some((d) => d.id === decision.document_id && d.procedure_name === o.procedure_name)
-            ? 'AWAITING_VERIFICATION'
-            : decision?.status === 'EXCEPTION' && !policy.allow_exception
-              ? 'CONSENT_REQUIRED'
-              : decision?.status) ??
-          (docs.length
-            ? 'AWAITING_VERIFICATION'
-            : policy.required
-              ? 'CONSENT_REQUIRED'
-              : 'NOT_REQUIRED')),
+      status,
     };
   });
+}
+export async function radiologyConsentPolicy(s: AuthorizationContext) {
+  requireDocumentPermission(s, 'radiology.consent.policy');
+  const row = (
+    await pool.query(
+      'SELECT required,allow_exception FROM radiology_consent_policies WHERE facility_id=$1 AND tenant_id=$2',
+      [s.facilityId, s.tenantId],
+    )
+  ).rows[0];
+  return { required: row?.required ?? true, allowException: row?.allow_exception ?? false };
 }
 export async function decideRadiologyConsent(
   s: AuthorizationContext,
   id: number,
   input: Record<string, unknown>,
 ) {
-  const exception = input.status === 'EXCEPTION';
+  const status = input.status,
+    exception = status === 'EXCEPTION',
+    rejection = status === 'REJECTED';
+  insist(
+    exception || status === 'VERIFIED' || rejection,
+    'INVALID_CONSENT_STATUS',
+    'Select verified, rejected or authorized exception.',
+  );
   requireDocumentPermission(
     s,
     'patients.documents.read',
     exception ? 'radiology.consent.exception' : 'radiology.consent.verify',
   );
+  const clinicianId = idOf(input.clinicianId ?? s.userId);
+  // Verification is a personal clinical attestation. An administrator or
+  // colleague must never record it on the doctor's behalf.
   insist(
-    exception || input.status === 'VERIFIED',
-    'INVALID_CONSENT_STATUS',
-    'Select verified or authorized exception.',
+    clinicianId === s.userId,
+    'SELF_VERIFICATION_REQUIRED',
+    'The doctor must record their own decision while signed in; another account cannot attest on their behalf.',
+    403,
   );
-  const reason = auditReason(input.reason),
-    clinicianId = idOf(input.clinicianId);
+  const providedReason =
+    input.reason === undefined || input.reason === null || String(input.reason).trim() === ''
+      ? null
+      : auditReason(input.reason);
+  insist(
+    !rejection || providedReason,
+    'REASON_REQUIRED',
+    'Explain why the consent was not accepted.',
+  );
+  const reason =
+    providedReason ??
+    `Doctor reviewed the original consent document and confirmed the recorded consent information for request #${id}.`;
   return transaction(async (c) => {
     const o = await order(c, s, id);
     await clinician(c, s, clinicianId);
@@ -572,12 +717,13 @@ export async function decideRadiologyConsent(
       409,
     );
     insist(
-      !['reported', 'performed', 'completed'].includes(o.status?.trim().toLowerCase() ?? ''),
+      !radiologyRequestCompleted(o.status),
       'PROCEDURE_ALREADY_COMPLETED',
-      'Do not alter consent decisions after procedure completion.',
+      'Do not alter consent decisions after procedure completion. Attach historical support instead.',
       409,
     );
     let docId: number | null = null;
+    let reviewedDocument: Record<string, any> | null = null;
     if (exception) {
       const policy = (
         await c.query(
@@ -591,24 +737,15 @@ export async function decideRadiologyConsent(
         'Facility policy does not permit an exception.',
         403,
       );
-      insist(
-        clinicianId === s.userId,
-        'AUTHORIZING_CLINICIAN_REQUIRED',
-        'The authorized clinician must record their own exception.',
-        403,
-      );
     } else {
       docId = idOf(input.documentId);
       const d = await document(c, s, o.patient_id, docId);
       insist(
         d.radiology_order_id === id &&
           d.procedure_name === o.procedure_name &&
-          d.patient_signature === 'PRESENT' &&
-          d.doctor_signature === 'PRESENT' &&
-          d.doctor_id === clinicianId &&
-          d.signing_date,
+          d.radiology_attachment_context !== 'POST_REPORTING_HISTORICAL',
         'CONSENT_INCOMPLETE',
-        'Use this procedure’s signed document with patient and responsible doctor signatures and signing date.',
+        'Use this procedure’s pre-procedure consent document. Historical attachments cannot satisfy consent.',
       );
       const newer = await c.query(
         'SELECT id FROM patient_signed_documents WHERE root_id=$1 AND version>$2',
@@ -624,34 +761,38 @@ export async function decideRadiologyConsent(
       insist(
         reviewed.reviewed_by_actor,
         'CONSENT_REVIEW_REQUIRED',
-        'Preview or download this original signed version before verifying its signature assertions.',
+        'Preview or download this original consent document before recording your decision.',
         409,
       );
+      reviewedDocument = reviewed;
     }
     await c.query(
       'INSERT INTO radiology_consent_decisions(order_id,tenant_id,facility_id,patient_id,document_id,status,clinician_id,reason,decided_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT(order_id) DO UPDATE SET document_id=excluded.document_id,status=excluded.status,clinician_id=excluded.clinician_id,reason=excluded.reason,decided_by=excluded.decided_by,decided_at=now()',
-      [
-        id,
-        s.tenantId,
-        s.facilityId,
-        o.patient_id,
-        docId,
-        input.status,
-        clinicianId,
-        reason,
-        s.userId,
-      ],
+      [id, s.tenantId, s.facilityId, o.patient_id, docId, status, clinicianId, reason, s.userId],
     );
     await event(
       c,
       s,
       o.patient_id,
       docId,
-      exception ? 'RADIOLOGY_EXCEPTION' : 'RADIOLOGY_VERIFIED',
+      exception ? 'RADIOLOGY_EXCEPTION' : rejection ? 'RADIOLOGY_REJECTED' : 'RADIOLOGY_VERIFIED',
       reason,
-      { orderId: id, documentId: docId, clinicianId, status: input.status },
+      {
+        orderId: id,
+        documentId: docId,
+        clinicianId,
+        status,
+        reviewedOriginal: !exception,
+        signatureAssertions: reviewedDocument
+          ? {
+              patient: reviewedDocument.patient_signature,
+              doctor: reviewedDocument.doctor_signature,
+              signingDate: reviewedDocument.signing_date,
+            }
+          : null,
+      },
     );
-    return { status: input.status };
+    return { status };
   });
 }
 export async function setRadiologyConsentPolicy(

@@ -161,6 +161,13 @@ staff.post(
     }
   },
 );
+staff.get('/radiology-policy', async (req: AuthRequest, res) => {
+  try {
+    return res.json(await svc.radiologyConsentPolicy(req.authContext!));
+  } catch (e) {
+    return failure(e, res);
+  }
+});
 staff.post('/radiology-policy', express.json({ limit: '8kb' }), async (req: AuthRequest, res) => {
   try {
     return res.json(await svc.setRadiologyConsentPolicy(req.authContext!, req.body ?? {}));

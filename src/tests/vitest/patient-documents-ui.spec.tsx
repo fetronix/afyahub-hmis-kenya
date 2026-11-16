@@ -20,7 +20,6 @@ import {
   PatientDocumentsPanel,
   PortalSignedDocuments,
 } from '../../components/PatientDocumentsPanel.tsx';
-import { RadiologyConsentMetadata } from '../../components/RadiologyConsentMetadata.tsx';
 import type { PatientFile } from '../../api/patient-documents.client.ts';
 const record: PatientFile = {
   id: 1,
@@ -133,76 +132,6 @@ describe('Simple patient document uploads and separate consent review', () => {
     ])
       expect(metadata).not.toHaveProperty(key);
   });
-  it('uses the same three fields in exact-request mode before request-filtered attachments', async () => {
-    mocks.context.authenticatedUser.permissions = canUpload;
-    mocks.documents = [
-      { ...record, radiology_order_id: 44, procedure_name: 'Synthetic CT' },
-      { ...record, id: 3, title: 'Other request', radiology_order_id: 45 },
-    ];
-    const onUploaded = vi.fn(),
-      onOpenRepository = vi.fn();
-    render(
-      <PatientDocumentsPanel
-        patientId={7}
-        radiologyOrderId={44}
-        requestWorkflow={{
-          procedureName: 'Synthetic CT',
-          disabled: false,
-          consentStatus: 'AWAITING_VERIFICATION',
-          decisionDocumentId: null,
-          onUploaded,
-          onReviewed: vi.fn(),
-          onOpenRepository,
-        }}
-      />,
-    );
-    await screen.findByText('Synthetic document');
-    expect(screen.queryByText('Other request')).not.toBeInTheDocument();
-    expect(screen.queryByRole('form')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Upload document' }));
-    const form = screen.getByRole('form', { name: 'Upload document' });
-    expect(screen.getAllByRole('button', { name: 'Upload document' })).toHaveLength(1);
-    expect(form.querySelectorAll('input,textarea,select')).toHaveLength(3);
-    expect(
-      form.compareDocumentPosition(screen.getByText('Attached consent documents · request #44')) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Document title'), {
-      target: { value: 'Linked document' },
-    });
-    chooseFile();
-    fireEvent.submit(form);
-    await waitFor(() => expect(onUploaded).toHaveBeenCalled());
-    const call = mocks.request.mock.calls.find((c) => c[1]?.method === 'POST')!;
-    expect(JSON.parse(decodeURIComponent(call[1].headers['X-Document-Metadata']))).toMatchObject({
-      uploadMode: 'SIMPLE',
-      radiologyOrderId: 44,
-    });
-    expect(mocks.request).toHaveBeenCalledWith(
-      expect.stringContaining('radiologyOrderId=44'),
-      {},
-      false,
-    );
-  });
-  it('keeps cancellation disabling on the request upload control', () => {
-    mocks.context.authenticatedUser.permissions = canUpload;
-    render(
-      <PatientDocumentsPanel
-        patientId={7}
-        radiologyOrderId={44}
-        requestWorkflow={{
-          procedureName: 'CT',
-          disabled: true,
-          consentStatus: 'PROCEDURE_CANCELLED',
-          decisionDocumentId: null,
-          onUploaded: vi.fn(),
-          onReviewed: vi.fn(),
-          onOpenRepository: vi.fn(),
-        }}
-      />,
-    );
-    expect(screen.getByRole('button', { name: 'Upload document' })).toBeDisabled();
-  });
   it('shows uploader and filename without putting clinical assertions on the normal card', async () => {
     mocks.context.authenticatedUser.permissions = ['patients.documents.read'];
     mocks.documents = [record];
@@ -275,53 +204,5 @@ describe('Simple patient document uploads and separate consent review', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Loading');
     expect(await screen.findByRole('alert')).toHaveTextContent('Synthetic access failure');
     expect(screen.queryByText(/No authorized documents found/)).not.toBeInTheDocument();
-  });
-  it('keeps explicit signature review separate and defaults its signature assertions to Unknown', async () => {
-    render(
-      <RadiologyConsentMetadata
-        patientId={7}
-        doc={{ ...record, radiology_order_id: 44, reviewed_by_actor: true }}
-        disabled={false}
-        onSaved={vi.fn()}
-      />,
-    );
-    expect(screen.getByLabelText('Patient signature status')).toHaveValue('UNKNOWN');
-    expect(screen.getByLabelText('Doctor signature status')).toHaveValue('UNKNOWN');
-    expect(screen.getByLabelText('Signing date')).toHaveValue('');
-    await waitFor(() => expect(screen.getByLabelText('Responsible doctor')).toHaveValue('8'));
-    expect(screen.queryByLabelText('Signed document file')).not.toBeInTheDocument();
-  });
-  it('records reviewed metadata as a new immutable version through the existing endpoint', async () => {
-    const onSaved = vi.fn();
-    render(
-      <RadiologyConsentMetadata
-        patientId={7}
-        doc={{ ...record, radiology_order_id: 44, reviewed_by_actor: true }}
-        disabled={false}
-        onSaved={onSaved}
-      />,
-    );
-    await waitFor(() => expect(screen.getByLabelText('Responsible doctor')).toHaveValue('8'));
-    fireEvent.change(screen.getByLabelText('Signing date'), { target: { value: '2026-10-01' } });
-    fireEvent.change(screen.getByLabelText('Patient signature status'), {
-      target: { value: 'PRESENT' },
-    });
-    fireEvent.change(screen.getByLabelText('Doctor signature status'), {
-      target: { value: 'PRESENT' },
-    });
-    fireEvent.change(screen.getByLabelText('Signature review reason'), {
-      target: { value: 'Reviewed synthetic original signatures' },
-    });
-    fireEvent.submit(screen.getByRole('form', { name: 'Record consent signature details' }));
-    await waitFor(() => expect(onSaved).toHaveBeenCalled());
-    const call = mocks.request.mock.calls.find((c) => c[1]?.method === 'POST')!;
-    expect(JSON.parse(decodeURIComponent(call[1].headers['X-Document-Metadata']))).toMatchObject({
-      previousId: 1,
-      radiologyOrderId: 44,
-      doctorId: '8',
-      patientSignature: 'PRESENT',
-      doctorSignature: 'PRESENT',
-    });
-    expect(mocks.action).not.toHaveBeenCalled();
   });
 });
