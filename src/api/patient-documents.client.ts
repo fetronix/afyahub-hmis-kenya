@@ -42,6 +42,26 @@ export interface PatientFile {
   is_latest_version?: boolean;
   reviewed_by_actor?: boolean;
 }
+export interface PortalReleaseOutcome {
+  document_id: number;
+  released: boolean;
+  portal_release_status: 'RELEASED' | 'REVOKED';
+  released_at: string | null;
+  revoked_at: string | null;
+  reviewed_original: boolean;
+  consent_document: boolean;
+  already_recorded: boolean;
+}
+export interface PortalReleaseFailure {
+  document_id: number;
+  error: string;
+  message: string;
+}
+export interface PortalReleaseResult extends PortalReleaseOutcome {
+  documents?: PortalReleaseOutcome[];
+  failures?: PortalReleaseFailure[];
+  partial?: boolean;
+}
 export interface DocumentPageInfo {
   limit: number;
   total: number;

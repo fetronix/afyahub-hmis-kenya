@@ -6,6 +6,7 @@ import {
   documentAction,
   type DocumentPageInfo,
   type PatientFile,
+  type PortalReleaseResult,
   type StaffDocumentPage,
 } from '../api/patient-documents.client.ts';
 
@@ -129,6 +130,20 @@ function DocumentWorkspace({
     reviewed: boolean;
     previewId?: number;
   } | null>(null);
+  // Confirmation-panel feedback: a refusal must be visible where the operator
+  // clicked, not in a banner scrolled off the top of the document list.
+  const [releaseError, setReleaseError] = useState<{
+    message: string;
+    details: string[];
+  } | null>(null);
+  const [releaseNotice, setReleaseNotice] = useState<{
+    tone: 'success' | 'warning';
+    message: string;
+    details: string[];
+  } | null>(null);
+  const submitting = useRef(false);
+  const releaseForm = useRef<HTMLFormElement>(null);
+  const section = useRef<HTMLElement>(null);
   const requestKey = JSON.stringify([base, search, type, from, to, revision, cursor]);
   useEffect(() => {
     let active = true;
@@ -251,28 +266,116 @@ function DocumentWorkspace({
       setRelease((current) => (current ? { ...current, previewId: doc.id } : current));
     });
   }
+  /**
+   * The confirmation is validated here instead of relying on the browser's
+   * native constraint bubbles: a blocked submit used to leave the panel open
+   * with no visible message, which looked exactly like a dead button.
+   */
+  function releaseProblems(decision: NonNullable<typeof release>) {
+    const problems: string[] = [];
+    if (!decision.docs.length)
+      problems.push('Select at least one document before confirming the decision.');
+    if (decision.reason.trim().length < 10)
+      problems.push(
+        'Enter a portal release reason of at least 10 characters. Say what is being released and why.',
+      );
+    const consents = decision.docs.filter(isConsentDocument);
+    if (decision.released && consents.length > 0 && !decision.reviewed)
+      problems.push(
+        `Confirm you reviewed the original consent document${consents.length === 1 ? '' : 's'} before releasing ${consents.length === 1 ? 'it' : 'them'}.`,
+      );
+    return problems;
+  }
   async function submitRelease(e: React.FormEvent) {
     e.preventDefault();
     if (!release) return;
-    await run(async () => {
-      const body = {
-        released: release.released,
-        reason: release.reason,
-        reviewedOriginal: release.reviewed,
-      };
-      if (release.docs.length === 1)
-        await documentAction(`${base}/${release.docs[0].id}/release`, body);
+    // A second click while the first request is in flight must not send a
+    // duplicate decision.
+    if (submitting.current) return;
+    setReleaseError(null);
+    setReleaseNotice(null);
+    const problems = releaseProblems(release);
+    if (problems.length) {
+      setReleaseError({ message: problems[0], details: problems });
+      // Focus the control that actually needs attention.
+      const target =
+        release.reason.trim().length < 10
+          ? releaseForm.current?.querySelector<HTMLTextAreaElement>('textarea')
+          : releaseForm.current?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+      target?.focus({ preventScroll: false });
+      releaseForm.current?.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+    const reason = release.reason.trim();
+    const body = {
+      released: release.released,
+      reason,
+      reviewedOriginal: release.reviewed,
+    };
+    const titles = new Map(release.docs.map((doc) => [doc.id, doc.title]));
+    setError('');
+    setBusy(true);
+    submitting.current = true;
+    try {
+      const result =
+        release.docs.length === 1
+          ? await documentAction<PortalReleaseResult>(`${base}/${release.docs[0].id}/release`, body)
+          : await documentAction<PortalReleaseResult>(`${base}/releases`, {
+              ...body,
+              documentIds: release.docs.map((d) => d.id),
+            });
+      const released = (result.documents ?? [result]).filter((entry) => entry.released);
+      const withdrawn = (result.documents ?? [result]).filter((entry) => !entry.released);
+      const failures = result.failures ?? [];
+      const already = (result.documents ?? [result]).filter((entry) => entry.already_recorded);
+      const count = release.released ? released.length : withdrawn.length;
+      const details = failures.map(
+        (failure) =>
+          `${titles.get(failure.document_id) ?? 'Document'} (#${failure.document_id}): ${failure.message}`,
+      );
+      const noun = `document${count === 1 ? '' : 's'}`;
+      if (failures.length)
+        setReleaseNotice({
+          tone: 'warning',
+          message: release.released
+            ? `Released ${count} of ${release.docs.length} documents to the patient portal. ${failures.length} could not be released.`
+            : `Withdrew ${count} of ${release.docs.length} documents from the patient portal. ${failures.length} could not be withdrawn.`,
+          details,
+        });
+      else if (already.length === release.docs.length)
+        setReleaseNotice({
+          tone: 'success',
+          message: release.released
+            ? `The ${noun} already carried this release decision; nothing new was recorded.`
+            : `The ${noun} were already withdrawn; nothing new was recorded.`,
+          details: [],
+        });
       else
-        await documentAction(`${base}/releases`, {
-          ...body,
-          documentIds: release.docs.map((d) => d.id),
+        setReleaseNotice({
+          tone: 'success',
+          message: release.released
+            ? `Released ${count} ${noun} to the patient portal.`
+            : `Withdrew ${count} ${noun} from the patient portal.`,
+          details: already.length
+            ? ['Some documents already carried this decision; no duplicate action was recorded.']
+            : [],
         });
       setRelease(null);
+      setReleaseError(null);
       setSelected([]);
       setPreview(null);
       setCursor(null);
       setRevision((v) => v + 1);
-    });
+      requestAnimationFrame(() => section.current?.scrollIntoView({ block: 'start' }));
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : 'The portal release decision failed.';
+      setReleaseError({ message, details: [] });
+      releaseForm.current?.scrollIntoView({ block: 'nearest' });
+    } finally {
+      setBusy(false);
+      submitting.current = false;
+    }
   }
   function toggleSelected(id: number) {
     setSelected((current) =>
@@ -383,12 +486,36 @@ function DocumentWorkspace({
   );
 
   return (
-    <section aria-label="Consent & Signed Documents" className="space-y-4 rounded border bg-white p-4">
+    <section
+      ref={section}
+      aria-label="Consent & Signed Documents"
+      className="space-y-4 rounded border bg-white p-4"
+    >
       <h3 className="text-lg font-bold">Consent &amp; Signed Documents</h3>
       <p className="text-sm text-slate-600">
         Original files are preserved. Uploading a document does not automatically verify signatures
         or release it to the patient portal.
       </p>
+      {releaseNotice && (
+        <div
+          role="status"
+          aria-label="Portal release result"
+          className={`rounded p-3 text-sm ${
+            releaseNotice.tone === 'success'
+              ? 'bg-emerald-50 text-emerald-900'
+              : 'bg-amber-50 text-amber-900'
+          }`}
+        >
+          <p className="font-semibold">{releaseNotice.message}</p>
+          {releaseNotice.details.length > 0 && (
+            <ul className="mt-1 list-disc space-y-1 pl-5">
+              {releaseNotice.details.map((detail) => (
+                <li key={detail}>{detail}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {!canRead ? (
         <p role="alert">A facility-scoped patient-document read permission is required.</p>
       ) : (
@@ -443,12 +570,14 @@ function DocumentWorkspace({
                   className="mr-2 my-1 rounded bg-teal-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
                   disabled={busy}
                   onClick={() =>
+                    (setReleaseError(null),
+                    setReleaseNotice(null),
                     setRelease({
                       docs: documents.filter((d) => selected.includes(d.id)),
                       released: true,
                       reason: '',
                       reviewed: false,
-                    })
+                    }))
                   }
                 >
                   Release selected ({selected.length}) to patient portal
@@ -460,6 +589,8 @@ function DocumentWorkspace({
                     className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium"
                     disabled={busy}
                     onClick={() =>
+                      (setReleaseError(null),
+                      setReleaseNotice(null),
                       setRelease({
                         docs: documents.filter(
                           (d) => selected.includes(d.id) && d.portal_release_status === 'RELEASED',
@@ -467,7 +598,7 @@ function DocumentWorkspace({
                         released: false,
                         reason: '',
                         reviewed: false,
-                      })
+                      }))
                     }
                   >
                     Withdraw selected releases
@@ -599,12 +730,14 @@ function DocumentWorkspace({
                       className="mr-2 my-1 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
                       disabled={busy}
                       onClick={() =>
+                        (setReleaseError(null),
+                        setReleaseNotice(null),
                         setRelease({
                           docs: [doc],
                           released: doc.portal_release_status !== 'RELEASED',
                           reason: '',
                           reviewed: false,
-                        })
+                        }))
                       }
                     >
                       {doc.portal_release_status === 'RELEASED'
@@ -735,7 +868,10 @@ function DocumentWorkspace({
           )}
           {release && canRelease && (
             <form
+              ref={releaseForm}
               aria-label="Portal release decision"
+              noValidate
+              aria-busy={busy}
               onSubmit={(e) => void submitRelease(e)}
               className="space-y-2 rounded border border-teal-700 p-3"
             >
@@ -795,6 +931,8 @@ function DocumentWorkspace({
                   required
                   minLength={10}
                   maxLength={500}
+                  aria-label="Portal release reason"
+                  aria-invalid={Boolean(releaseError)}
                   value={release.reason}
                   onChange={(e) =>
                     setRelease((current) =>
@@ -803,10 +941,38 @@ function DocumentWorkspace({
                   }
                 />
               </label>
+              {releaseError && (
+                <div
+                  role="alert"
+                  aria-label="Portal release error"
+                  className="rounded bg-red-50 p-2 text-sm text-red-800"
+                >
+                  <p className="font-semibold">{releaseError.message}</p>
+                  {releaseError.details.length > 1 && (
+                    <ul className="mt-1 list-disc space-y-1 pl-5">
+                      {releaseError.details.slice(1).map((detail) => (
+                        <li key={detail}>{detail}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
               <button className={actionClass} disabled={busy} type="submit">
-                Confirm portal release decision
+                {busy
+                  ? release.released
+                    ? 'Releasing…'
+                    : 'Withdrawing…'
+                  : 'Confirm portal release decision'}
               </button>
-              <button className={actionClass} type="button" onClick={() => setRelease(null)}>
+              <button
+                className={actionClass}
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setRelease(null);
+                  setReleaseError(null);
+                }}
+              >
                 Cancel release decision
               </button>
             </form>

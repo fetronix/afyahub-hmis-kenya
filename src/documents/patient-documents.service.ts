@@ -773,6 +773,27 @@ async function applyPortalRelease(
       'Open and review the original consent document before releasing it to the patient portal.',
       409,
     );
+  // Idempotent decisions: a repeated confirmation (double click, retried
+  // request) must not add a second release action or a duplicate audit entry.
+  const existing = (
+    await c.query(
+      `SELECT released,released_at,revoked_at,reviewed_original,actor_id,reason
+         FROM patient_document_releases WHERE document_id=$1 FOR UPDATE`,
+      [d.id],
+    )
+  ).rows[0];
+  if (existing && existing.released === released) {
+    return {
+      document_id: d.id,
+      released,
+      portal_release_status: (released ? 'RELEASED' : 'REVOKED') as PortalReleaseStatus,
+      released_at: existing.released_at,
+      revoked_at: existing.revoked_at,
+      reviewed_original: existing.reviewed_original === true,
+      consent_document: consent,
+      already_recorded: true,
+    };
+  }
   const r = await c.query(
     `INSERT INTO patient_document_releases(document_id,released,actor_id,reason,released_at,revoked_at,reviewed_original)
      VALUES($1,$2,$3,$4,CASE WHEN $2 THEN now() END,CASE WHEN $2 THEN NULL ELSE now() END,$5)
@@ -804,6 +825,7 @@ async function applyPortalRelease(
     revoked_at: row.revoked_at,
     reviewed_original: row.reviewed_original === true,
     consent_document: consent,
+    already_recorded: false,
   };
 }
 export async function releasePatientDocument(
@@ -853,12 +875,32 @@ export async function releasePatientDocuments(
   const reason = auditReason(why);
   return transaction(async (c) => {
     await patient(c, s, p);
-    const rows = [];
+    const documents: Array<Record<string, any>> = [];
+    const failures: Array<{ document_id: number; error: string; message: string }> = [];
+    let firstFailure: PatientDocumentError | null = null;
     for (const id of documentIds) {
-      const d = await document(c, s, p, id);
-      rows.push(await applyPortalRelease(c, s, p, d, released, reason, reviewedOriginal === true));
+      // One savepoint per document: a refused document cannot roll back the
+      // documents that were authorized, and the caller still learns which
+      // ones failed and why.
+      await c.query('SAVEPOINT portal_release_item');
+      try {
+        const d = await document(c, s, p, id);
+        documents.push(
+          await applyPortalRelease(c, s, p, d, released, reason, reviewedOriginal === true),
+        );
+        await c.query('RELEASE SAVEPOINT portal_release_item');
+      } catch (e) {
+        await c.query('ROLLBACK TO SAVEPOINT portal_release_item');
+        if (!(e instanceof PatientDocumentError)) throw e;
+        firstFailure ??= e;
+        failures.push({ document_id: id, error: e.code, message: e.message });
+      }
     }
-    return { released, documents: rows };
+    if (!documents.length) throw firstFailure ?? new PatientDocumentError(
+      'INVALID_RELEASE',
+      'Select the documents to release.',
+    );
+    return { released, documents, failures, partial: failures.length > 0 };
   });
 }
 

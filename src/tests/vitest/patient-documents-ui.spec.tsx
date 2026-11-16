@@ -211,6 +211,131 @@ describe('Staff patient documents and portal release workflow', () => {
       }),
     );
   });
+  it('explains a short or empty release reason instead of silently doing nothing', async () => {
+    mocks.context.authenticatedUser.permissions = canRelease;
+    mocks.documents = [record];
+    render(<PatientDocumentsPanel patientId={7} />);
+    await screen.findByText('Synthetic document');
+    fireEvent.click(screen.getByRole('button', { name: 'Release to patient portal #1' }));
+    const dialog = screen.getByRole('form', { name: 'Portal release decision' });
+    fireEvent.change(within(dialog).getByLabelText('Portal release reason'), {
+      target: { value: 'ok' },
+    });
+    fireEvent.submit(dialog);
+    const alert = await within(dialog).findByRole('alert');
+    expect(alert).toHaveTextContent('at least 10 characters');
+    expect(mocks.action).not.toHaveBeenCalled();
+    expect(within(dialog).getByLabelText('Portal release reason')).toHaveAttribute(
+      'aria-invalid',
+      'true',
+    );
+
+    fireEvent.change(within(dialog).getByLabelText('Portal release reason'), {
+      target: { value: 'Explicit synthetic release approval' },
+    });
+    mocks.action.mockResolvedValueOnce({
+      document_id: 1,
+      released: true,
+      portal_release_status: 'RELEASED',
+      released_at: '2026-03-03T09:00:00.000Z',
+      revoked_at: null,
+      reviewed_original: false,
+      consent_document: false,
+      already_recorded: false,
+    });
+    fireEvent.submit(dialog);
+    await waitFor(() => expect(mocks.action).toHaveBeenCalledTimes(1));
+    expect(await screen.findByLabelText('Portal release result')).toHaveTextContent(
+      'Released 1 document to the patient portal.',
+    );
+  });
+  it('refuses a consent release without the explicit original review', async () => {
+    mocks.context.authenticatedUser.permissions = canRelease;
+    mocks.documents = [{ ...record, title: 'Treatment consent form' }];
+    render(<PatientDocumentsPanel patientId={7} />);
+    await screen.findByText('Treatment consent form');
+    fireEvent.click(screen.getByRole('button', { name: 'Release to patient portal #1' }));
+    const dialog = screen.getByRole('form', { name: 'Portal release decision' });
+    fireEvent.change(within(dialog).getByLabelText('Portal release reason'), {
+      target: { value: 'Explicit synthetic consent release' },
+    });
+    fireEvent.submit(dialog);
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'reviewed the original consent document',
+    );
+    expect(mocks.action).not.toHaveBeenCalled();
+  });
+  it('reports which documents in a bulk decision failed', async () => {
+    mocks.context.authenticatedUser.permissions = canRelease;
+    mocks.documents = [record, { ...record, id: 2, title: 'Second letter' }];
+    mocks.action.mockResolvedValueOnce({
+      released: true,
+      partial: true,
+      documents: [
+        {
+          document_id: 1,
+          released: true,
+          portal_release_status: 'RELEASED',
+          released_at: '2026-03-03T09:00:00.000Z',
+          revoked_at: null,
+          reviewed_original: false,
+          consent_document: false,
+          already_recorded: false,
+        },
+      ],
+      failures: [
+        {
+          document_id: 2,
+          error: 'DOCUMENT_NOT_FOUND',
+          message: 'Patient or document not found in this facility.',
+        },
+      ],
+    });
+    render(<PatientDocumentsPanel patientId={7} />);
+    await screen.findByText('Synthetic document');
+    fireEvent.click(screen.getByLabelText('Select Synthetic document #1'));
+    fireEvent.click(screen.getByLabelText('Select Second letter #2'));
+    fireEvent.click(screen.getByRole('button', { name: 'Release selected (2) to patient portal' }));
+    const dialog = screen.getByRole('form', { name: 'Portal release decision' });
+    fireEvent.change(within(dialog).getByLabelText('Portal release reason'), {
+      target: { value: 'Synthetic partial release reason' },
+    });
+    fireEvent.submit(dialog);
+    const result = await screen.findByLabelText('Portal release result');
+    expect(result).toHaveTextContent(
+      'Released 1 of 2 documents to the patient portal. 1 could not be released.',
+    );
+    expect(result).toHaveTextContent('Second letter (#2): Patient or document not found');
+  });
+  it('sends one decision when the confirmation is clicked twice', async () => {
+    mocks.context.authenticatedUser.permissions = canRelease;
+    mocks.documents = [record];
+    let resolveAction: (value: unknown) => void = () => {};
+    mocks.action.mockImplementationOnce(
+      () => new Promise((resolve) => (resolveAction = resolve)),
+    );
+    render(<PatientDocumentsPanel patientId={7} />);
+    await screen.findByText('Synthetic document');
+    fireEvent.click(screen.getByRole('button', { name: 'Release to patient portal #1' }));
+    const dialog = screen.getByRole('form', { name: 'Portal release decision' });
+    fireEvent.change(within(dialog).getByLabelText('Portal release reason'), {
+      target: { value: 'Explicit synthetic double click guard' },
+    });
+    fireEvent.submit(dialog);
+    fireEvent.submit(dialog);
+    expect(mocks.action).toHaveBeenCalledTimes(1);
+    resolveAction({
+      document_id: 1,
+      released: true,
+      portal_release_status: 'RELEASED',
+      released_at: '2026-03-03T09:00:00.000Z',
+      revoked_at: null,
+      reviewed_original: false,
+      consent_document: false,
+      already_recorded: false,
+    });
+    await waitFor(() => expect(mocks.action).toHaveBeenCalledTimes(1));
+  });
   it('keeps staff search, pagination, details and version history', async () => {
     mocks.context.authenticatedUser.permissions = canUpload;
     mocks.documents = [record];

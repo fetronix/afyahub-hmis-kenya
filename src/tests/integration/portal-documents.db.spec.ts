@@ -241,6 +241,84 @@ describeDb('Patient portal released documents — attested disposable DB and rea
     expect(after.data.documents.some((d: any) => d.id === first.data.id)).toBe(false);
     expect(after.data.documents.some((d: any) => d.id === second.data.id)).toBe(false);
   });
+  it('reports a partial bulk release without claiming the refused document succeeded', async () => {
+    const good = await upload('Partial release good');
+    // A consent document without the explicit original review is refused by
+    // the server even when a stale client sends it in the same decision.
+    const refused = await upload('Partial release consent form');
+    const response = await fetch(
+      `${server.baseUrl}/api/patient-documents/patients/${patient}/releases`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${f.staff.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          documentIds: [good.data.id, refused.data.id],
+          released: true,
+          reason: 'Synthetic partial portal release',
+        }),
+      },
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as any;
+    expect(body.partial).toBe(true);
+    expect(body.documents.map((d: any) => d.document_id)).toEqual([good.data.id]);
+    expect(body.failures).toEqual([
+      expect.objectContaining({
+        document_id: refused.data.id,
+        error: 'CONSENT_REVIEW_REQUIRED',
+      }),
+    ]);
+    const released = await pool.query(
+      'SELECT released FROM patient_document_releases WHERE document_id=$1',
+      [good.data.id],
+    );
+    expect(released.rows[0].released).toBe(true);
+    const refusedRow = await pool.query(
+      'SELECT released FROM patient_document_releases WHERE document_id=$1',
+      [refused.data.id],
+    );
+    expect(refusedRow.rowCount).toBe(0);
+    // A selection where nothing can be released is an error, never a silent
+    // success.
+    const nothing = await fetch(
+      `${server.baseUrl}/api/patient-documents/patients/${patient}/releases`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${f.staff.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          documentIds: [refused.data.id],
+          released: true,
+          reason: 'Synthetic refused portal release',
+        }),
+      },
+    );
+    expect(nothing.status).toBe(409);
+    expect(((await nothing.json()) as any).error).toBe('CONSENT_REVIEW_REQUIRED');
+  });
+  it('records one audit action for a repeated release decision', async () => {
+    const doc = await upload('Idempotent release decision');
+    expect((await release(doc.data.id)).status).toBe(200);
+    const again = await release(doc.data.id);
+    expect(again.status).toBe(200);
+    expect(((await again.json()) as any).already_recorded).toBe(true);
+    const events = await pool.query(
+      "SELECT action,reason,actor_id,created_at FROM patient_document_events WHERE document_id=$1 AND action='PORTAL_RELEASE'",
+      [doc.data.id],
+    );
+    expect(events.rowCount).toBe(1);
+    expect(events.rows[0]).toMatchObject({
+      action: 'PORTAL_RELEASE',
+      reason: 'Explicit synthetic portal release decision',
+      actor_id: f.staff.id,
+    });
+    expect(events.rows[0].created_at).toBeTruthy();
+  });
   it('shows a revoked release as inaccessible while the staff list keeps the revoked state', async () => {
     expect((await release(identifiers.general, false)).status).toBe(200);
     const page = await portal();
