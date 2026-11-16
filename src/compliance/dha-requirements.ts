@@ -299,9 +299,9 @@ export const DHA_REQUIREMENTS: readonly DhaRequirement[] = Object.freeze([
     status: 'PARTIAL',
     severity: 'high',
     evidence:
-      'The patient record screen assembles a visit-centred summary. Since the portal round the same record can be produced as a patient-facing text summary generated on request at GET /api/portal/records/download: visits with released diagnoses, verified laboratory results, prescriptions, allergies and appointments, streamed as an attachment with no stored file. Staff-side clinical summaries remain visit-centred rather than a longitudinal shared-health-record document.',
+      'The patient record screen assembles a visit-centred summary. The portal produces a patient-facing PDF medical record on request at GET /api/portal/records/download: every encounter with its own facility, diagnoses, clinical notes, admission/discharge information, allergies (including an explicit "no allergy information recorded" state distinct from "no known allergies"), prescriptions with dispensing status, verified laboratory results with pending ones labelled but never valued, radiology reports only where a report exists, upcoming and past appointments, and only explicitly released documents. It is rendered on the facility letterhead, paginated with Page X of Y, generated per request and streamed as an attachment with no stored file. Staff-side clinical summaries remain visit-centred rather than a longitudinal shared-health-record document.',
     verification:
-      'Record service and portal download path read; test:patient-portal asserts the download is generated per request and that the portal writes no clinical table. The download has not been executed against a database.',
+      'Record service and portal download path read; test:patient-portal asserts the download is generated per request and that the portal writes no clinical table. portal-medical-record.db.spec parses the generated PDF back and checks multi-facility attribution, pending-versus-verified results, unreleased-document exclusion, empty-history wording, pagination and cross-patient refusal against synthetic PostgreSQL.',
   },
   {
     id: 'FN-18',

@@ -393,13 +393,17 @@ export const portalApi = {
     }),
 
   /**
-   * Download the record.
+   * Download the medical record as a PDF.
    *
    * Fetched with the bearer token and turned into a Blob, so the file is
    * produced only for a live session. A copied URL without that session
    * returns 401 — there is no public document path to leak.
+   *
+   * The filename is the one the server chose (it contains the patient number
+   * and the Nairobi date). Only the filename is read from the header; the body
+   * is never interpreted as JSON, because a successful response is a document.
    */
-  downloadRecord: async (): Promise<Blob> => {
+  downloadRecord: async (): Promise<{ blob: Blob; filename: string | null }> => {
     const token = getPortalToken();
 
     const response = await fetch(`${API_BASE}/records/download`, {
@@ -410,13 +414,27 @@ export const portalApi = {
       const body = await response.json().catch(() => ({}));
 
       throw new PortalApiError(
-        typeof body.message === 'string' ? body.message : 'The download failed.',
+        typeof body.message === 'string'
+          ? body.message
+          : 'Your medical record could not be downloaded. Please try again.',
         response.status,
         typeof body.error === 'string' ? body.error : undefined,
       );
     }
 
-    return response.blob();
+    const type = response.headers.get('content-type') ?? '';
+    if (!type.toLowerCase().includes('application/pdf')) {
+      throw new PortalApiError(
+        'Your medical record could not be downloaded. Please try again.',
+        response.status,
+        'UNEXPECTED_DOWNLOAD_TYPE',
+      );
+    }
+
+    const disposition = response.headers.get('content-disposition') ?? '';
+    const match = /filename="?([^";]+)"?/i.exec(disposition);
+
+    return { blob: await response.blob(), filename: match ? match[1].trim() : null };
   },
 };
 

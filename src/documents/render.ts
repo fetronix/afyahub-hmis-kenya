@@ -51,14 +51,14 @@ import {
 const require = createRequire(import.meta.url);
 
 /** Resolved lazily so a missing font package cannot stop the server booting. */
-function contentFontPath(): string {
+export function contentFontPath(): string {
   const path = require.resolve('dejavu-fonts-ttf/ttf/DejaVuSans.ttf');
   const font = fontkit.openSync(path);
   if (!('hasGlyphForCodePoint' in font)) throw new Error('DOCUMENT_FONT_INVALID');
   return path;
 }
 
-function boldFontPath(): string {
+export function boldFontPath(): string {
   try {
     return require.resolve('dejavu-fonts-ttf/ttf/DejaVuSans-Bold.ttf');
   } catch {
@@ -122,6 +122,39 @@ interface Layout {
   thermal: boolean;
 }
 
+/** The printable rectangle inside a letterhead, or A4 defaults when there is none. */
+export interface ContentFrame {
+  widthPt: number;
+  heightPt: number;
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+/**
+ * The body rectangle a letterhead reserves, with the footer band already
+ * subtracted from the bottom margin.
+ *
+ * Exported because other patient-facing documents (the portal medical-record
+ * PDF) must lay out inside exactly the same rectangle. Recomputing those
+ * defaults in a second place is how a document ends up printing over the
+ * facility's letterhead artwork.
+ */
+export function letterheadContentFrame(
+  letterhead: LetterheadForRender | null,
+  footerBandPt: number = FOOTER_BAND_PT,
+): ContentFrame {
+  return {
+    widthPt: letterhead?.pageWidthPt ?? A4_WIDTH_PT,
+    heightPt: letterhead?.pageHeightPt ?? A4_HEIGHT_PT,
+    top: letterhead?.bodyTopPt ?? 56.69,
+    bottom: (letterhead?.bodyBottomPt ?? 56.69) + footerBandPt,
+    left: letterhead?.bodyLeftPt ?? 48,
+    right: letterhead?.bodyRightPt ?? 48,
+  };
+}
+
 function layoutFor(model: DocumentModel, letterhead: LetterheadForRender | null): Layout {
   if (model.thermal) {
     return {
@@ -134,17 +167,8 @@ function layoutFor(model: DocumentModel, letterhead: LetterheadForRender | null)
       thermal: true,
     };
   }
-  const width = letterhead?.pageWidthPt ?? A4_WIDTH_PT;
-  const height = letterhead?.pageHeightPt ?? A4_HEIGHT_PT;
-  return {
-    widthPt: width,
-    heightPt: height,
-    top: letterhead?.bodyTopPt ?? 56.69,
-    bottom: (letterhead?.bodyBottomPt ?? 56.69) + FOOTER_BAND_PT,
-    left: letterhead?.bodyLeftPt ?? 48,
-    right: letterhead?.bodyRightPt ?? 48,
-    thermal: false,
-  };
+  const frame = letterheadContentFrame(letterhead);
+  return { ...frame, thermal: false };
 }
 
 /** Write the content pages. Returns the pdfkit-rendered bytes. */
@@ -425,28 +449,36 @@ async function renderContent(model: DocumentModel, layout: Layout): Promise<Buff
  * `letterhead` is what the caller resolved — the active version for a new
  * document, or the version recorded at finalization for a reprint.
  */
-export async function renderDocument(
-  model: DocumentModel,
-  letterhead: LetterheadForRender | null,
-): Promise<RenderResult> {
-  const layout = layoutFor(model, letterhead);
-  const contentBytes = await renderContent(model, layout);
+export interface ComposeOptions {
+  /** PDF metadata title. */
+  title: string;
+  /** Recorded as the PDF author; the facility the document belongs to. */
+  author: string;
+  subject: string;
+  pageWidthPt: number;
+  pageHeightPt: number;
+}
 
-  // The thermal roll cannot carry a letterhead: it is 80 mm wide and the
-  // branding is A4. Printing one is not a fallback the operator could use.
-  const applied = Boolean(letterhead?.bytes) && !model.thermal;
-  if (!applied) {
-    const content = await PDFComposer.load(contentBytes, { updateMetadata: false });
-    return { bytes: contentBytes, pages: content.getPageCount(), letterheadApplied: false };
-  }
-
-  const letterheadDoc = await PDFComposer.load(letterhead!.bytes!, { updateMetadata: false });
+/**
+ * Put rendered content pages onto the facility's letterhead.
+ *
+ * Shared by every document the system prints, so the portal medical record and
+ * an invoice cannot disagree about what "on the letterhead" means. Both halves
+ * are unchanged: the letterhead is embedded once per source page and the
+ * content is drawn on top at the same origin, unscaled.
+ */
+export async function composeOnLetterhead(
+  contentBytes: Buffer,
+  letterhead: LetterheadForRender,
+  options: ComposeOptions,
+): Promise<{ bytes: Buffer; pages: number }> {
+  const letterheadDoc = await PDFComposer.load(letterhead.bytes!, { updateMetadata: false });
   const content = await PDFComposer.load(contentBytes, { updateMetadata: false });
   const output = await PDFComposer.create();
 
-  output.setTitle(`${model.title} ${model.documentNumber}`);
-  output.setAuthor(model.facility.name);
-  output.setSubject(model.title);
+  output.setTitle(options.title);
+  output.setAuthor(options.author);
+  output.setSubject(options.subject);
   output.setCreator('JaliCare HMIS');
 
   const letterheadPages = letterheadDoc.getPages();
@@ -472,23 +504,48 @@ export async function renderDocument(
   const embeddedContent = await Promise.all(contentPages.map((page) => output.embedPage(page)));
 
   for (let index = 0; index < contentPages.length; index += 1) {
-    const target = await output.addPage([layout.widthPt, layout.heightPt]);
+    const target = await output.addPage([options.pageWidthPt, options.pageHeightPt]);
     const letterheadPage = embeddedLetterhead[index === 0 ? 0 : continuationIndex];
 
     target.drawPage(letterheadPage, {
       x: 0,
       y: 0,
-      width: layout.widthPt,
-      height: layout.heightPt,
+      width: options.pageWidthPt,
+      height: options.pageHeightPt,
     });
     target.drawPage(embeddedContent[index], {
       x: 0,
       y: 0,
-      width: layout.widthPt,
-      height: layout.heightPt,
+      width: options.pageWidthPt,
+      height: options.pageHeightPt,
     });
   }
 
-  const bytes = Buffer.from(await output.save());
-  return { bytes, pages: contentPages.length, letterheadApplied: true };
+  return { bytes: Buffer.from(await output.save()), pages: contentPages.length };
+}
+
+export async function renderDocument(
+  model: DocumentModel,
+  letterhead: LetterheadForRender | null,
+): Promise<RenderResult> {
+  const layout = layoutFor(model, letterhead);
+  const contentBytes = await renderContent(model, layout);
+
+  // The thermal roll cannot carry a letterhead: it is 80 mm wide and the
+  // branding is A4. Printing one is not a fallback the operator could use.
+  const applied = Boolean(letterhead?.bytes) && !model.thermal;
+  if (!applied) {
+    const content = await PDFComposer.load(contentBytes, { updateMetadata: false });
+    return { bytes: contentBytes, pages: content.getPageCount(), letterheadApplied: false };
+  }
+
+  const composed = await composeOnLetterhead(contentBytes, letterhead!, {
+    title: `${model.title} ${model.documentNumber}`,
+    author: model.facility.name,
+    subject: model.title,
+    pageWidthPt: layout.widthPt,
+    pageHeightPt: layout.heightPt,
+  });
+
+  return { bytes: composed.bytes, pages: composed.pages, letterheadApplied: true };
 }

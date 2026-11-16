@@ -1243,6 +1243,56 @@ async function portalAudit(
     [s.patientId, s.tenantId, s.facilityId, download ? 'DOWNLOAD' : 'VIEW', id],
   );
 }
+export interface PortalReleasedDocumentSummary {
+  id: number;
+  title: string;
+  group: string;
+  group_label: string;
+  kind: string;
+  version: number;
+  signed_at: string | null;
+  uploaded_at: string | null;
+}
+
+/**
+ * The released documents that belong in a generated medical record.
+ *
+ * Same authorization predicate as `portalDocumentPage` — tenant, the account's
+ * facility and the session's patient, joined to an explicit `released=true` —
+ * but without search/filter paging and without its own audit row: the caller is
+ * generating a record and records one DOWNLOAD/EXPORT event for the whole file.
+ * Nothing unreleased, no version that was never released, and no staff notes
+ * can reach the document because only the portal projection is selected.
+ */
+export async function portalReleasedDocumentList(
+  s: PortalSession,
+): Promise<PortalReleasedDocumentSummary[]> {
+  const facilityId = portalScope(s);
+  const rows = await pool.query(
+    `SELECT ${PORTAL_DOCUMENT_FIELDS},
+            to_char(d.uploaded_at,'YYYY-MM-DD"T"HH24:MI:SS') AS uploaded_at_wall
+     FROM patient_signed_documents d
+     JOIN patient_document_releases r ON r.document_id=d.id AND r.released=true
+     WHERE d.tenant_id=$1 AND d.facility_id=$2 AND d.patient_id=$3
+     ORDER BY d.uploaded_at DESC,d.id DESC LIMIT 500`,
+    [s.tenantId, facilityId, s.patientId],
+  );
+
+  return rows.rows.map((row) => {
+    const item = portalItem(row);
+    return {
+      id: item.id as number,
+      title: item.title as string,
+      group: item.group as string,
+      group_label: item.group_label as string,
+      kind: item.kind as string,
+      version: item.version as number,
+      signed_at: item.signing_date ? String(item.signing_date) : null,
+      uploaded_at: (row.uploaded_at_wall as string | null) ?? null,
+    };
+  });
+}
+
 /**
  * One server-side page of the authenticated patient's released documents.
  * Search, category and date filters run in SQL over the whole authorized set,

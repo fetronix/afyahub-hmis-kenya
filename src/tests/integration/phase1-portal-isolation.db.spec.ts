@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import PDFParser from 'pdf2json';
 
 import { createSession } from '../../auth/session.service.ts';
 import { pool } from '../../db/index.ts';
@@ -11,7 +12,7 @@ import {
 } from '../../portal/portal-auth.service.ts';
 import { hashPassword } from '../../utils/password.ts';
 import { describeDb } from '../vitest/support/db.ts';
-import { httpJson, startTestServer } from './support/http-harness.ts';
+import { httpBytes, httpJson, startTestServer } from './support/http-harness.ts';
 
 describeDb('Phase 1 patient portal isolation (synthetic PostgreSQL)', () => {
   const suffix = randomUUID().slice(0, 8);
@@ -28,6 +29,43 @@ describeDb('Phase 1 patient portal isolation (synthetic PostgreSQL)', () => {
   const contains = (value: unknown, marker: string) => JSON.stringify(value).includes(marker);
   const call = (path: string, bearer?: string) =>
     httpJson(base, 'GET', path, bearer ? { token: bearer } : {});
+
+  /**
+   * The record download is a PDF, not JSON. Its text is parsed back with the
+   * same parser the document-generation suite uses, so the isolation markers
+   * are asserted against what a human would actually read on the page.
+   */
+  async function downloadRecord(bearer: string) {
+    const response = await httpBytes(base, 'GET', '/api/portal/records/download', {
+      token: bearer,
+    });
+    // Optional patient id, exactly the kind of thing a tampering attempt adds.
+    const withPatientId = await httpBytes(
+      base,
+      'GET',
+      `/api/portal/records/download?patientId=${otherPatient}`,
+      { token: bearer },
+    );
+
+    let text = '';
+    if (response.status === 200) {
+      const parser = new PDFParser(null, true);
+      text = await new Promise<string>((resolve, reject) => {
+        parser.on('pdfParser_dataError', reject);
+        parser.on('pdfParser_dataReady', () => resolve(parser.getRawTextContent()));
+        parser.parseBuffer(response.bytes);
+      });
+      parser.destroy();
+    }
+
+    return {
+      status: response.status,
+      headers: response.headers,
+      text: text.replace(/\s+/g, ' '),
+      withPatientIdStatus: withPatientId.status,
+      bytes: response.bytes,
+    };
+  }
   const post = (path: string, body: unknown, bearer?: string) =>
     httpJson(base, 'POST', path, { body, ...(bearer ? { token: bearer } : {}) });
 
@@ -171,25 +209,52 @@ describeDb('Phase 1 patient portal isolation (synthetic PostgreSQL)', () => {
 
   it('requires a portal session and scopes overview, laboratory and download results', async () => {
     expect((await call('/api/portal/overview')).status).toBe(401);
+    expect(
+      (await httpBytes(base, 'GET', '/api/portal/records/download')).status,
+      'The PDF needs a live portal session',
+    ).toBe(401);
+    expect(
+      (await httpBytes(base, 'GET', '/api/portal/records/download', { token: staffToken })).status,
+      'A staff session cannot reach the patient download',
+    ).toBe(401);
+
     const overview = await call('/api/portal/overview', token);
     const laboratory = await call('/api/portal/laboratory', token);
-    const download = await call('/api/portal/records/download', token);
-    for (const response of [overview, laboratory, download]) {
-      expect(response.status).toBe(200);
-      expect(contains(response.body, 'VISIBLE_REGISTRATION')).toBe(true);
-      expect(contains(response.body, 'VISIBLE_ACCOUNT')).toBe(true);
-      for (const marker of [
-        'DENY_OTHER_FACILITY',
-        'DENY_FOREIGN_TENANT',
-        'VISIBLE_OTHER_PATIENT',
-        'DENY_RESULT_PATIENT_MISMATCH',
-        'DENY_ORDER_PATIENT_MISMATCH',
-        'DENY_PENDING_RESULT',
-        'DENY_INCONSISTENT_ORDER_TENANT',
-      ]) {
-        expect(contains(response.body, marker)).toBe(false);
-      }
+    const download = await downloadRecord(token);
+
+    expect(overview.status).toBe(200);
+    expect(laboratory.status).toBe(200);
+    expect(download.status).toBe(200);
+    expect(download.headers.get('content-type')).toContain('application/pdf');
+    expect(download.headers.get('content-disposition')).toContain('attachment');
+    expect(download.bytes.subarray(0, 5).toString()).toBe('%PDF-');
+
+    for (const marker of ['VISIBLE_REGISTRATION', 'VISIBLE_ACCOUNT']) {
+      expect(contains(overview.body, marker)).toBe(true);
+      expect(contains(laboratory.body, marker)).toBe(true);
+      expect(download.text).toContain(marker);
     }
+
+    for (const marker of [
+      'DENY_OTHER_FACILITY',
+      'DENY_FOREIGN_TENANT',
+      'VISIBLE_OTHER_PATIENT',
+      'DENY_RESULT_PATIENT_MISMATCH',
+      'DENY_ORDER_PATIENT_MISMATCH',
+      'DENY_PENDING_RESULT',
+      'DENY_INCONSISTENT_ORDER_TENANT',
+    ]) {
+      expect(contains(overview.body, marker)).toBe(false);
+      expect(contains(laboratory.body, marker)).toBe(false);
+      expect(download.text).not.toContain(marker);
+    }
+
+    /*
+     * Adding a patient id to the URL changes nothing: the route reads the
+     * session, not the query. That is the browser-side half of the isolation
+     * claim; the service-side half is that no such parameter is ever read.
+     */
+    expect(download.withPatientIdStatus).toBe(200);
   });
 
   it('does not transfer another patient or tenant result through a valid session', async () => {
@@ -215,14 +280,18 @@ describeDb('Phase 1 patient portal isolation (synthetic PostgreSQL)', () => {
     try {
       const overview = await call('/api/portal/overview', token);
       const laboratory = await call('/api/portal/laboratory', token);
-      const download = await call('/api/portal/records/download', token);
+      const download = await downloadRecord(token);
       expect(overview.status).toBe(200);
       expect(laboratory.status).toBe(403);
       expect(download.status).toBe(200);
       expect(contains(overview.body, 'VISIBLE_REGISTRATION')).toBe(false);
-      expect(contains(download.body, 'VISIBLE_REGISTRATION')).toBe(false);
+      expect(download.text).not.toContain('VISIBLE_REGISTRATION');
       expect(contains(overview.body, 'VISIBLE_ACCOUNT')).toBe(false);
-      expect(contains(download.body, 'VISIBLE_ACCOUNT')).toBe(false);
+      expect(download.text).not.toContain('VISIBLE_ACCOUNT');
+      expect(
+        download.text,
+        'The PDF explains the switch instead of silently omitting the section',
+      ).toContain('Laboratory results are not released through your portal');
     } finally {
       await pool.query(
         'UPDATE patient_portal_settings SET show_lab_results=true WHERE facility_id=$1',

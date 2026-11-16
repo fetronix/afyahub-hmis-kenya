@@ -302,6 +302,33 @@ export async function startTestServer(app: Express): Promise<{
   };
 }
 
+/**
+ * A binary response, read as bytes.
+ *
+ * `httpJson` decodes the body as text to decide whether it is JSON. That is
+ * correct for every API response and wrong for a PDF: decoding binary as UTF-8
+ * replaces the bytes the parser needs. Document downloads therefore use this
+ * helper, which keeps the body intact.
+ */
+export async function httpBytes(
+  baseUrl: string,
+  method: string,
+  path: string,
+  options: { token?: string; headers?: Record<string, string> } = {},
+): Promise<{ status: number; headers: Headers; bytes: Buffer }> {
+  const headers: Record<string, string> = { ...(options.headers ?? {}) };
+
+  if (options.token) headers.authorization = `Bearer ${options.token}`;
+
+  const response = await fetch(`${baseUrl}${path}`, { method, headers });
+
+  return {
+    status: response.status,
+    headers: response.headers,
+    bytes: Buffer.from(await response.arrayBuffer()),
+  };
+}
+
 export async function httpJson<T = any>(
   baseUrl: string,
   method: string,

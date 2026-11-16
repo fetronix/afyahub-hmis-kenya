@@ -1111,6 +1111,10 @@ function PortalAccount({
   const [cardBusy, setCardBusy] = useState(false);
   const [history, setHistory] = useState<PortalAccessEvent[]>([]);
   const [downloadBusy, setDownloadBusy] = useState(false);
+  const [recordNotice, setRecordNotice] = useState<{ tone: 'ok' | 'danger'; text: string } | null>(
+    null,
+  );
+  const [lastRecordAt, setLastRecordAt] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ tone: 'ok' | 'danger'; text: string } | null>(null);
   const [correction, setCorrection] = useState({ recordType: 'Registration details', detail: '' });
   const [password, setPassword] = useState({
@@ -1134,7 +1138,21 @@ function PortalAccount({
         if (cardResult.status === 'fulfilled') setCard(cardResult.value);
         else setCardError(messageOf(cardResult.reason));
 
-        if (historyResult.status === 'fulfilled') setHistory(historyResult.value);
+        if (historyResult.status === 'fulfilled') {
+          setHistory(historyResult.value);
+
+          /*
+           * The access history already records every generated copy. Reading
+           * the date from it means "last generated" survives a new device and
+           * does not need a second endpoint or a stored file.
+           */
+          const generated = historyResult.value.find(
+            (event) =>
+              event.recordType === 'MedicalRecord' &&
+              (event.action === 'DOWNLOAD' || event.action === 'EXPORT'),
+          );
+          setLastRecordAt(generated?.createdAt ?? null);
+        }
       } catch {
         /* Each block reports its own failure above. */
       }
@@ -1164,15 +1182,15 @@ function PortalAccount({
 
   const download = async () => {
     setDownloadBusy(true);
-    setNotice(null);
+    setRecordNotice(null);
 
     try {
-      const blob = await portalApi.downloadRecord();
+      const { blob, filename } = await portalApi.downloadRecord();
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
 
       link.href = url;
-      link.download = `my-health-record-${new Date().toISOString().slice(0, 10)}.txt`;
+      link.download = filename ?? `medical-record-${new Date().toISOString().slice(0, 10)}.pdf`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -1183,9 +1201,21 @@ function PortalAccount({
        */
       URL.revokeObjectURL(url);
 
-      setNotice({ tone: 'ok', text: 'Your record was downloaded to this device.' });
+      /*
+       * The success message is shown only here — after the server produced a
+       * PDF and the browser was handed it. A failed request throws and lands
+       * in the catch below, so "downloaded" can never describe a failed call.
+       */
+      setLastRecordAt(new Date().toISOString());
+      setRecordNotice({ tone: 'ok', text: 'Your medical record PDF was downloaded to this device.' });
     } catch (caught) {
-      setNotice({ tone: 'danger', text: messageOf(caught) });
+      setRecordNotice({
+        tone: 'danger',
+        text:
+          caught instanceof PortalApiError
+            ? caught.message
+            : 'Your medical record could not be downloaded. Please try again, or ask at the desk for a printed copy.',
+      });
     } finally {
       setDownloadBusy(false);
     }
@@ -1299,23 +1329,51 @@ function PortalAccount({
       </Panel>
 
       <Panel
-        title="Download your record"
-        subtitle="A text copy, generated now for you. There is no permanent link to share."
-        icon={<Download className="h-5 w-5" />}
+        title="My Medical Record"
+        subtitle="Download a professionally organised copy of your available medical history and healthcare records."
+        icon={<FileText className="h-5 w-5" />}
       >
-        <button
-          type="button"
-          className="btn-primary w-full"
-          onClick={download}
-          disabled={downloadBusy}
-        >
+        <div className="space-y-3" aria-label="My Medical Record">
+          <p className="text-xs leading-relaxed text-ink-soft">
+            A PDF containing your visits, diagnoses, medicines, laboratory results, radiology
+            reports, appointments and documents released to your portal. It is generated when you
+            ask for it, so there is no permanent link to share.
+          </p>
+
+          <button
+            type="button"
+            className="btn-primary w-full"
+            onClick={download}
+            disabled={downloadBusy}
+            aria-busy={downloadBusy}
+          >
+            {downloadBusy ? (
+              <RefreshCw className="h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4" />
+            )}
+            {downloadBusy ? 'Preparing your record…' : 'Download Medical Record (PDF)'}
+          </button>
+
           {downloadBusy ? (
-            <RefreshCw className="h-4 w-4 animate-spin" />
-          ) : (
-            <Download className="h-4 w-4" />
-          )}
-          {downloadBusy ? 'Preparing…' : 'Download'}
-        </button>
+            <p className="text-2xs leading-relaxed text-slate-500" role="status">
+              Generating your PDF. A long history can take a few seconds; please keep this page
+              open.
+            </p>
+          ) : null}
+
+          {recordNotice ? (
+            <Notice tone={recordNotice.tone === 'ok' ? 'ok' : 'danger'}>
+              {recordNotice.text}
+            </Notice>
+          ) : null}
+
+          <p className="text-2xs text-slate-500">
+            {lastRecordAt
+              ? `Last generated ${formatDate(lastRecordAt, true)}.`
+              : 'No copy has been generated from this account yet.'}
+          </p>
+        </div>
       </Panel>
 
       <Panel

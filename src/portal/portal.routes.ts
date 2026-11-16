@@ -26,7 +26,7 @@ import {
   revokePortalSession,
 } from './portal-auth.service.ts';
 import {
-  buildPortalRecordSummary,
+  buildPortalMedicalRecord,
   getPortalOverview,
   listPortalAppointments,
   listPortalDischargeSummaries,
@@ -43,6 +43,8 @@ import {
   revokeSharingGrant,
 } from './portal-sharing.service.ts';
 import { getDigitalCard, issueDigitalCard } from './qr.service.ts';
+import { medicalRecordFilename, renderMedicalRecordPdf } from './medical-record-pdf.ts';
+import { resolveActiveLetterhead } from '../branding/letterhead.service.ts';
 
 const router = Router();
 
@@ -306,29 +308,57 @@ router.get('/discharge-summaries', async (req: PortalRequest, res) => {
 router.get('/records/download', async (req: PortalRequest, res) => {
   try {
     const session = req.portalSession!;
-    const summary = await buildPortalRecordSummary(session);
+
+    /*
+     * Everything below is assembled from `session.patientId`. The route never
+     * reads a patient id from the query or body, so there is nothing to tamper
+     * with: a request for somebody else's record is not a rejected variation of
+     * this call, it is a call that does not exist.
+     */
+    const record = await buildPortalMedicalRecord(session);
+
+    /*
+     * Branding comes from the facility the account belongs to — the facility
+     * whose name and contacts head the document. No facility name, address or
+     * logo is written in this file; a facility without an active letterhead
+     * still gets a correct, plain A4 record.
+     */
+    const letterhead = await resolveActiveLetterhead(session.tenantId, record.facility.id);
+
+    const pdf = await renderMedicalRecordPdf(record, letterhead);
 
     logPortalRecordAccess(session, {
       action: 'EXPORT',
-      recordType: 'PatientRecordSummary',
+      recordType: 'MedicalRecord',
       request: requestFacts(req),
     }).catch((error) => {
       console.error('Portal download access log failed:', error);
     });
 
-    const filename = `jalicare-record-${summary.patient.mrn ?? session.patientId}-${new Date()
-      .toISOString()
-      .slice(0, 10)}.json`;
+    const filename = medicalRecordFilename(record.patient.mrn, new Date(record.generatedAt));
 
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', String(pdf.bytes.length));
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
     res.setHeader('X-Content-Type-Options', 'nosniff');
 
-    res.send(JSON.stringify(summary, null, 2));
+    res.send(pdf.bytes);
   } catch (error) {
     if (sendPortalError(res, error)) return;
-    res.status(500).json({ success: false, error: 'DOWNLOAD_FAILED' });
+
+    /*
+     * A rendering failure is not something a patient can debug, and the
+     * internal error may name a font path or a library. The patient is told
+     * what to do instead, and the operator finds the cause in the server log.
+     */
+    console.error('Portal medical record PDF failed:', error);
+    res.status(500).json({
+      success: false,
+      error: 'RECORD_PDF_FAILED',
+      message:
+        'Your medical record could not be generated just now. Please try again in a few minutes, or ask at the desk for a printed copy.',
+    });
   }
 });
 
