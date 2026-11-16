@@ -55,7 +55,7 @@ beforeEach(() => {
         doctors: [{ id: 8, name: 'Dr Synthetic' }],
         hasMore: false,
       });
-    if (path.endsWith('/file'))
+    if (path.includes('/file'))
       return Promise.resolve(new Blob(['synthetic'], { type: 'application/pdf' }));
     if (options?.method === 'POST') return Promise.resolve({ ...record, id: 2 });
     if (path.endsWith('/history'))

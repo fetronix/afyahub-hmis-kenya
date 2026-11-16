@@ -1,6 +1,9 @@
 import {
   PDFArray,
   PDFDict,
+  PDFBool,
+  PDFHexString,
+  PDFString,
   PDFDocument,
   PDFName,
   PDFNull,
@@ -20,6 +23,7 @@ const messages = {
     'PDF contains embedded attachments or file specifications. Export a PDF without attachments.',
   forms:
     'PDF contains unsupported interactive form elements. Export a flattened, static PDF from a trusted application.',
+  uri: 'PDF contains an unsupported or unsafe link destination. Only absolute HTTP and HTTPS website links without credentials are supported.',
   external:
     'PDF contains external actions or externally referenced content. Export a self-contained static PDF without actions.',
   action: 'PDF contains unsupported actions. Export a static PDF without actions.',
@@ -66,7 +70,24 @@ const actionTypes = new Set([
   'Trans',
   'GoTo3DView',
 ]);
-const externalActions = new Set(['URI', 'GoToR', 'GoToE', 'SubmitForm', 'ImportData']);
+const externalActions = new Set(['GoToR', 'GoToE', 'SubmitForm', 'ImportData']);
+
+/** Reject raw and Unicode whitespace, C0/C1 control characters and backslashes
+ * without embedding literal control characters in a regular expression.
+ */
+function hasUnsafeUriCharacter(text: string): boolean {
+  for (const character of text) {
+    const code = character.codePointAt(0)!;
+    if (
+      code <= 0x20 ||
+      (code >= 0x7f && code <= 0x9f) ||
+      character === '\\' ||
+      /\s/u.test(character)
+    )
+      return true;
+  }
+  return false;
+}
 
 /** Structural inspection only. No PDF actions, scripts, rendering or rewriting.
  * All parsed objects (also unreferenced objects/object streams) are inspected.
@@ -117,6 +138,7 @@ export function inspectStaticPdf(pdf: PDFDocument): void {
     streamMaps.add(dict);
   };
   const annotations = new Set<PDFDict>();
+  const pageAnnotations = new Set<PDFDict>();
   for (const dict of dicts) {
     if (
       name(dict.get(PDFName.of('Type'))) === 'Font' &&
@@ -133,6 +155,7 @@ export function inspectStaticPdf(pdf: PDFDocument): void {
       const annot = resolve(raw);
       if (!(annot instanceof PDFDict)) fail('structure');
       annotations.add(annot);
+      pageAnnotations.add(annot);
     }
   }
   for (const annot of annotations) {
@@ -151,12 +174,58 @@ export function inspectStaticPdf(pdf: PDFDocument): void {
       }
     }
   }
-  const inspectAction = (raw: PDFObject | undefined): void => {
+  // URI actions are allowed only in an actual page Link annotation's A slot.
+  // The global object scan must not accidentally authorize OpenAction/AA aliases.
+  const webLinkActions = new Set<PDFDict>();
+  for (const annot of pageAnnotations) {
+    const action = resolve(annot.get(PDFName.of('A')));
+    if (
+      name(annot.get(PDFName.of('Subtype'))) === 'Link' &&
+      action instanceof PDFDict &&
+      name(action.get(PDFName.of('S'))) === 'URI'
+    )
+      webLinkActions.add(action);
+  }
+  const inspectAction = (raw: PDFObject | undefined, allowWebLink = false): void => {
     const value = resolve(raw);
     if (value instanceof PDFDict) {
       const subtype = name(value.get(PDFName.of('S')));
       if (subtype === 'JavaScript' || value.has(PDFName.of('JS'))) fail('javascript');
       if (subtype === 'Launch') fail('launch');
+      if (subtype === 'URI') {
+        if (!allowWebLink) fail('action');
+        if (value.keys().some((key) => !['Type', 'S', 'URI', 'IsMap'].includes(key.decodeText())))
+          fail('action');
+        if (value.has(PDFName.of('Type')) && name(value.get(PDFName.of('Type'))) !== 'Action')
+          fail('structure');
+        if (
+          value.has(PDFName.of('IsMap')) &&
+          resolve(value.get(PDFName.of('IsMap'))) !== PDFBool.False
+        )
+          fail('action');
+        const rawUri = resolve(value.get(PDFName.of('URI')));
+        if (!(rawUri instanceof PDFString) && !(rawUri instanceof PDFHexString)) fail('uri');
+        const uri = rawUri.decodeText();
+        if (uri.length > 4096 || !/^https?:\/\//i.test(uri) || hasUnsafeUriCharacter(uri))
+          fail('uri');
+        try {
+          // Reject percent-encoded control characters, whitespace and backslashes
+          // as well: some viewers decode a URI string before dispatching it.
+          const decoded = decodeURIComponent(uri);
+          if (hasUnsafeUriCharacter(decoded)) fail('uri');
+          const parsed = new URL(uri);
+          if (
+            !['http:', 'https:'].includes(parsed.protocol) ||
+            !parsed.hostname ||
+            parsed.username ||
+            parsed.password
+          )
+            fail('uri');
+        } catch {
+          fail('uri');
+        }
+        return;
+      }
       if (externalActions.has(subtype ?? '')) fail('external');
       if (subtype === 'GoTo') {
         if (value.keys().some((key) => !['Type', 'S', 'D'].includes(key.decodeText())))
@@ -210,7 +279,7 @@ export function inspectStaticPdf(pdf: PDFDocument): void {
       subtype = name(dict.get(PDFName.of('Subtype')));
     if (['Filespec', 'EmbeddedFile'].includes(type ?? '')) fail('attachments');
     if (type === 'Action' || actionTypes.has(name(dict.get(PDFName.of('S'))) ?? ''))
-      inspectAction(dict);
+      inspectAction(dict, webLinkActions.has(dict));
     if (subtype === 'PS') fail('postscript');
     if (subtype === 'Widget' || dict.has(PDFName.of('FT'))) fail('forms');
     if (['RichMedia', 'Movie', 'Sound', 'Screen', '3D'].includes(subtype ?? '')) fail('annotation');
@@ -241,7 +310,7 @@ export function inspectStaticPdf(pdf: PDFDocument): void {
       }
       if (k === 'A') {
         if (type === 'StructElem') attributes(raw);
-        else inspectAction(raw);
+        else inspectAction(raw, pageAnnotations.has(dict) && subtype === 'Link');
       }
       if (k === 'Dest' && annotations.has(dict)) destination(raw);
       if (

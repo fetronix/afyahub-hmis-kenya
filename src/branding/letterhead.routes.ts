@@ -26,6 +26,7 @@
  * `Cache-Control: private, no-store` so a shared browser does not keep a copy.
  */
 
+import { staticPdfPreview, PdfPreviewError } from '../security/pdf-preview.ts';
 import express, { Router } from 'express';
 import type { Response } from 'express';
 
@@ -76,6 +77,10 @@ function letterheadIdOf(req: AuthRequest): number {
 }
 
 function sendError(res: Response, error: unknown): Response {
+  if (error instanceof PdfPreviewError)
+    return res
+      .status(422)
+      .json({ success: false, code: 'PDF_PREVIEW_UNAVAILABLE', message: error.message });
   if (error instanceof LetterheadError) {
     return res.status(error.status).json({
       success: false,
@@ -253,14 +258,20 @@ router.get(
     try {
       const view = await loadScoped(req, facilityIdOf(req), letterheadIdOf(req));
       const file = await readLetterheadBytes(contextOf(req), view.id);
+      const output =
+        req.query.preview === '1' && req.query.download !== '1'
+          ? await staticPdfPreview(file.bytes)
+          : { bytes: file.bytes, derived: false };
+      const filename = output.derived ? 'derived-static-preview.pdf' : file.filename;
+      res.setHeader('X-Document-Preview', output.derived ? 'derived-static' : 'original');
       const disposition = req.query.download === '1' ? 'attachment' : 'inline';
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Length', String(file.bytes.length));
-      res.setHeader('Content-Disposition', `${disposition}; filename="${file.filename}"`);
+      res.setHeader('Content-Length', String(output.bytes.length));
+      res.setHeader('Content-Disposition', `${disposition}; filename="${filename}"`);
       res.setHeader('Cache-Control', 'private, no-store');
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-      return res.status(200).end(file.bytes);
+      return res.status(200).end(output.bytes);
     } catch (error) {
       return sendError(res, error);
     }

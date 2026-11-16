@@ -76,6 +76,7 @@ export function BrandingDocumentsPanel({
   const [events, setEvents] = useState<LetterheadEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [previewNotice, setPreviewNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [withdrawReason, setWithdrawReason] = useState('');
@@ -202,6 +203,11 @@ export function BrandingDocumentsPanel({
     setError('');
     try {
       const blob = await brandingClient.preview(facilityId, id);
+      setPreviewNotice(
+        (blob as Blob & { derivedPreview?: boolean }).derivedPreview
+          ? 'Derived static preview: navigation actions removed. Not the original signed document. Download original for custody.'
+          : 'Preview of the unchanged uploaded original.',
+      );
       if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
       previewUrl.current = URL.createObjectURL(blob);
       window.open(previewUrl.current, '_blank', 'noopener,noreferrer');
@@ -269,6 +275,7 @@ export function BrandingDocumentsPanel({
           </div>
         </div>
 
+        {previewNotice && <AlertBanner tone="info">{previewNotice}</AlertBanner>}
         {error && <AlertBanner tone="error">{error}</AlertBanner>}
 
         {canManage ? (
@@ -367,9 +374,27 @@ export function BrandingDocumentsPanel({
                   <td>
                     <div className="flex flex-wrap gap-1.5">
                       {version.hasPdf && (
-                        <SecondaryButton onClick={() => void preview(version.id)}>
-                          Preview file
-                        </SecondaryButton>
+                        <>
+                          <SecondaryButton onClick={() => void preview(version.id)}>
+                            Preview file
+                          </SecondaryButton>
+                          <SecondaryButton
+                            onClick={() => {
+                              void (async () => {
+                                try {
+                                  openBlob(
+                                    await brandingClient.original(facilityId, version.id),
+                                    `letterhead-v${version.version}-original.pdf`,
+                                  );
+                                } catch {
+                                  setError('The original could not be downloaded.');
+                                }
+                              })();
+                            }}
+                          >
+                            Download original
+                          </SecondaryButton>
+                        </>
                       )}
                       {version.hasPdf && (
                         <SecondaryButton onClick={() => void previewDocument(version.id)}>

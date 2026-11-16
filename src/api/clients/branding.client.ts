@@ -84,7 +84,9 @@ async function fetchBinary(url: string, options: RequestInit = {}): Promise<Blob
     }
     throw new Error(message);
   }
-  return response.blob();
+  return Object.assign(await response.blob(), {
+    derivedPreview: response.headers.get('X-Document-Preview') === 'derived-static',
+  });
 }
 
 export const brandingClient = {
@@ -132,8 +134,12 @@ export const brandingClient = {
   },
 
   /** The stored PDF as a blob, for preview or download. */
+  original(facilityId: number, letterheadId: number): Promise<Blob> {
+    return fetchBinary(base(facilityId, `/${letterheadId}/file?download=1`));
+  },
+
   preview(facilityId: number, letterheadId: number): Promise<Blob> {
-    return fetchBinary(base(facilityId, `/${letterheadId}/file`));
+    return fetchBinary(base(facilityId, `/${letterheadId}/file?preview=1`));
   },
 
   /**

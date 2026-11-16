@@ -1,15 +1,35 @@
 /** Focused actual built-SPA/Express/PostgreSQL acceptance; no HTTP interception or production. */
 import { randomBytes, createHash } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { once } from 'node:events';
 import path from 'node:path';
 import puppeteer, { type Page, type ElementHandle } from 'puppeteer-core';
+import { PDFArray, PDFDict, PDFDocument, PDFName, PDFRef } from 'pdf-lib';
 import {
   pdfCompatibilityFixtures,
   legacyPdfRejection,
 } from '../src/tests/fixtures/pdf-compatibility.ts';
 import { pool } from '../src/db/index.ts';
+import { staticPdfPreview } from '../src/security/pdf-preview.ts';
+
+async function navigationPresent(bytes: Uint8Array): Promise<boolean> {
+  const pdf = await PDFDocument.load(bytes, { throwOnInvalidObject: true });
+  if (pdf.catalog.has(PDFName.of('OpenAction'))) return true;
+  for (const page of pdf.getPages()) {
+    const annots = pdf.context.lookup(page.node.get(PDFName.of('Annots')));
+    if (!(annots instanceof PDFArray)) continue;
+    for (const raw of annots.asArray()) {
+      const ref = raw instanceof PDFRef ? pdf.context.lookup(raw) : raw;
+      if (ref instanceof PDFDict && (ref.has(PDFName.of('A')) || ref.has(PDFName.of('Dest'))))
+        return true;
+    }
+  }
+  for (const [, obj] of pdf.context.enumerateIndirectObjects())
+    if (obj instanceof PDFDict && String(obj.get(PDFName.of('S'))) === '/URI') return true;
+  return false;
+}
+const actualSha = '7650930b5229cd57f58bda9788162b2f56967ba9a72e0aa1cdfa0256adb00ce0';
 import { createResponsibleDoctorFixture } from '../src/tests/integration/support/responsible-doctor.fixture.ts';
 
 if (process.env.RESPONSIBLE_DOCTOR_SYNTHETIC !== 'YES' || !process.env.CHROME_EXECUTABLE_PATH)
@@ -82,6 +102,17 @@ try {
     );
   }
   const fixtures = await pdfCompatibilityFixtures();
+  const actual = await readFile('src/tests/fixtures/letterhead-sample-a4.pdf');
+  check(
+    createHash('sha256').update(actual).digest('hex') === actualSha,
+    'Exact supplied LETTER HEAD.pdf SHA-256 fixture',
+  );
+  fixtures.push({
+    name: 'supplied-syrona-letterhead',
+    bytes: actual,
+    supported: true,
+    feature: 'Actual supplied Syrona one-page letterhead with one HTTP URI Link',
+  });
   const env = {
     ...process.env,
     NODE_ENV: 'production',
@@ -159,13 +190,20 @@ try {
   }
 
   const page = await staffPage(f.staff);
-  const hashes: Record<string, string> = {};
+  const previewHashes: Record<string, string> = {};
+  const originalHashes: Record<string, string> = {};
   const diagnostics: Record<string, string | null> = {};
+  diagnostics['supplied-syrona-letterhead'] = await legacyPdfRejection(actual);
+  check(
+    diagnostics['supplied-syrona-letterhead'] === '40 0 R/A',
+    'Old generic blacklist exact trigger: 40 0 R/A',
+  );
   const visuals = new Set([
     'scanned-letterhead',
     'scanned-signature',
     'type3-glyph-A',
     'static-annotations',
+    'supplied-syrona-letterhead',
   ]);
   for (const fixture of fixtures) {
     const filename = path.resolve('.tmp-tools/pdf-browser/' + fixture.name + '.pdf');
@@ -206,28 +244,82 @@ try {
     );
     const data = list.find((d: { title: string }) => d.title === 'Synthetic ' + fixture.name);
     check(!!data, 'Saved patient ' + fixture.name + ' is listed');
+    const fileUrl = `/api/patient-documents/patients/${f.patient}/${data.id}/file`;
+    const untouched = await page.evaluate(async (url) => {
+      const r = await fetch(url, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('jalicare_session_token')}` },
+      });
+      return {
+        status: r.status,
+        marker: r.headers.get('X-Document-Preview'),
+        bytes: Array.from(new Uint8Array(await r.arrayBuffer())),
+      };
+    }, fileUrl + '?download=1&preview=1');
+    check(
+      untouched.status === 200 &&
+        untouched.marker === 'original' &&
+        Buffer.from(untouched.bytes).equals(fixture.bytes),
+      'Patient UI ' + fixture.name + ': authorized download returns unchanged original bytes',
+    );
+    originalHashes[fixture.name] = createHash('sha256')
+      .update(Buffer.from(untouched.bytes))
+      .digest('hex');
+    const expectedPreview = await staticPdfPreview(fixture.bytes);
     await page.waitForSelector(`[data-patient-document="${data.id}"]`);
     await click(page, 'Preview Synthetic ' + fixture.name);
     await page.waitForSelector('iframe[title="Signed document PDF preview"]');
-    const original = await page.$eval('iframe[title="Signed document PDF preview"]', async (e) =>
-      Array.from(
-        new Uint8Array(
-          await (window as any).__previewBlobs.get((e as HTMLIFrameElement).src).arrayBuffer(),
-        ),
-      ),
+    const preview = await page.$eval('iframe[title="Signed document PDF preview"]', async (e) => {
+      const blob = (window as any).__previewBlobs.get((e as HTMLIFrameElement).src) as Blob & {
+        derivedPreview?: boolean;
+      };
+      return {
+        bytes: Array.from(new Uint8Array(await blob.arrayBuffer())),
+        derivedPreview: blob.derivedPreview === true,
+      };
+    });
+    check(
+      Buffer.from(preview.bytes).equals(Buffer.from(expectedPreview.bytes)),
+      'Patient UI ' +
+        fixture.name +
+        (expectedPreview.derived
+          ? ': preview blob is clearly derived static copy'
+          : ': preview blob is unchanged original'),
     );
     check(
-      Buffer.from(original).equals(fixture.bytes),
-      'Patient UI ' + fixture.name + ': preview blob is unchanged original',
+      preview.derivedPreview === expectedPreview.derived &&
+        !(await navigationPresent(new Uint8Array(preview.bytes))),
+      'Patient UI ' + fixture.name + ': preview has no navigation actions',
     );
-    hashes[fixture.name] = createHash('sha256').update(Buffer.from(original)).digest('hex');
+    await page.waitForFunction(
+      (derived) =>
+        document.body.innerText.includes(
+          derived ? 'Derived static preview' : 'Preview of the unchanged uploaded original',
+        ),
+      {},
+      expectedPreview.derived,
+    );
+    check(true, 'Patient UI ' + fixture.name + ': preview label is explicit');
+    previewHashes[fixture.name] = createHash('sha256')
+      .update(Buffer.from(preview.bytes))
+      .digest('hex');
     diagnostics[fixture.name] = await legacyPdfRejection(fixture.bytes);
     if (visuals.has(fixture.name)) {
       await page.waitForNetworkIdle();
       const frame = await page.$('iframe[title="Signed document PDF preview"]');
       await frame!.evaluate((e) => e.scrollIntoView({ block: 'center' }));
       await page.screenshot({ path: out + '/patient-' + fixture.name + '.png', fullPage: true });
-      await writeFile(out + '/' + fixture.name + '.pdf', Buffer.from(original));
+      await writeFile(out + '/' + fixture.name + '.pdf', Buffer.from(untouched.bytes));
+      if (fixture.name === 'supplied-syrona-letterhead') {
+        check(
+          Buffer.from(untouched.bytes).equals(actual),
+          'Evidence original PDF is byte-identical to supplied LETTER HEAD.pdf',
+        );
+        await writeFile(out + '/syrona-derived-static-preview.pdf', Buffer.from(preview.bytes));
+        check(
+          expectedPreview.derived && !Buffer.from(preview.bytes).equals(actual),
+          'Syrona derived static preview is clearly named and distinct from the original',
+        );
+      }
     }
     await click(page, 'Close preview');
   }
@@ -271,6 +363,7 @@ try {
     await page.waitForNetworkIdle();
     // Version table is newest first. The first preview is the just-created draft.
     const previous = await page.evaluate(() => (window as any).__previewBlobs.size);
+    const expectedPreview = await staticPdfPreview(fixture.bytes);
     await page.$eval('table tbody tr:first-child', (row) => {
       const button = Array.from(row.querySelectorAll('button')).find(
         (b) => b.textContent?.trim() === 'Preview file',
@@ -279,13 +372,29 @@ try {
       button.click();
     });
     await page.waitForFunction((n) => (window as any).__previewBlobs.size > n, {}, previous);
-    const original = await page.evaluate(async () => {
-      const blobs = (window as any).__previewBlobs as Map<string, Blob>;
-      return Array.from(new Uint8Array(await [...blobs.values()].at(-1)!.arrayBuffer()));
+    const preview = await page.evaluate(async () => {
+      const blobs = (window as any).__previewBlobs as Map<
+        string,
+        Blob & { derivedPreview?: boolean }
+      >;
+      const blob = [...blobs.values()].at(-1)!;
+      return {
+        bytes: Array.from(new Uint8Array(await blob.arrayBuffer())),
+        derivedPreview: blob.derivedPreview === true,
+      };
     });
     check(
-      Buffer.from(original).equals(fixture.bytes),
-      'Branding UI ' + fixture.name + ': Preview file opens unchanged original',
+      Buffer.from(preview.bytes).equals(Buffer.from(expectedPreview.bytes)),
+      'Branding UI ' +
+        fixture.name +
+        (expectedPreview.derived
+          ? ': Preview file opens clearly derived static copy'
+          : ': Preview file opens unchanged original'),
+    );
+    check(
+      preview.derivedPreview === expectedPreview.derived &&
+        !(await navigationPresent(new Uint8Array(preview.bytes))),
+      'Branding UI ' + fixture.name + ': preview has no navigation actions',
     );
     if (fixture.name === 'scanned-letterhead')
       await page.screenshot({ path: out + '/branding-scanned-letterhead.png', fullPage: true });
@@ -304,7 +413,8 @@ try {
         syntheticOnly: true,
         productionAccess: false,
         checks,
-        hashes,
+        previewHashes,
+        originalHashes,
         legacyRejectionPaths: diagnostics,
         errors,
         failedRequests,

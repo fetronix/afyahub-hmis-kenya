@@ -1,0 +1,35 @@
+{
+  "syntheticOnly": true,
+  "productionAccess": false,
+  "pymupdfVersion": "1.26.6",
+  "original": {
+    "path": "src/tests/fixtures/letterhead-sample-a4.pdf",
+    "sha256": "7650930b5229cd57f58bda9788162b2f56967ba9a72e0aa1cdfa0256adb00ce0",
+    "png": "syrona-original.png",
+    "pageCount": 1,
+    "links": [
+      {
+        "kind": 2,
+        "uri": "http://www.syronamedicalcenter.co.ke/"
+      }
+    ],
+    "text": "         \n \n \n \n \n \n+ 254 727 335 433 \nwww.syronamedicalcenter.co.ke \ninfo@syronamed.com \nHopewell Place, Nyeri \nWHERE HEALING FLOWS NATURALLY \n \n",
+    "samplesSha256": "3fe188a1c0bb3c5d819db2d7ecd857db45cd42fad367ce6dd05f8845d441ebe7",
+    "width": 893,
+    "height": 1263
+  },
+  "derivedStaticPreview": {
+    "path": "docs/audits/pdf-uri-link-evidence/syrona-derived-static-preview.pdf",
+    "sha256": "e6f6ea6e2dc0b8aac45c2510c886105fde58b2fb4915e94a9146dba8ed2181cb",
+    "png": "syrona-derived-static-preview.png",
+    "pageCount": 1,
+    "links": [],
+    "text": "         \n \n \n \n \n \n+ 254 727 335 433 \nwww.syronamedicalcenter.co.ke \ninfo@syronamed.com \nHopewell Place, Nyeri \nWHERE HEALING FLOWS NATURALLY \n \n",
+    "samplesSha256": "3fe188a1c0bb3c5d819db2d7ecd857db45cd42fad367ce6dd05f8845d441ebe7",
+    "width": 893,
+    "height": 1263
+  },
+  "visibleTextIdentical": true,
+  "renderedPixelsIdentical": true,
+  "uriLinkRemovedFromDerivedPreview": true
+}

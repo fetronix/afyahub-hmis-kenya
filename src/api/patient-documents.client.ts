@@ -51,7 +51,10 @@ export async function documentRequest<T>(
     const data = await response.json().catch(() => ({}));
     throw new Error(data.message ?? data.error ?? 'Document operation failed.');
   }
-  if (path.includes('/file')) return (await response.blob()) as T;
+  if (path.includes('/file'))
+    return Object.assign(await response.blob(), {
+      derivedPreview: response.headers.get('X-Document-Preview') === 'derived-static',
+    }) as T;
   return response.json();
 }
 export function documentAction<T>(path: string, body: unknown) {

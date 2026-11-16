@@ -1,3 +1,4 @@
+import { staticPdfPreview } from '../security/pdf-preview.ts';
 import React, { useEffect, useRef, useState } from 'react';
 import { useHmis } from '../context/HmisContext.tsx';
 import {
@@ -117,7 +118,12 @@ function DocumentWorkspace({
       actor_id: number | null;
     }>;
   } | null>(null);
-  const [preview, setPreview] = useState<{ url: string; mime: string; title: string } | null>(null);
+  const [preview, setPreview] = useState<{
+    url: string;
+    mime: string;
+    title: string;
+    derived?: boolean;
+  } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [form, setForm] = useState({ title: '', notes: '', previousId: '' });
@@ -217,7 +223,7 @@ function DocumentWorkspace({
   async function retrieve(doc: PatientFile, download: boolean) {
     await run(async () => {
       const blob = await documentRequest<Blob>(
-        `${base}/${doc.id}/file${download ? '?download=1' : ''}`,
+        `${base}/${doc.id}/file${download ? '?download=1' : '?preview=1'}`,
         {},
         portal,
       );
@@ -229,7 +235,13 @@ function DocumentWorkspace({
           doc.filename ?? `${doc.title}.${doc.mime_type === 'application/pdf' ? 'pdf' : 'image'}`;
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 60000);
-      } else setPreview({ url: URL.createObjectURL(blob), mime: doc.mime_type, title: doc.title });
+      } else
+        setPreview({
+          url: URL.createObjectURL(blob),
+          mime: doc.mime_type,
+          title: doc.title,
+          derived: (blob as Blob & { derivedPreview?: boolean }).derivedPreview,
+        });
       if (requestWorkflow) {
         requestWorkflow.onReviewed(doc);
         setRevision((v) => v + 1);
@@ -290,10 +302,21 @@ function DocumentWorkspace({
             type="button"
             className={actionClass}
             onClick={() =>
-              setPreview({
-                url: URL.createObjectURL(file),
-                mime: file.type || (/\.pdf$/i.test(file.name) ? 'application/pdf' : 'image/jpeg'),
-                title: `Selected file: ${file.name}`,
+              void run(async () => {
+                const mime =
+                  file.type || (/\.pdf$/i.test(file.name) ? 'application/pdf' : 'image/jpeg');
+                const output =
+                  mime === 'application/pdf'
+                    ? await staticPdfPreview(new Uint8Array(await file.arrayBuffer()))
+                    : null;
+                setPreview({
+                  url: URL.createObjectURL(
+                    output ? new Blob([new Uint8Array(output.bytes).buffer], { type: mime }) : file,
+                  ),
+                  mime,
+                  title: `Selected file: ${file.name}`,
+                  derived: output?.derived,
+                });
               })
             }
           >
@@ -634,14 +657,18 @@ function DocumentWorkspace({
               {preview.mime === 'application/pdf' ? (
                 <>
                   <p className="text-xs text-slate-600">
-                    Preview of the unchanged uploaded original, not a normalized copy or proof of
-                    signature authenticity. PDF preview uses your browser’s viewer. If it is
-                    unavailable, use Download to open the original in a trusted PDF viewer.
+                    {preview.derived
+                      ? 'Derived static preview: navigation actions have been removed. This copy is not the original signed document.'
+                      : 'Preview of the unchanged uploaded original.'}{' '}
+                    Neither preview proves signature authenticity. Use Download for the unchanged
+                    original. PDF display uses your browser’s viewer.
                   </p>
                   <iframe
                     title="Signed document PDF preview"
                     src={preview.url}
                     className="h-96 w-full"
+                    sandbox=""
+                    referrerPolicy="no-referrer"
                   />
                 </>
               ) : (

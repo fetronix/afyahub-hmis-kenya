@@ -1,4 +1,6 @@
 import { beforeAll, afterAll, it, expect } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import { staticPdfPreview } from '../../security/pdf-preview.ts';
 import { createHash } from 'node:crypto';
 import { describeDb } from '../vitest/support/db.ts';
 import { pool } from '../../db/index.ts';
@@ -17,6 +19,12 @@ describeDb(
     beforeAll(async () => {
       f = await createResponsibleDoctorFixture();
       fixtures = await pdfCompatibilityFixtures();
+      fixtures.push({
+        name: 'supplied-syrona-letterhead',
+        bytes: await readFile('src/tests/fixtures/letterhead-sample-a4.pdf'),
+        supported: true,
+        feature: 'Actual supplied Syrona letterhead, not a synthetic reconstruction',
+      });
       for (const code of ['facility.branding.read', 'facility.branding.manage']) {
         await pool.query(
           "INSERT INTO permissions(code,name,module) VALUES($1,$1,'configuration') ON CONFLICT(code) DO NOTHING",
@@ -70,6 +78,8 @@ describeDb(
       'internal-link',
       'form-xobject',
       'local-navigation',
+      'http-link',
+      'supplied-syrona-letterhead',
     ])('stores and retrieves %s unchanged on patient and letterhead APIs', async (name) => {
       const fixture = fixtures.find((f) => f.name === name)!;
       const hash = createHash('sha256').update(fixture.bytes).digest('hex');
@@ -91,6 +101,29 @@ describeDb(
         expect(file.headers.get('x-content-type-options')).toBe('nosniff');
         expect(file.headers.get('content-security-policy')).toContain('sandbox');
         expect(Buffer.from(await file.arrayBuffer())).toEqual(fixture.bytes);
+        const filePath = letterhead
+          ? `/api/facility-branding/facilities/${f.facility}/letterheads/${id}/file`
+          : `/api/patient-documents/patients/${f.patient}/${id}/file`;
+        const preview = await fetch(server.baseUrl + filePath + '?preview=1', {
+          headers: { Authorization: `Bearer ${f.staff.token}` },
+        });
+        const expectedPreview = await staticPdfPreview(fixture.bytes);
+        expect(preview.status).toBe(200);
+        expect(preview.headers.get('x-document-preview')).toBe(
+          expectedPreview.derived ? 'derived-static' : 'original',
+        );
+        expect(Buffer.from(await preview.arrayBuffer())).toEqual(
+          Buffer.from(expectedPreview.bytes),
+        );
+        const original = await fetch(server.baseUrl + filePath + '?download=1&preview=1', {
+          headers: { Authorization: `Bearer ${f.staff.token}` },
+        });
+        expect(original.status).toBe(200);
+        expect(original.headers.get('content-disposition')).toContain('attachment');
+        expect(Buffer.from(await original.arrayBuffer())).toEqual(fixture.bytes);
+        if (name === 'supplied-syrona-letterhead')
+          expect(hash).toBe('7650930b5229cd57f58bda9788162b2f56967ba9a72e0aa1cdfa0256adb00ce0');
+
         const row = (
           await pool.query(
             letterhead

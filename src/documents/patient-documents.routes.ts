@@ -1,3 +1,4 @@
+import { staticPdfPreview, PdfPreviewError } from '../security/pdf-preview.ts';
 import express, { Router, type Response, type Request, type NextFunction } from 'express';
 import { requireAuth, type AuthRequest } from '../auth/auth.middleware.ts';
 import { requirePortalAuth, type PortalRequest } from '../portal/portal.middleware.ts';
@@ -10,6 +11,8 @@ const portal = Router();
 staff.use(requireAuth);
 portal.use(requirePortalAuth);
 function failure(e: unknown, res: Response) {
+  if (e instanceof PdfPreviewError)
+    return res.status(422).json({ error: 'PDF_PREVIEW_UNAVAILABLE', message: e.message });
   if (e instanceof PatientDocumentError)
     return res.status(e.status).json({ error: e.code, message: e.message });
   return res.status(500).json({
@@ -17,16 +20,22 @@ function failure(e: unknown, res: Response) {
     message: 'Document operation failed; no document content is logged.',
   });
 }
-function sendFile(res: Response, d: Record<string, any>, download: boolean) {
+async function sendFile(res: Response, d: Record<string, any>, download: boolean, preview = false) {
+  const output =
+    preview && d.mime_type === 'application/pdf'
+      ? await staticPdfPreview(d.original_bytes)
+      : { bytes: d.original_bytes, derived: false };
+  const filename = output.derived ? 'derived-static-preview.pdf' : d.filename;
+  res.set('X-Document-Preview', output.derived ? 'derived-static' : 'original');
   res.set({
     'Content-Type': d.mime_type,
-    'Content-Disposition': `${download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(d.filename)}`,
+    'Content-Disposition': `${download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(filename)}`,
     'Cache-Control': 'private, no-store',
     'X-Content-Type-Options': 'nosniff',
     'Content-Security-Policy': "sandbox; default-src 'none'",
     'Referrer-Policy': 'no-referrer',
   });
-  return res.send(d.original_bytes);
+  return res.send(Buffer.from(output.bytes));
 }
 staff.use((_req, res, next) => {
   res.set('Cache-Control', 'private, no-store');
@@ -85,7 +94,7 @@ staff.get('/patients/:patientId', async (req: AuthRequest, res) => {
 });
 staff.get('/patients/:patientId/:id/file', async (req: AuthRequest, res) => {
   try {
-    return sendFile(
+    return await sendFile(
       res,
       await svc.readPatientDocument(
         req.authContext!,
@@ -94,6 +103,7 @@ staff.get('/patients/:patientId/:id/file', async (req: AuthRequest, res) => {
         req.query.download === '1',
       ),
       req.query.download === '1',
+      req.query.preview === '1' && req.query.download !== '1',
     );
   } catch (e) {
     return failure(e, res);
@@ -184,10 +194,11 @@ portal.get('/', async (req: PortalRequest, res) => {
 portal.get('/:id/file', async (req: PortalRequest, res) => {
   try {
     // Preview also transfers original bytes: obey download policy, not just the attachment flag.
-    return sendFile(
+    return await sendFile(
       res,
       await svc.portalPatientDocuments(req.portalSession!, svc.idOf(req.params.id), true),
       req.query.download === '1',
+      req.query.preview === '1' && req.query.download !== '1',
     );
   } catch (e) {
     return failure(e, res);

@@ -27,6 +27,7 @@ describe('Parsed PDF static-content compatibility and fail-closed active-content
     'internal-link',
     'form-xobject',
     'local-navigation',
+    'http-link',
   ];
   const blocked = [
     'javascript',

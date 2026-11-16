@@ -288,9 +288,24 @@ export async function pdfCompatibilityFixtures(): Promise<PdfFixture[]> {
     },
     'interactive form',
   );
+  await make('http-link', 'ordinary page Link annotation with HTTPS website URI', (pdf) => {
+    pdf.getPage(0).node.set(
+      PDFName.of('Annots'),
+      pdf.context.obj([
+        pdf.context.register(
+          pdf.context.obj({
+            Type: 'Annot',
+            Subtype: 'Link',
+            Rect: [40, 500, 200, 520],
+            A: { Type: 'Action', S: 'URI', URI: PDFString.of('https://example.test/help') },
+          }),
+        ),
+      ]),
+    );
+  });
   await make(
     'external-link',
-    '/Annot /Link /A << /S /URI >>',
+    '/Annot /Link with prohibited file: URI scheme',
     (pdf) =>
       pdf.getPage(0).node.set(
         PDFName.of('Annots'),
@@ -300,12 +315,12 @@ export async function pdfCompatibilityFixtures(): Promise<PdfFixture[]> {
               Type: 'Annot',
               Subtype: 'Link',
               Rect: [40, 500, 200, 520],
-              A: { S: 'URI', URI: PDFString.of('https://example.invalid/synthetic') },
+              A: { S: 'URI', URI: PDFString.of('file:///synthetic.pdf') },
             }),
           ),
         ]),
       ),
-    'external actions',
+    'unsafe link destination',
   );
   await make(
     'unsupported-media',
