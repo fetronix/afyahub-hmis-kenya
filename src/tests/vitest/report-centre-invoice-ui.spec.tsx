@@ -44,7 +44,21 @@ vi.mock('../../context/HmisContext.tsx', () => ({ useHmis: () => mocks.context }
 vi.mock('../../api/client.ts', () => ({ api: mocks.api, ApiError: class extends Error {} }));
 vi.mock('../../api/payment-hub.client.ts', () => ({ paymentHubApi: { transactions: vi.fn() } }));
 vi.mock('../../api/report-centre.client.ts', () => ({
-  reportCentreApi: { options: mocks.options, generate: vi.fn(), export: vi.fn() },
+  reportCentreApi: {
+    options: mocks.options,
+    generate: vi.fn(),
+    export: vi.fn(),
+    overview: vi.fn(async (facilityId: number, from: string, to: string) => ({
+      facilityId,
+      facilityName: 'Synthetic Facility',
+      from,
+      to,
+      generatedAt: '2026-11-04T08:00:00.000Z',
+      currency: 'KES',
+      kpis: [],
+      notes: [],
+    })),
+  },
 }));
 vi.mock('../../components/modules/ReportsModule.tsx', () => ({ ReportsModule: () => null }));
 import { ReportCentre } from '../../components/modules/report-centre/ReportCentre.tsx';

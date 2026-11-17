@@ -7,6 +7,7 @@ import { handleScopeError } from '../shared/errors.ts';
 import { exportReport } from '../../reporting/report-centre.export.ts';
 import { generateReport, ReportCentreError } from '../../reporting/report-centre.service.ts';
 import { listReportOptions } from '../../reporting/report-centre.selection.ts';
+import { getReportingOverview } from '../../reporting/report-centre.overview.ts';
 
 const router = Router();
 router.use((_req, res, next) => {
@@ -33,6 +34,21 @@ function handleError(error: unknown, res: Response) {
   console.error('[api] report centre failed', { code });
   res.status(500).json({ error: 'The request could not be completed.' });
 }
+
+/*
+ * The landing page's headline figures. They are aggregates, so there is no
+ * patient identity to log; each figure applies its own permission and module
+ * gate and reports why it is missing rather than returning a zero.
+ */
+router.post('/overview', requirePermission('reports.read'), async (req: AuthRequest, res) => {
+  const context = requireAuthContext(req, res);
+  if (!context) return;
+  try {
+    return res.json(await getReportingOverview(context, req.body ?? {}));
+  } catch (error) {
+    handleError(error, res);
+  }
+});
 
 // Search terms are sent in the authenticated body, not a URL that proxies may log.
 router.post(

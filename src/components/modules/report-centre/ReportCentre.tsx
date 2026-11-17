@@ -1,138 +1,86 @@
-import { ClinicalDocumentReport } from './ClinicalDocumentReport.tsx';
 import React, { useMemo, useState } from 'react';
-import {
-  Activity,
-  ArrowLeft,
-  BarChart3,
-  Boxes,
-  ChevronDown,
-  ChevronRight,
-  CircleDollarSign,
-  ClipboardList,
-  FileText,
-  FolderHeart,
-  LockKeyhole,
-  Search,
-  Stethoscope,
-  Users,
-} from 'lucide-react';
+import { ArrowLeft, BarChart3, Search } from 'lucide-react';
 import { useHmis } from '../../../context/HmisContext.tsx';
 import {
   REPORT_CATEGORIES,
+  REPORT_ENTRY_BY_ID,
   type ReportCategory,
   type ReportEntry,
 } from '../../../reporting/report-catalogue.ts';
 import { REPORT_ENGINES } from '../../../reporting/report-centre.types.ts';
-import { FinalizedInvoicePanel } from '../FinalizedInvoicePanel.tsx';
+import { PageHeader } from '../../ui/layout.tsx';
 import { ReportsModule } from '../ReportsModule.tsx';
-import { ReportWorkbench } from './ReportWorkbench.tsx';
-import { ReportSelectionPicker } from './ReportSelectionPicker.tsx';
-import type { ReportSelectionOption } from '../../../reporting/report-centre.types.ts';
+import { ReportCataloguePanel, type Availability } from './ReportCataloguePanel.tsx';
+import { ReportWorkspace } from './ReportWorkspace.tsx';
+import { ReportingKpis } from './ReportingKpis.tsx';
 
-const icons: Record<string, React.ElementType> = {
-  printables: FileText,
-  financial: CircleDollarSign,
-  'stock-goods': Boxes,
-  departmental: Stethoscope,
-  records: FolderHeart,
-  hr: Users,
-  activity: Activity,
-};
+/** Category lookup by report id, so opening a report does not scan the catalogue. */
+const CATEGORY_BY_REPORT = new Map(
+  REPORT_CATEGORIES.flatMap((category) =>
+    category.reports.map((entry) => [entry.id, category] as const),
+  ),
+);
 
-function InvoiceDocument({ facilityId }: { facilityId: number }) {
-  const [selected, setSelected] = useState<ReportSelectionOption[]>([]);
-  const [invoiceId, setInvoiceId] = useState<number | null>(null);
-  const [openVersion, setOpenVersion] = useState(0);
-  const [error, setError] = useState('');
-  return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-teal-100 bg-teal-50/60 p-4 text-sm text-teal-950">
-        <p className="font-semibold">Existing finalized-invoice workflow</p>
-        <p className="mt-1 text-xs leading-relaxed text-teal-800">
-          Browse invoices recorded at the selected facility. The existing statement and audited
-          print are reused; template approval and a full document catalogue remain outstanding.
-        </p>
-      </div>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!selected[0]) {
-            setInvoiceId(null);
-            setError('Select an invoice to open.');
-            return;
-          }
-          setError('');
-          setInvoiceId(selected[0].id);
-          // Opening the same selection must fetch a fresh, audited snapshot too.
-          setOpenVersion((version) => version + 1);
-        }}
-        className="space-y-3"
-      >
-        <ReportSelectionPicker
-          reportId="invoice-document"
-          facilityId={facilityId}
-          kind="invoice"
-          label="Invoice"
-          value={selected}
-          required
-          onChange={(next) => {
-            setSelected(next);
-            setInvoiceId(null);
-            setError('');
-          }}
-        />
-        <button
-          type="submit"
-          className="rounded-lg bg-teal-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-teal-800"
-        >
-          Open invoice
-        </button>
-      </form>
-      {error && (
-        <p role="alert" className="text-sm text-rose-700">
-          {error}
-        </p>
-      )}
-      {invoiceId !== null && (
-        <FinalizedInvoicePanel
-          key={`${invoiceId}:${openVersion}`}
-          invoiceId={invoiceId}
-          reportCentre
-        />
-      )}
-    </div>
-  );
+/** Local calendar day, not the UTC one: in Nairobi the two differ after midnight. */
+function localDay(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function defaultPeriod(): { from: string; to: string } {
+  const to = new Date();
+  const from = new Date(to);
+  from.setDate(from.getDate() - 29);
+  return { from: localDay(from), to: localDay(to) };
+}
+
+function periodProblem(from: string, to: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to))
+    return 'Choose both an inclusive start and end date.';
+  if (from > to) return 'The start date must not be after the end date.';
+  const days = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000 + 1;
+  if (days > 366) return 'Choose a period of 366 days or less.';
+  return null;
 }
 
 export const ReportCentre: React.FC = () => {
-  const { currentFacility, authenticatedUser } = useHmis();
+  const { currentFacility, authenticatedUser, facilities } = useHmis();
   const [query, setQuery] = useState('');
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [showOverview, setShowOverview] = useState(false);
+  const [facilityId, setFacilityId] = useState<number | null>(null);
+  const [period] = useState(defaultPeriod);
+  const [from, setFrom] = useState(period.from);
+  const [to, setTo] = useState(period.to);
+  const [showOverview, setShowLegacy] = useState(false);
+  const [highlightCategory, setHighlightCategory] = useState<string | null>(null);
   const permissions = useMemo(
     () => new Set(authenticatedUser?.permissions ?? []),
     [authenticatedUser?.permissions],
   );
-  const searching = query.trim().length > 0;
-  const search = query.trim().toLocaleLowerCase();
-  const selected = REPORT_CATEGORIES.flatMap((category) =>
-    category.reports.map((report) => ({ category, report })),
-  ).find(({ report }) => report.id === selectedId);
-  const matches = (category: ReportCategory, report: ReportEntry) =>
-    !search ||
-    `${category.name} ${report.group ?? ''} ${report.name}`.toLocaleLowerCase().includes(search);
-  const matchingCount = REPORT_CATEGORIES.reduce(
-    (total, category) =>
-      total + category.reports.filter((report) => matches(category, report)).length,
-    0,
-  );
-  const modules = currentFacility?.enabledModules ?? [];
-  const hidden = currentFacility?.hiddenModules ?? [];
+
+  /*
+   * Only facilities the account may reach. The context already receives that
+   * list from the server; this filter additionally drops anything from another
+   * tenant, so a stale context cannot offer a facility the API would refuse.
+   */
+  const authorisedFacilities = useMemo(() => {
+    const list = (facilities ?? []).filter(
+      (facility) => !currentFacility || facility.tenantId === currentFacility.tenantId,
+    );
+    if (currentFacility && !list.some((facility) => facility.id === currentFacility.id))
+      return [currentFacility, ...list];
+    return list.length ? list : currentFacility ? [currentFacility] : [];
+  }, [facilities, currentFacility]);
+
+  const activeFacility =
+    authorisedFacilities.find((facility) => facility.id === facilityId) ?? currentFacility ?? null;
+
+  const modules = activeFacility?.enabledModules ?? [];
+  const hidden = activeFacility?.hiddenModules ?? [];
   const moduleEnabled = (module: string) => modules.includes(module) && !hidden.includes(module);
   const has = (...required: readonly string[]) =>
     required.every((permission) => permissions.has(permission));
+
   const canOverview =
     has('reports.read', 'billing.read', 'inpatient.read', 'patients.read') &&
     moduleEnabled('finance') &&
@@ -140,17 +88,10 @@ export const ReportCentre: React.FC = () => {
   const canInvoice =
     has('reports.read', 'reports.export', 'billing.read', 'clinical.read', 'patients.read') &&
     moduleEnabled('finance');
-  const scopeKey = `${authenticatedUser?.id}:${currentFacility?.id}:${[...permissions].sort().join(',')}:${modules.join(',')}:${hidden.join(',')}`;
 
-  function toggle(setter: React.Dispatch<React.SetStateAction<Set<string>>>, key: string) {
-    setter((previous) => {
-      const next = new Set(previous);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
-  function availability(report: ReportEntry): { label: string; allowed: boolean; reason?: string } {
+  const scopeKey = `${authenticatedUser?.id}:${activeFacility?.id}:${[...permissions].sort().join(',')}:${modules.join(',')}:${hidden.join(',')}`;
+
+  function availability(report: ReportEntry): Availability {
     if (report.engine) {
       const definition = REPORT_ENGINES[report.engine];
       if (!moduleEnabled(definition.module))
@@ -190,30 +131,17 @@ export const ReportCentre: React.FC = () => {
           : 'Report read/export, patient read and the enabled source-domain read permission are required.',
       };
     }
-    return { label: 'Unavailable', allowed: false, reason: report.dependency };
+    return { label: 'Not implemented', allowed: false, reason: report.dependency };
   }
-  const reportButton = (report: ReportEntry) => {
-    const state = availability(report);
-    return (
-      <button
-        key={report.id}
-        type="button"
-        onClick={() => {
-          setSelectedId(report.id);
-          setShowOverview(false);
-        }}
-        aria-current={selectedId === report.id && !showOverview ? 'true' : undefined}
-        className={`flex w-full items-start justify-between gap-3 rounded-lg px-3 py-2.5 text-left transition ${selectedId === report.id && !showOverview ? 'bg-teal-50 text-teal-900' : 'text-slate-700 hover:bg-slate-50'}`}
-      >
-        <span className="text-xs font-semibold leading-5">{report.name}</span>
-        <span
-          className={`mt-0.5 shrink-0 rounded-full px-2 py-1 text-[10px] font-bold ${state.allowed ? 'bg-teal-100 text-teal-800' : 'bg-slate-100 text-slate-500'}`}
-        >
-          {state.label}
-        </span>
-      </button>
-    );
-  };
+
+  const selectedEntry = selectedId ? (REPORT_ENTRY_BY_ID.get(selectedId) ?? null) : null;
+  const selectedCategory = selectedEntry
+    ? (CATEGORY_BY_REPORT.get(selectedEntry.id) ?? null)
+    : null;
+  const selected =
+    selectedEntry && selectedCategory ? { entry: selectedEntry, category: selectedCategory } : null;
+
+  const invalidPeriod = periodProblem(from, to);
 
   if (
     !authenticatedUser ||
@@ -221,59 +149,173 @@ export const ReportCentre: React.FC = () => {
     authenticatedUser.roles?.includes('SUPER_ADMIN')
   ) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-600">
+      <div className="rounded-xl border border-hair bg-surface p-8 text-sm text-slate-600">
         A signed-in facility account with report permissions is required to use the Reporting
         Centre.
       </div>
     );
   }
-  if (!currentFacility) {
+  if (!currentFacility || !activeFacility) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-600">
+      <div className="rounded-xl border border-hair bg-surface p-8 text-sm text-slate-600">
         Select a facility to use the Reporting Centre.
       </div>
     );
   }
   if (!has('reports.read') || !moduleEnabled('analytics')) {
     return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-600">
+      <div className="rounded-xl border border-hair bg-surface p-8 text-sm text-slate-600">
         Reports are disabled, hidden or not permitted for this facility account.
       </div>
     );
   }
 
+  const openCategory = (category: ReportCategory) => {
+    setSelectedId(null);
+    setShowLegacy(false);
+    setHighlightCategory(category.id);
+    window.setTimeout(() => {
+      document
+        .querySelector(`[data-testid="report-category-${category.id}"]`)
+        ?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }, 0);
+  };
+
   return (
-    <div className="space-y-5">
-      <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div>
-          <p className="text-2xs font-bold uppercase tracking-[0.18em] text-teal-700">
+    <div className="space-y-4">
+      <PageHeader>
+        <div className="min-w-0">
+          <p className="text-2xs font-bold uppercase tracking-[0.18em] text-brand-700">
             JaliCare · Facility intelligence
           </p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">
-            Reporting Centre
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            {currentFacility.name} <span className="mx-1 text-slate-300">·</span> Reports are scoped
-            to your selected facility.
+          <h1 className="ui-page-title mt-1">Reporting Centre</h1>
+          <p className="ui-page-description">
+            Operative reports for {activeFacility.name}, drawn from the records this facility
+            already holds. Every report states what it covers and what it does not.
           </p>
         </div>
-        <button
-          type="button"
-          disabled={!canOverview}
-          onClick={() => setShowOverview((shown) => !shown)}
-          title={
-            canOverview
-              ? 'Open the existing operational analytics'
-              : 'Requires billing, inpatient and patient permissions and enabled source modules.'
+
+        <div className="flex w-full flex-wrap items-end gap-2 sm:w-auto">
+          <label className="ui-form-field text-2xs font-semibold text-ink-soft">
+            Facility
+            <select
+              className="mt-1 block w-full min-w-44 rounded-lg border border-hair bg-surface px-3 py-2 text-xs text-ink focus:border-brand-500"
+              value={activeFacility.id}
+              onChange={(event) => {
+                setFacilityId(Number(event.target.value));
+                setSelectedId(null);
+                setShowLegacy(false);
+              }}
+              aria-describedby="reporting-facility-hint"
+            >
+              {authorisedFacilities.map((facility) => (
+                <option key={facility.id} value={facility.id}>
+                  {facility.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="ui-form-field text-2xs font-semibold text-ink-soft">
+            From
+            <input
+              type="date"
+              className="mt-1 block w-full rounded-lg border border-hair bg-surface px-3 py-2 text-xs text-ink focus:border-brand-500"
+              value={from}
+              max={to}
+              onChange={(event) => setFrom(event.target.value)}
+            />
+          </label>
+          <label className="ui-form-field text-2xs font-semibold text-ink-soft">
+            To
+            <input
+              type="date"
+              className="mt-1 block w-full rounded-lg border border-hair bg-surface px-3 py-2 text-xs text-ink focus:border-brand-500"
+              value={to}
+              min={from}
+              onChange={(event) => setTo(event.target.value)}
+            />
+          </label>
+          <label className="ui-form-field min-w-52 flex-1 text-2xs font-semibold text-ink-soft">
+            <span className="sr-only">Search reports</span>
+            <span className="ui-search mt-0.5">
+              <Search className="h-4 w-4" aria-hidden="true" />
+              <input
+                type="search"
+                aria-label="Search reports"
+                placeholder="Search reports or departments"
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  // Searching is browsing: leave an open report so the matches are visible.
+                  if (event.target.value) {
+                    setSelectedId(null);
+                    setShowLegacy(false);
+                    setHighlightCategory(null);
+                  }
+                }}
+              />
+            </span>
+          </label>
+        </div>
+      </PageHeader>
+
+      <p id="reporting-facility-hint" className="text-2xs leading-relaxed text-muted">
+        Only facilities your account is authorised to reach are listed. Reports read this facility
+        and no other; the server checks the choice again on every request.
+      </p>
+
+      {!selected &&
+        !showOverview &&
+        (invalidPeriod ? (
+          <div
+            role="alert"
+            className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900"
+          >
+            {invalidPeriod} The headline figures wait for a valid period; the catalogue is
+            unaffected.
+          </div>
+        ) : (
+          <ReportingKpis
+            key={`${activeFacility.id}:${from}:${to}`}
+            facilityId={activeFacility.id}
+            from={from}
+            to={to}
+            requestKey={`${activeFacility.id}:${from}:${to}`}
+          />
+        ))}
+
+      {selected ? (
+        <ReportWorkspace
+          key={`${scopeKey}:${selected.entry.id}`}
+          category={selected.category}
+          entry={selected.entry}
+          facilityId={activeFacility.id}
+          facilityName={activeFacility.name}
+          canExport={
+            selected.entry.engine
+              ? has(
+                  'reports.export',
+                  ...(REPORT_ENGINES[selected.entry.engine].exportPermissions ?? []),
+                )
+              : has('reports.export')
           }
-          className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {showOverview ? <ArrowLeft className="h-4 w-4" /> : <BarChart3 className="h-4 w-4" />}
-          {showOverview ? 'Back to report catalogue' : 'Existing analytics overview'}
-        </button>
-      </header>
-      {showOverview && canOverview ? (
-        <div className="space-y-4" key={scopeKey}>
+          availability={availability(selected.entry)}
+          onBack={() => setSelectedId(null)}
+          onBackToCategory={() => openCategory(selected.category)}
+        />
+      ) : showOverview && canOverview ? (
+        <section className="space-y-3" aria-label="Legacy analytics">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-bold tracking-tight text-ink">Legacy analytics overview</h2>
+            <button
+              type="button"
+              onClick={() => setShowLegacy(false)}
+              className="ui-button ui-button-secondary"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+              Back to report catalogue
+            </button>
+          </div>
           <div
             role="note"
             className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"
@@ -283,204 +325,46 @@ export const ReportCentre: React.FC = () => {
             statement. Historical admission times also need review; do not use this overview as a
             reconciled or statutory report.
           </div>
-          <ReportsModule />
-        </div>
+          <div className="space-y-4" key={scopeKey}>
+            <ReportsModule />
+          </div>
+        </section>
       ) : (
         <>
-          <div className="flex flex-col gap-3 rounded-2xl border border-teal-100 bg-gradient-to-r from-teal-50 to-white p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-bold text-teal-950">All reports, one place</p>
-              <p className="mt-1 text-xs leading-relaxed text-teal-800">
-                Browse seven categories. Unavailable reports explain their dependencies; limited
-                views are clearly labelled.
-              </p>
-            </div>
-            <span className="self-start whitespace-nowrap rounded-full border border-teal-200 bg-white px-3 py-1.5 text-2xs font-bold uppercase tracking-wide text-teal-700">
-              {REPORT_CATEGORIES.length} categories · 144 entries
-            </span>
-          </div>
-          <div className="grid items-start gap-5 lg:grid-cols-[minmax(300px,0.9fr)_minmax(0,1.3fr)]">
-            <aside
-              className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
-              aria-label="Report categories"
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted">
+              {REPORT_CATEGORIES.length} categories · every requested report, including the ones
+              still to be built.
+            </p>
+            <button
+              type="button"
+              disabled={!canOverview}
+              onClick={() => setShowLegacy(true)}
+              title={
+                canOverview
+                  ? 'Open the existing operational analytics'
+                  : 'Requires billing, inpatient and patient permissions and enabled source modules.'
+              }
+              className="ui-button ui-button-secondary"
             >
-              <div className="border-b border-slate-100 p-4">
-                <label className="relative block">
-                  <span className="sr-only">Search reports</span>
-                  <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                  <input
-                    type="search"
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Search reports or departments"
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-9 pr-3 text-sm text-slate-800"
-                  />
-                </label>
-                <p className="mt-2 text-2xs text-slate-400">
-                  {searching
-                    ? `${matchingCount} matching entries`
-                    : 'Expand a category to browse reports'}
-                </p>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {REPORT_CATEGORIES.map((category) => {
-                  const Icon = icons[category.id] ?? ClipboardList;
-                  const reports = category.reports.filter((report) => matches(category, report));
-                  const open = searching
-                    ? reports.length > 0 && !expanded.has(`search:${category.id}`)
-                    : expanded.has(category.id);
-                  const ungrouped = reports.filter((report) => !report.group);
-                  const groups = [
-                    ...new Set(reports.flatMap((report) => (report.group ? [report.group] : []))),
-                  ];
-                  return (
-                    <div key={category.id} data-testid={`report-category-${category.id}`}>
-                      <button
-                        type="button"
-                        aria-expanded={open}
-                        disabled={searching && reports.length === 0}
-                        onClick={() =>
-                          toggle(setExpanded, searching ? `search:${category.id}` : category.id)
-                        }
-                        className="flex w-full items-center gap-3 px-4 py-4 text-left hover:bg-slate-50 disabled:cursor-default"
-                      >
-                        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-teal-50 text-teal-700">
-                          <Icon className="h-4 w-4" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-xs font-bold tracking-wide text-slate-900">
-                            {category.name}
-                          </span>
-                          <span className="mt-0.5 block text-2xs text-slate-400">
-                            {reports.length} report{reports.length === 1 ? '' : 's'}
-                          </span>
-                        </span>
-                        {open ? (
-                          <ChevronDown className="h-4 w-4 text-slate-400" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 text-slate-400" />
-                        )}
-                      </button>
-                      {open && (
-                        <div className="space-y-1 px-3 pb-3">
-                          {ungrouped.map(reportButton)}
-                          {groups.map((group) => {
-                            const groupKey = `${category.id}:${group}`;
-                            const groupOpen = searching
-                              ? !expandedGroups.has(`search:${groupKey}`)
-                              : expandedGroups.has(groupKey);
-                            return (
-                              <div key={groupKey} className="rounded-lg border border-slate-100">
-                                <button
-                                  type="button"
-                                  aria-expanded={groupOpen}
-                                  onClick={() =>
-                                    toggle(
-                                      setExpandedGroups,
-                                      searching ? `search:${groupKey}` : groupKey,
-                                    )
-                                  }
-                                  className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-2xs font-bold tracking-wide text-slate-600 hover:bg-slate-50"
-                                >
-                                  {groupOpen ? (
-                                    <ChevronDown className="h-3.5 w-3.5" />
-                                  ) : (
-                                    <ChevronRight className="h-3.5 w-3.5" />
-                                  )}
-                                  {group}
-                                </button>
-                                {groupOpen && (
-                                  <div className="border-t border-slate-100 p-1">
-                                    {reports
-                                      .filter((report) => report.group === group)
-                                      .map(reportButton)}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              {searching && matchingCount === 0 && (
-                <p className="px-4 py-5 text-center text-xs text-slate-500">
-                  No reports match “{query}”.
-                </p>
-              )}
-            </aside>
-            <main
-              className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"
-              aria-label="Selected report"
-            >
-              {!selected ? (
-                <div className="flex min-h-72 flex-col items-center justify-center text-center">
-                  <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-50 text-teal-700">
-                    <ClipboardList className="h-6 w-6" />
-                  </span>
-                  <h2 className="mt-4 text-lg font-bold text-slate-900">Select a report</h2>
-                  <p className="mt-2 max-w-sm text-sm leading-relaxed text-slate-500">
-                    Search or expand a category to see its purpose, availability and source
-                    dependencies.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-5">
-                  <div className="border-b border-slate-100 pb-4">
-                    <p className="text-2xs font-bold uppercase tracking-widest text-teal-700">
-                      {selected.category.name}
-                      {selected.report.group ? ` / ${selected.report.group}` : ''}
-                    </p>
-                    <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-900">
-                      {selected.report.name}
-                    </h2>
-                    <p className="mt-1 text-xs text-slate-500">{selected.category.description}</p>
-                  </div>
-                  {availability(selected.report).allowed && selected.report.engine ? (
-                    <ReportWorkbench
-                      key={`${scopeKey}:${selected.report.id}`}
-                      id={selected.report.engine}
-                      facilityId={currentFacility.id}
-                      canExport={has(
-                        'reports.export',
-                        ...(REPORT_ENGINES[selected.report.engine].exportPermissions ?? []),
-                      )}
-                    />
-                  ) : availability(selected.report).allowed &&
-                    selected.report.workflow === 'invoice' ? (
-                    <InvoiceDocument key={scopeKey} facilityId={currentFacility.id} />
-                  ) : availability(selected.report).allowed &&
-                    selected.report.workflow &&
-                    selected.report.workflow !== 'invoice' ? (
-                    <ClinicalDocumentReport
-                      key={`${scopeKey}:${selected.report.id}`}
-                      workflow={selected.report.workflow}
-                    />
-                  ) : (
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                      <div className="flex items-center gap-2 font-semibold">
-                        <LockKeyhole className="h-4 w-4" /> {availability(selected.report).label}
-                      </div>
-                      <p className="mt-2 leading-relaxed">{availability(selected.report).reason}</p>
-                      {!selected.report.engine && !selected.report.workflow && (
-                        <p className="mt-2 text-xs">
-                          This entry cannot generate a report yet. No results are inferred or
-                          fabricated.
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  {(selected.report.engine || selected.report.workflow) && (
-                    <p className="text-xs text-slate-400">
-                      Full requested report still needs: {selected.report.dependency}
-                    </p>
-                  )}
-                </div>
-              )}
-            </main>
+              <BarChart3 className="h-4 w-4" aria-hidden="true" />
+              Existing analytics overview
+            </button>
           </div>
+          <ReportCataloguePanel
+            query={query}
+            availability={availability}
+            highlightCategory={highlightCategory}
+            onOpen={(_category, entry) => {
+              setHighlightCategory(null);
+              setSelectedId(entry.id);
+            }}
+          />
+          <p className="text-2xs leading-relaxed text-muted">
+            Selecting any report opens its own workspace with its period, facility and filters.
+            Reports without an engine explain what they still need rather than showing an empty
+            result.
+          </p>
         </>
       )}
     </div>

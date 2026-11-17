@@ -15,10 +15,16 @@ const mocks = vi.hoisted(() => ({
   generate: vi.fn(),
   exportReport: vi.fn(),
   options: vi.fn(),
+  overview: vi.fn(),
 }));
 vi.mock('../../context/HmisContext.tsx', () => ({ useHmis: () => mocks.context }));
 vi.mock('../../api/report-centre.client.ts', () => ({
-  reportCentreApi: { generate: mocks.generate, export: mocks.exportReport, options: mocks.options },
+  reportCentreApi: {
+    generate: mocks.generate,
+    export: mocks.exportReport,
+    options: mocks.options,
+    overview: mocks.overview,
+  },
 }));
 vi.mock('../../components/modules/ReportsModule.tsx', () => ({
   ReportsModule: () => <div>Legacy overview content</div>,
@@ -77,6 +83,52 @@ function result(
     notes: [...REPORT_ENGINES[id].notes],
   };
 }
+function overviewFixture(facilityId: number, from: string, to: string) {
+  return {
+    facilityId,
+    facilityName: 'Synthetic Facility A',
+    from,
+    to,
+    generatedAt: '2026-11-04T08:00:00.000Z',
+    currency: 'KES',
+    kpis: [
+      {
+        id: 'patient-visits',
+        label: 'Patient visits',
+        status: 'ok',
+        value: 12,
+        definition: 'Outpatient encounters started in the period.',
+        series: [{ day: from, value: 12 }],
+      },
+      {
+        id: 'revenue',
+        label: 'Revenue',
+        status: 'ok',
+        value: 12,
+        amount: '1200.00',
+        currency: 'KES',
+        definition: 'Recorded receipts less recorded refunds.',
+        series: [{ day: from, value: 1200 }],
+      },
+      {
+        id: 'outstanding-balances',
+        label: 'Outstanding balances',
+        status: 'restricted',
+        definition: 'Open invoice balances.',
+        message: 'Your account cannot read billing balances at this facility.',
+      },
+      {
+        id: 'pharmacy-stock-alerts',
+        label: 'Pharmacy stock alerts',
+        status: 'disabled',
+        definition: 'Pharmacy lines at or below their reorder level.',
+        message: 'The inventory module is disabled for this facility.',
+      },
+    ],
+    notes: [],
+  };
+}
+
 function setup() {
   mocks.context = {
     authenticatedUser: {
@@ -95,6 +147,10 @@ function setup() {
   mocks.generate.mockReset();
   mocks.exportReport.mockReset();
   mocks.options.mockReset();
+  mocks.overview.mockReset();
+  mocks.overview.mockImplementation(async (facilityId: number, from: string, to: string) =>
+    overviewFixture(facilityId, from, to),
+  );
   mocks.options.mockImplementation(async (_id: string, request: any) => {
     const values: Record<string, Array<{ id: number; label: string; detail: string | null }>> = {
       patient: [{ id: 123, label: 'MRN-SYN — Synthetic Patient', detail: 'Registered 2026-04-01' }],
@@ -117,62 +173,127 @@ function setup() {
     base64: btoa('synthetic'),
   });
 }
+function searchReports(value: string) {
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search reports' }), {
+    target: { value },
+  });
+}
 function openInventory() {
-  fireEvent.click(screen.getByRole('button', { name: /STOCK \/ GOODS/i }));
+  searchReports('Inventory by category');
   fireEvent.click(screen.getByRole('button', { name: /Inventory by category/i }));
+}
+/** The workspace region for the report that is currently open. */
+function workspace() {
+  return screen.getByRole('region', { name: 'Report workspace' });
 }
 
 describe('Reporting Centre navigation and report workbench', () => {
   beforeEach(setup);
 
-  it('shows exactly seven categories in the requested order and expands nested departments', () => {
+  it('presents the ten required categories in order with descriptions, counts and status', () => {
     render(<ReportCentre />);
-    const ids = REPORT_CATEGORIES.map((category) => category.id);
     expect(screen.getByRole('heading', { name: 'Reporting Centre' })).toBeInTheDocument();
-    const categoryElements = screen.getAllByTestId(/^report-category-/);
+
+    const expected = [
+      'Clinical & Patient',
+      'Laboratory & Radiology',
+      'Finance & Accounting',
+      'Billing & Revenue',
+      'Pharmacy',
+      'Inventory & Stock Management',
+      'Procurement & Supplier',
+      'HR & Workforce',
+      'Management & Budget',
+      'MOH & Regulatory',
+    ];
+    expect(REPORT_CATEGORIES.map((category) => category.name)).toEqual(expected);
+
+    const cards = screen.getAllByTestId(/^report-category-/);
+    expect(cards).toHaveLength(10);
+    expect(cards.map((card) => card.querySelector('h3')?.textContent)).toEqual(expected);
+    // Every card states how many reports it holds and how many of those can run today.
+    for (const [index, card] of cards.entries()) {
+      const entryCount = REPORT_CATEGORIES[index].reports.length;
+      expect(card.textContent).toContain(`${entryCount} report${entryCount === 1 ? '' : 's'} · `);
+      expect(within(card).getByText(REPORT_CATEGORIES[index].description)).toBeInTheDocument();
+    }
+
+    const clinical = screen.getByTestId('report-category-clinical');
+    expect(within(clinical).getByText('Current inpatient list')).toBeInTheDocument();
+    // Reports that cannot run today are labelled rather than hidden.
     expect(
-      categoryElements.map((element) =>
-        element.getAttribute('data-testid')?.replace('report-category-', ''),
-      ),
-    ).toEqual(ids);
-    expect(REPORT_CATEGORIES.map((category) => category.name)).toEqual([
-      'PRINTABLES',
-      'FINANCIAL',
-      'STOCK / GOODS',
-      'DEPARTMENTAL',
-      'RECORDS',
-      'HR',
-      'ACTIVITY',
-    ]);
-    fireEvent.click(screen.getByRole('button', { name: /DEPARTMENTAL/ }));
-    const inpatient = screen.getByRole('button', { name: 'INPATIENT' });
-    expect(inpatient).toHaveAttribute('aria-expanded', 'false');
-    fireEvent.click(inpatient);
-    expect(inpatient).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByRole('button', { name: /Current inpatient list/ })).toBeInTheDocument();
-    fireEvent.click(inpatient);
-    expect(
-      screen.queryByRole('button', { name: /Current inpatient list/ }),
-    ).not.toBeInTheDocument();
+      within(clinical).getAllByText(/Available|Not implemented|Existing document/).length,
+    ).toBeGreaterThan(0);
   });
 
-  it('searches report names and groups, provides useful empty states and never presents an unavailable report as generated', () => {
+  it('searches report names and purposes, provides a useful empty state and never presents an unavailable report as generated', () => {
     render(<ReportCentre />);
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search reports' }), {
-      target: { value: 'payslip' },
-    });
-    expect(screen.getByText('2 matching entries')).toBeInTheDocument();
+    searchReports('payslip');
+    expect(screen.getByText(/2 reports match your search/)).toBeInTheDocument();
+    expect(screen.getAllByTestId(/^report-category-/)).toHaveLength(1);
+
     fireEvent.click(screen.getByRole('button', { name: /Individual payslips/i }));
-    const pane = screen.getByRole('main', { name: 'Selected report' });
-    expect(within(pane).getByText('Unavailable')).toBeInTheDocument();
-    expect(within(pane).getByText(/cannot generate a report yet/i)).toBeInTheDocument();
+    const pane = workspace();
+    expect(within(pane).getByText('Not implemented')).toBeInTheDocument();
+    expect(within(pane).getByText(/This report cannot be produced yet/)).toBeInTheDocument();
     expect(within(pane).queryByRole('button', { name: 'Generate report' })).not.toBeInTheDocument();
     expect(mocks.generate).not.toHaveBeenCalled();
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search reports' }), {
-      target: { value: 'no-matching-synthetic-name' },
-    });
+
+    fireEvent.click(within(pane).getByRole('button', { name: 'All reports' }));
+    searchReports('no-matching-synthetic-name');
     expect(screen.getByText(/No reports match/)).toBeInTheDocument();
-    expect(screen.getAllByTestId(/^report-category-/)).toHaveLength(7);
+    expect(screen.queryAllByTestId(/^report-category-/)).toHaveLength(0);
+  });
+
+  it('offers only facilities the account may reach and reloads the figures for the chosen one', async () => {
+    mocks.context.currentFacility = {
+      id: 10,
+      name: 'Synthetic Facility A',
+      tenantId: 1,
+      enabledModules: [...modules],
+      hiddenModules: [],
+    };
+    mocks.context.facilities = [
+      { id: 10, name: 'Synthetic Facility A', tenantId: 1, enabledModules: [...modules] },
+      { id: 11, name: 'Synthetic Facility B', tenantId: 1, enabledModules: [...modules] },
+      { id: 99, name: 'Other tenant facility', tenantId: 2, enabledModules: [...modules] },
+    ];
+    render(<ReportCentre />);
+    const select = screen.getByLabelText('Facility') as HTMLSelectElement;
+    expect([...select.options].map((option) => option.textContent)).toEqual([
+      'Synthetic Facility A',
+      'Synthetic Facility B',
+    ]);
+    expect(select).toHaveValue('10');
+    expect(mocks.overview).toHaveBeenCalledWith(10, expect.any(String), expect.any(String));
+
+    fireEvent.change(select, { target: { value: '11' } });
+    await waitFor(() =>
+      expect(mocks.overview).toHaveBeenLastCalledWith(11, expect.any(String), expect.any(String)),
+    );
+    expect(screen.getByText(/Operative reports for Synthetic Facility B/)).toBeInTheDocument();
+    // The catalogue is the same for every facility; the workspace is not open.
+    expect(screen.getAllByTestId(/^report-category-/)).toHaveLength(10);
+  });
+
+  it('defaults to the last thirty local days and refuses an impossible period without hiding the catalogue', async () => {
+    render(<ReportCentre />);
+    const from = screen.getByLabelText('From') as HTMLInputElement;
+    const to = screen.getByLabelText('To') as HTMLInputElement;
+    const days =
+      (Date.parse(`${to.value}T00:00:00Z`) - Date.parse(`${from.value}T00:00:00Z`)) / 86_400_000 +
+      1;
+    expect(days).toBe(30);
+    expect(from.getAttribute('max')).toBe(to.value);
+
+    fireEvent.change(from, { target: { value: '2026-05-01' } });
+    fireEvent.change(to, { target: { value: '2026-04-01' } });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The start date must not be after the end date.',
+    );
+    // The figures are not requested for a period the server would reject, and the catalogue stays usable.
+    expect(screen.getAllByTestId(/^report-category-/)).toHaveLength(10);
+    expect(screen.getByRole('searchbox', { name: 'Search reports' })).toBeInTheDocument();
   });
 
   it('generates scoped data, paginates, opens the authorized facility PDF for print and downloads the server export', async () => {
@@ -282,11 +403,7 @@ describe('Reporting Centre navigation and report workbench', () => {
       target: { value: 'current inpatient list' },
     });
     fireEvent.click(screen.getAllByRole('button', { name: /Current inpatient list/i })[0]);
-    expect(
-      within(screen.getByRole('main', { name: 'Selected report' })).getByText(
-        'Permission required',
-      ),
-    ).toBeInTheDocument();
+    expect(within(workspace()).getByText('Permission required')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Generate report' })).not.toBeInTheDocument();
   });
 
@@ -298,9 +415,7 @@ describe('Reporting Centre navigation and report workbench', () => {
     mocks.context.currentFacility.hiddenModules = ['inventory'];
     view.rerender(<ReportCentre />);
     openInventory();
-    expect(
-      within(screen.getByRole('main', { name: 'Selected report' })).getByText('Module unavailable'),
-    ).toBeInTheDocument();
+    expect(within(workspace()).getByText('Module unavailable')).toBeInTheDocument();
     expect(mocks.generate).not.toHaveBeenCalled();
   });
 
@@ -323,7 +438,8 @@ describe('Reporting Centre navigation and report workbench', () => {
     };
     view.rerender(<ReportCentre />);
     await act(async () => resolve(result('inventory-category', { facilityId: 10 })));
-    expect(screen.getByText(/Synthetic Facility B/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Facility')).toHaveValue('11');
+    expect(screen.getByText(/Operative reports for Synthetic Facility B/)).toBeInTheDocument();
     expect(screen.queryByText('Synthetic Item')).not.toBeInTheDocument();
   });
 
@@ -419,6 +535,7 @@ describe('Reporting Centre navigation and report workbench', () => {
     fireEvent.click(await screen.findByRole('radio', { name: /INV-SYN — Synthetic Patient/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Open invoice' }));
     expect(screen.getByText('Finalized invoice 123 report-only')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'All reports' }));
     fireEvent.click(screen.getByRole('button', { name: 'Existing analytics overview' }));
     expect(screen.getByText(/Unreconciled legacy analytics/)).toBeInTheDocument();
     expect(screen.getByText('Legacy overview content')).toBeInTheDocument();

@@ -1,6 +1,7 @@
 import {
   uploadPatientDocument,
   decideRadiologyConsent,
+  readPatientDocument,
 } from '../../documents/patient-documents.service.ts';
 import { PDFDocument } from 'pdf-lib';
 /** Synthetic records only: authenticated HTTP through PostgreSQL, never a production database. */
@@ -69,6 +70,24 @@ describeDb('Reporting Centre operational registers (synthetic PostgreSQL and HTT
       )
     ).rows[0].id;
     await pool.query('INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)', [id, role]);
+    /*
+     * The consent fixture below uploads a signed consent as the full-access
+     * actor, and the document service only accepts an active Doctor in this
+     * facility as the responsible doctor. The role is granted here so the
+     * fixture exercises the real gate instead of being refused by it.
+     */
+    if (label === 'full') {
+      const doctor =
+        (await pool.query("SELECT id FROM roles WHERE tenant_id=$1 AND name='DOCTOR'", [tenant]))
+          .rows[0]?.id ??
+        (
+          await pool.query(
+            "INSERT INTO roles(tenant_id,name,is_active) VALUES($1,'DOCTOR',true) RETURNING id",
+            [tenant],
+          )
+        ).rows[0].id;
+      await pool.query('INSERT INTO user_roles(user_id,role_id) VALUES($1,$2)', [id, doctor]);
+    }
     for (const code of permissions) {
       await pool.query(
         "INSERT INTO permissions(code,name,module) VALUES($1,$1,'reports') ON CONFLICT(code) DO NOTHING",
@@ -247,6 +266,8 @@ describeDb('Reporting Centre operational registers (synthetic PostgreSQL and HTT
       Buffer.from(await consentPdf.save()),
       'application/pdf',
     );
+    // The decision gate requires the deciding clinician to have opened the original first.
+    await readPatientDocument(consentContext, patient, signed.id, false);
     await decideRadiologyConsent(consentContext, performedOrder, {
       status: 'VERIFIED',
       documentId: signed.id,

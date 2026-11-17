@@ -1,5 +1,6 @@
 import { fetchJson } from './clients/http.ts';
 import type { ReportEngineId } from '../reporting/report-catalogue.ts';
+import type { ReportingOverview } from '../reporting/report-centre.overview.ts';
 import type {
   ReportExport,
   ReportFilters,
@@ -12,6 +13,12 @@ const path = (id: ReportEngineId | 'invoice-document') =>
   `/api/reporting/centre/${encodeURIComponent(id)}`;
 
 export const reportCentreApi = {
+  /** Landing-page figures. A card without a number is a refusal, not a zero. */
+  overview: (facilityId: number, from: string, to: string) =>
+    fetchJson<ReportingOverview>('/api/reporting/centre/overview', {
+      method: 'POST',
+      body: JSON.stringify({ facilityId, from, to }),
+    }),
   options: (
     id: ReportEngineId | 'invoice-document',
     request: ReportSelectionRequest,
