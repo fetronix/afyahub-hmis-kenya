@@ -238,7 +238,7 @@ describe('fixed assets — tax allowance', () => {
     render(<FixedAssetsModule />);
     await waitFor(() => expect(mocks.client.getAssets).toHaveBeenCalled());
 
-    await user.click(screen.getByRole('tab', { name: /depreciation & values/i }));
+    await user.click(screen.getByRole('tab', { name: /impairment & tax/i }));
     await user.click(await screen.findByRole('button', { name: /compute for/i }));
 
     await waitFor(() => expect(mocks.client.getTaxSchedule).toHaveBeenCalled());
@@ -254,7 +254,7 @@ describe('fixed assets — tax allowance', () => {
     render(<FixedAssetsModule />);
     await waitFor(() => expect(mocks.client.getAssets).toHaveBeenCalled());
 
-    await user.click(screen.getByRole('tab', { name: /depreciation & values/i }));
+    await user.click(screen.getByRole('tab', { name: /impairment & tax/i }));
     await user.click(await screen.findByRole('button', { name: /record rate/i }));
 
     /* The detail drawer stays open behind the adjustment dialog. */

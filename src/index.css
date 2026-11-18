@@ -245,6 +245,26 @@
     @apply w-full min-h-10 rounded-lg border border-slate-300 bg-surface px-3 py-2 text-sm text-ink outline-none transition placeholder:text-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-500;
   }
 
+  /* Selects share the input skin; without it the browser default broke the
+     form rhythm wherever a module rendered a dropdown. */
+  .ui-select {
+    @apply h-10 w-full rounded-lg border border-slate-300 bg-surface px-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-500;
+  }
+
+  .ui-eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-[0.16em] text-muted;
+  }
+
+  /* Vertical rhythm between a module's top-level sections. */
+  .ui-module-stack {
+    @apply space-y-6;
+  }
+
+  /* A link-styled button for opening a record from a table cell. */
+  .ui-link {
+    @apply rounded font-medium text-brand-700 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-brand-600;
+  }
+
   .table-quiet {
     @apply w-full text-left text-xs;
   }

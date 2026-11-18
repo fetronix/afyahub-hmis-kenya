@@ -47,8 +47,30 @@ import {
 } from '../ui/feedback.tsx';
 import { Modal } from '../ui/overlays.tsx';
 import { DataTable, FilterToolbar, PageHeader, StatCard } from '../ui/layout.tsx';
+import {
+  AssetConfigurationPanel,
+  AssetDashboardPanel,
+  AssetOperationsPanel,
+  AssetRegistrationPanel,
+  AssetReportsPanel,
+  DepreciationPanel,
+  InspectionsPanel,
+  MaintenancePanel,
+} from './fixed-assets/FixedAssetsPanels.tsx';
 
-type TabId = 'register' | 'categories' | 'maintenance' | 'depreciation';
+type TabId =
+  | 'dashboard'
+  | 'register'
+  | 'add'
+  | 'categories'
+  | 'depreciation'
+  | 'valuation'
+  | 'maintenance'
+  | 'inspections'
+  | 'transfers'
+  | 'disposal'
+  | 'reports'
+  | 'configuration';
 
 const toCents = (kes: string) => Math.round(Number(kes) * 100);
 
@@ -59,6 +81,7 @@ export const FixedAssetsModule: React.FC = () => {
   const canManage = permissions.includes('assets.manage');
   const canDepreciate = permissions.includes('assets.depreciate');
   const canDispose = permissions.includes('assets.dispose');
+  const can = (permission: string) => permissions.includes(permission);
 
   const [tab, setTab] = useState<TabId>('register');
   const [overview, setOverview] = useState<AssetOverview | null>(null);
@@ -93,6 +116,9 @@ export const FixedAssetsModule: React.FC = () => {
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [preview, setPreview] = useState<DepreciationPreviewRow[] | null>(null);
   const [report, setReport] = useState<AssetRegisterRow[]>([]);
+  const [transfers, setTransfers] = useState<
+    Awaited<ReturnType<typeof fixedAssetsClient.getAssetTransfers>>
+  >([]);
 
   const run = useCallback(
     async (action: () => Promise<void>) => {
@@ -138,6 +164,7 @@ export const FixedAssetsModule: React.FC = () => {
       setOptions(opts);
       setReport(await fixedAssetsClient.getAssetRegisterReport(facilityId));
       setTaxRates(await fixedAssetsClient.getTaxRates(facilityId));
+      setTransfers(await fixedAssetsClient.getAssetTransfers(facilityId));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Fixed assets could not be loaded.');
     } finally {
@@ -157,6 +184,20 @@ export const FixedAssetsModule: React.FC = () => {
       setDetail(await fixedAssetsClient.getAssetDetail(facilityId, id));
     });
   }
+
+  const panelProps = {
+    facilityId,
+    options,
+    categories,
+    assets,
+    saving,
+    can,
+    run,
+    notify: (message: string, tone?: 'success' | 'error') =>
+      showToast(message, { tone: tone ?? 'info' }),
+    refresh: load,
+    onOpenAsset: (id: number) => void openDetail(id),
+  };
 
   return (
     <div className="ui-module-stack">
@@ -214,10 +255,18 @@ export const FixedAssetsModule: React.FC = () => {
 
       <Tabs
         items={[
+          { id: 'dashboard', label: 'Dashboard' },
           { id: 'register', label: 'Asset register' },
+          { id: 'add', label: 'Add new asset' },
           { id: 'categories', label: 'Categories & accounts' },
+          { id: 'depreciation', label: 'Depreciation runs' },
+          { id: 'valuation', label: 'Impairment & tax' },
           { id: 'maintenance', label: 'Maintenance' },
-          { id: 'depreciation', label: 'Depreciation & values' },
+          { id: 'inspections', label: 'Inspections' },
+          { id: 'transfers', label: 'Transfers' },
+          { id: 'disposal', label: 'Disposal' },
+          { id: 'reports', label: 'Reports' },
+          { id: 'configuration', label: 'Configuration' },
         ]}
         value={tab}
         onChange={(id) => setTab(id as TabId)}
@@ -227,6 +276,122 @@ export const FixedAssetsModule: React.FC = () => {
 
       {loading && !overview ? (
         <LoadingSkeleton rows={5} />
+      ) : tab === 'dashboard' ? (
+        <AssetDashboardPanel {...panelProps} />
+      ) : tab === 'add' ? (
+        <AssetRegistrationPanel {...panelProps} />
+      ) : tab === 'inspections' ? (
+        <InspectionsPanel {...panelProps} />
+      ) : tab === 'reports' ? (
+        <AssetReportsPanel {...panelProps} />
+      ) : tab === 'configuration' ? (
+        <AssetConfigurationPanel {...panelProps} />
+      ) : tab === 'transfers' ? (
+        <section aria-labelledby="fixed-assets-transfers">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 id="fixed-assets-transfers" className="text-sm font-semibold">
+              Transfers and custodian changes
+            </h2>
+            <span className="text-xs text-muted">
+              Every transfer keeps the previous location, department and custodian on file.
+            </span>
+          </div>
+          {transfers.length === 0 ? (
+            <EmptyState
+              title="No transfer recorded"
+              description="Open an asset and use Transfer to move it between departments, locations or custodians."
+            />
+          ) : (
+            <DataTable className="table-quiet">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Asset</th>
+                  <th>From</th>
+                  <th>To</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transfers.map((transfer) => (
+                  <tr key={transfer.id}>
+                    <td>{transfer.transferDate}</td>
+                    <td>
+                      <button className="ui-link" onClick={() => void openDetail(transfer.assetId)}>
+                        {transfer.assetCode}
+                      </button>
+                      <div className="text-xs text-muted">{transfer.assetName}</div>
+                    </td>
+                    <td>{transfer.fromLocation ?? '—'}</td>
+                    <td>{transfer.toLocation ?? '—'}</td>
+                    <td>{transfer.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </DataTable>
+          )}
+        </section>
+      ) : tab === 'disposal' ? (
+        <section aria-labelledby="fixed-assets-disposal">
+          <h2 id="fixed-assets-disposal" className="text-sm font-semibold">
+            Disposal and retirement
+          </h2>
+          <p className="text-xs text-muted">
+            Disposal removes the cost and accumulated depreciation from the register and posts the
+            gain or loss. A retired asset keeps its history and stops accruing depreciation.
+          </p>
+          <DataTable className="table-quiet">
+            <thead>
+              <tr>
+                <th>Asset</th>
+                <th>Status</th>
+                <th className="text-right">Cost (KES)</th>
+                <th className="text-right">Accumulated (KES)</th>
+                <th className="text-right">Net book (KES)</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {assets.map((asset) => (
+                <tr key={asset.id}>
+                  <td>
+                    <div className="font-medium">{asset.assetName}</div>
+                    <div className="text-xs text-muted">{asset.assetCode}</div>
+                  </td>
+                  <td>
+                    <StatusBadge
+                      tone={
+                        asset.status === 'DISPOSED'
+                          ? 'error'
+                          : asset.status === 'ACTIVE'
+                            ? 'success'
+                            : 'warning'
+                      }
+                    >
+                      {asset.status}
+                    </StatusBadge>
+                  </td>
+                  <td className="text-right tabular-nums">
+                    {formatCents(toCents(asset.acquisitionCostKes))}
+                  </td>
+                  <td className="text-right tabular-nums">
+                    {formatCents(toCents(asset.accumulatedDepreciationKes))}
+                  </td>
+                  <td className="text-right tabular-nums">
+                    {formatCents(toCents(asset.netBookValueKes))}
+                  </td>
+                  <td>
+                    {asset.status === 'ACTIVE' && canDispose && (
+                      <SecondaryButton onClick={() => setDisposeFor(asset)}>
+                        <Trash2 size={15} /> Dispose
+                      </SecondaryButton>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </DataTable>
+        </section>
       ) : tab === 'register' ? (
         <section aria-labelledby="fixed-assets-register">
           <h2 id="fixed-assets-register" className="text-sm font-semibold">
@@ -406,68 +571,10 @@ export const FixedAssetsModule: React.FC = () => {
           )}
         </section>
       ) : tab === 'maintenance' ? (
-        <section aria-labelledby="fixed-assets-maintenance">
-          <div className="flex items-center justify-between">
-            <h2 id="fixed-assets-maintenance" className="text-sm font-semibold">
-              Maintenance history
-            </h2>
-            {canManage && (
-              <PrimaryButton onClick={() => setMaintenanceOpen(true)} disabled={!options || saving}>
-                <Wrench size={15} /> Plan maintenance
-              </PrimaryButton>
-            )}
-          </div>
-          {maintenance.length === 0 ? (
-            <EmptyState
-              title="No maintenance recorded"
-              description="Plan preventive or corrective maintenance to keep the register complete."
-            />
-          ) : (
-            <DataTable className="table-quiet">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Asset</th>
-                  <th>Type</th>
-                  <th>Description</th>
-                  <th className="text-right">Cost (KES)</th>
-                  <th>Status</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {maintenance.map((job) => (
-                  <tr key={job.id}>
-                    <td>{job.maintenanceDate}</td>
-                    <td>
-                      <div className="font-medium">{job.assetName}</div>
-                      <div className="text-xs text-muted">{job.assetCode}</div>
-                    </td>
-                    <td>{job.maintenanceType}</td>
-                    <td>
-                      <div>{job.description}</div>
-                      {job.vendor && <div className="text-xs text-muted">{job.vendor}</div>}
-                    </td>
-                    <td className="text-right tabular-nums">{formatCents(toCents(job.costKes))}</td>
-                    <td>
-                      <StatusBadge tone={job.status === 'COMPLETED' ? 'success' : 'warning'}>
-                        {job.status}
-                      </StatusBadge>
-                    </td>
-                    <td className="text-right">
-                      {job.status === 'PLANNED' && canManage && (
-                        <SecondaryButton onClick={() => setCompleteJob(job)}>
-                          Complete
-                        </SecondaryButton>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </DataTable>
-          )}
-        </section>
-      ) : (
+        <MaintenancePanel {...panelProps} />
+      ) : tab === 'depreciation' ? (
+        <DepreciationPanel {...panelProps} />
+      ) : tab === 'valuation' ? (
         <section aria-labelledby="fixed-assets-depreciation">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
@@ -733,11 +840,23 @@ export const FixedAssetsModule: React.FC = () => {
             )}
           </div>
         </section>
-      )}
+      ) : null}
 
       {detail && (
         <AssetDetailDrawer
           detail={detail}
+          facilityId={facilityId}
+          saving={saving}
+          run={run}
+          can={can}
+          notify={(message: string, tone?: 'success' | 'error') =>
+            showToast(message, { tone: tone ?? 'info' })
+          }
+          onRefresh={async () => {
+            await load();
+            if (detail)
+              setDetail(await fixedAssetsClient.getAssetDetail(facilityId, detail.asset.id));
+          }}
           onClose={() => setDetail(null)}
           canManage={canManage}
           canDispose={canDispose}
@@ -910,6 +1029,12 @@ export const FixedAssetsModule: React.FC = () => {
 
 function AssetDetailDrawer({
   detail,
+  facilityId,
+  saving,
+  run,
+  can,
+  notify,
+  onRefresh,
   onClose,
   canManage,
   canDispose,
@@ -918,6 +1043,12 @@ function AssetDetailDrawer({
   onAdjust,
 }: {
   detail: AssetDetail;
+  facilityId: number;
+  saving: boolean;
+  run: (action: () => Promise<void>) => Promise<void>;
+  can: (permission: string) => boolean;
+  notify: (message: string, tone?: 'success' | 'error') => void;
+  onRefresh: () => Promise<void>;
   onClose: () => void;
   canManage: boolean;
   canDispose: boolean;
@@ -928,84 +1059,22 @@ function AssetDetailDrawer({
   const asset = detail.asset;
   return (
     <Modal open onClose={onClose} title={`${asset.assetCode} — ${asset.assetName}`}>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Detail label="Category" value={asset.category} />
-        <Detail label="Status" value={asset.status} />
-        <Detail label="Acquisition date" value={asset.acquisitionDate} />
-        <Detail label="Cost" value={`KES ${formatCents(toCents(asset.acquisitionCostKes))}`} />
-        <Detail
-          label="Accumulated depreciation"
-          value={`KES ${formatCents(toCents(asset.accumulatedDepreciationKes))}`}
-        />
-        <Detail
-          label="Net book value"
-          value={`KES ${formatCents(toCents(asset.netBookValueKes))}`}
-        />
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusBadge tone={asset.status === 'ACTIVE' ? 'success' : 'warning'}>
+          {asset.status}
+        </StatusBadge>
+        <span className="chip">{asset.category}</span>
+        <span className="text-xs text-muted">
+          Cost KES {formatCents(toCents(asset.acquisitionCostKes))} · accumulated KES{' '}
+          {formatCents(toCents(asset.accumulatedDepreciationKes))} · net book KES{' '}
+          {formatCents(toCents(asset.netBookValueKes))}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-3">
         <Detail label="Location" value={asset.location || '—'} />
         <Detail label="Custodian" value={asset.custodianName || 'Unassigned'} />
         <Detail label="Condition" value={asset.condition} />
-        <Detail label="Serial number" value={asset.serialNumber || '—'} />
       </div>
-
-      <h3 className="mt-5 text-sm font-semibold">Movements</h3>
-      {detail.movements.length === 0 ? (
-        <p className="text-xs text-muted">No movements recorded.</p>
-      ) : (
-        <DataTable className="table-quiet">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Type</th>
-              <th className="text-right">Amount (KES)</th>
-              <th className="text-right">Net book after</th>
-              <th>Journal</th>
-            </tr>
-          </thead>
-          <tbody>
-            {detail.movements.map((movement) => (
-              <tr key={movement.id}>
-                <td>{movement.movementDate}</td>
-                <td>{movement.movementType}</td>
-                <td className="text-right tabular-nums">
-                  {formatCents(toCents(movement.amountKes))}
-                </td>
-                <td className="text-right tabular-nums">
-                  {formatCents(toCents(movement.netBookValueAfterKes))}
-                </td>
-                <td>{movement.journalEntryId ?? '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </DataTable>
-      )}
-
-      {detail.maintenance.length > 0 && (
-        <>
-          <h3 className="mt-5 text-sm font-semibold">Maintenance</h3>
-          <ul className="space-y-1 text-sm">
-            {detail.maintenance.map((job) => (
-              <li key={job.id}>
-                {job.maintenanceDate} · {job.maintenanceType} · {job.description} ·{' '}
-                {formatCents(toCents(job.costKes))} KES · {job.status}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-
-      {detail.transfers.length > 0 && (
-        <>
-          <h3 className="mt-5 text-sm font-semibold">Transfers</h3>
-          <ul className="space-y-1 text-sm">
-            {detail.transfers.map((transfer) => (
-              <li key={transfer.id}>
-                {transfer.transferDate} · {transfer.fromLocation || '—'} →{' '}
-                {transfer.toLocation || '—'} · {transfer.reason}
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
 
       {detail.disposalJournal && (
         <AlertBanner tone="neutral">
@@ -1013,6 +1082,25 @@ function AssetDetailDrawer({
           {detail.disposalJournal.entryDate}.
         </AlertBanner>
       )}
+
+      <AssetOperationsPanel
+        facilityId={facilityId}
+        assetId={asset.id}
+        can={can}
+        saving={saving}
+        run={run}
+        notify={notify}
+        refresh={onRefresh}
+        movements={detail.movements.map((movement) => ({
+          id: movement.id,
+          movementDate: movement.movementDate,
+          movementType: movement.movementType,
+          amountKes: movement.amountKes,
+          netBookValueAfterKes: movement.netBookValueAfterKes,
+          journalEntryId: movement.journalEntryId ?? null,
+          notes: movement.notes ?? null,
+        }))}
+      />
 
       <div className="mt-5 flex flex-wrap justify-end gap-2">
         {asset.status === 'ACTIVE' && canManage && (
