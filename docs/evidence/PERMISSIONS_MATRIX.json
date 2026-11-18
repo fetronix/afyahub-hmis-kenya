@@ -1,0 +1,4065 @@
+{
+ "generatedAt": "2026-11-18T05:35:25.891Z",
+ "generatedBy": "scripts/docs/build-permissions-matrix.ts",
+ "sources": {
+  "catalogue": "src/seeds/permissions.ts",
+  "staffRoles": "src/auth/staff-role-catalogue.ts",
+  "facilityAdminDelegation": "src/routes/platform/tenants.routes.ts",
+  "navigation": "src/components/Sidebar.tsx",
+  "routeUsage": "docs/evidence/API_ROUTE_INVENTORY.json"
+ },
+ "totals": {
+  "permissions": 214,
+  "roles": 10,
+  "facilityModules": 25,
+  "navModules": 28,
+  "permissionsHeldByNoRole": 0,
+  "permissionsUsedByNoRoute": 61
+ },
+ "superAdminExclusions": [],
+ "roles": [
+  {
+   "name": "SUPER_ADMIN",
+   "description": "Platform administrator. Holds every catalogue permission except the delegations listed in superAdminExclusions; operates without a tenant or facility assignment.",
+   "permissions": [
+    "theatre.read",
+    "theatre.reports.read",
+    "theatre.rooms.manage",
+    "theatre.schedule.create",
+    "theatre.schedule.reconcile",
+    "theatre.schedule.manage",
+    "platform.read",
+    "platform.manage",
+    "platform.settings.manage",
+    "tenants.read",
+    "tenants.create",
+    "tenants.update",
+    "tenants.deactivate",
+    "facilities.read",
+    "facilities.create",
+    "facilities.update",
+    "facilities.modules.manage",
+    "facility.branding.read",
+    "facility.branding.manage",
+    "facilities.approve",
+    "facilities.deactivate",
+    "users.read",
+    "users.create",
+    "users.update",
+    "users.deactivate",
+    "users.invite",
+    "users.invitations.read",
+    "users.invitations.revoke",
+    "users.invitations.reissue",
+    "users.roles.manage",
+    "roles.read",
+    "roles.create",
+    "roles.update",
+    "roles.permissions.manage",
+    "auth.sessions.read",
+    "auth.sessions.revoke",
+    "auth.password.reset",
+    "auth.mfa.manage",
+    "practitioners.read",
+    "practitioners.create",
+    "practitioners.update",
+    "practitioners.verify",
+    "patients.documents.read",
+    "patients.documents.upload",
+    "patients.documents.release",
+    "radiology.consent.verify",
+    "radiology.consent.exception",
+    "radiology.consent.policy",
+    "patients.read",
+    "patients.create",
+    "patients.update",
+    "patients.deactivate",
+    "portal.invite",
+    "portal.invites.manage",
+    "portal.accounts.manage",
+    "portal.audit.read",
+    "portal.settings.manage",
+    "interop.fhir.patient.read",
+    "clinical.read",
+    "clinical.create",
+    "clinical.update",
+    "appointments.read",
+    "appointments.create",
+    "appointments.update",
+    "appointments.cancel",
+    "appointments.categories.manage",
+    "maternity.read",
+    "maternity.create",
+    "maternity.update",
+    "inpatient.read",
+    "inpatient.admit",
+    "inpatient.discharge",
+    "inpatient.wards.create",
+    "inpatient.wards.update",
+    "inpatient.wards.delete",
+    "inpatient.beds.create",
+    "inpatient.beds.update",
+    "inpatient.beds.delete",
+    "laboratory.read",
+    "laboratory.orders.create",
+    "laboratory.results.enter",
+    "laboratory.results.verify",
+    "radiology.read",
+    "pharmacy.read",
+    "pharmacy.dispense",
+    "pharmacy.inventory.manage",
+    "inventory.read",
+    "inventory.manage",
+    "billing.read",
+    "billing.create",
+    "billing.update",
+    "billing.payments.record",
+    "billing.refunds.record",
+    "billing.refunds.approve",
+    "tariffs.read",
+    "tariffs.manage",
+    "insurance.read",
+    "insurance.claims.create",
+    "insurance.claims.submit",
+    "insurance.claims.manage",
+    "insurance.sha.read",
+    "insurance.sha.eligibility.check",
+    "insurance.sha.benefits.validate",
+    "insurance.sha.preauthorization.create",
+    "insurance.sha.claims.read",
+    "insurance.sha.claims.prepare",
+    "insurance.sha.claims.submit",
+    "insurance.sha.claims.resubmit",
+    "insurance.sha.remittance.read",
+    "insurance.sha.reconciliation.manage",
+    "insurance.sha.configuration.manage",
+    "insurance.payers.read",
+    "insurance.payers.manage",
+    "insurance.members.read",
+    "insurance.members.manage",
+    "insurance.eligibility.check",
+    "insurance.benefits.validate",
+    "insurance.mappings.manage",
+    "insurance.preauthorization.manage",
+    "insurance.private.claims.prepare",
+    "insurance.private.claims.submit",
+    "insurance.private.remittance.reconcile",
+    "procurement.read",
+    "procurement.create",
+    "procurement.update",
+    "procurement.delete",
+    "procurement.reject",
+    "procurement.complete",
+    "procurement.approve",
+    "approval_policies.read",
+    "approval_policies.manage",
+    "assets.read",
+    "assets.manage",
+    "assets.depreciate",
+    "assets.dispose",
+    "hr.read",
+    "hr.manage",
+    "hr.approve",
+    "payroll.read",
+    "payroll.manage",
+    "payroll.approve",
+    "payroll.post",
+    "payroll.statutory.manage",
+    "reports.read",
+    "public_health.reports.create",
+    "reports.export",
+    "audit.read",
+    "audit.security.read",
+    "system.health.read",
+    "system.settings.manage",
+    "accounting.planning.read",
+    "accounting.planning.reset",
+    "accounting.planning.manage",
+    "accounting.planning.import",
+    "accounting.planning.approve",
+    "accounting.planning.export",
+    "accounting.planning.audit",
+    "accounting.equity.read",
+    "accounting.equity.manage",
+    "accounting.equity.partners",
+    "accounting.equity.review",
+    "accounting.equity.approve",
+    "accounting.equity.export",
+    "accounting.equity.audit",
+    "accounting.read",
+    "accounting.coa.manage",
+    "accounting.journals.post",
+    "accounting.periods.close",
+    "accounting.expenses.request",
+    "accounting.expenses.approve",
+    "accounting.assets.manage",
+    "accounting.payables.manage",
+    "accounting.bank.manage",
+    "accounting.reports.export",
+    "bank_payments.read",
+    "bank_payments.submit",
+    "bank_payments.verify",
+    "bank_payments.settle",
+    "bank_payments.configure",
+    "payer_hub.global.read",
+    "payer_hub.global.manage",
+    "payer_hub.assign",
+    "payer_hub.production.approve",
+    "payer_hub.catalogue.read",
+    "payer_hub.facility.manage",
+    "payer_hub.credentials.manage",
+    "payer_hub.production.request",
+    "payment_hub.global.read",
+    "payment_hub.global.manage",
+    "payment_hub.assign",
+    "payment_hub.production.approve",
+    "payment_hub.catalogue.read",
+    "payment_hub.facility.manage",
+    "payment_hub.credentials.manage",
+    "payment_hub.accounts.read",
+    "payment_hub.collection.initiate",
+    "payment_hub.payments.verify",
+    "payment_hub.transactions.read",
+    "payment_hub.reconciliation.manage",
+    "payment_hub.production.request",
+    "payment_hub.transfers.initiate",
+    "dialysis.read",
+    "dialysis.assessments.manage",
+    "dialysis.plans.authorize",
+    "dialysis.schedule.manage",
+    "dialysis.sessions.record",
+    "dialysis.machines.manage",
+    "dialysis.adverse_events.manage",
+    "dialysis.protocols.manage",
+    "clinical.icd11.read",
+    "clinical.icd11.manage",
+    "booking.read",
+    "booking.manage",
+    "booking.clients.manage"
+   ],
+   "source": "src/seeds/permissions.ts"
+  },
+  {
+   "name": "FACILITY_ADMIN",
+   "description": "Facility administrator created by platform invitation. Holds the delegated set below; independent approval duties stay with other roles.",
+   "permissions": [
+    "hr.read",
+    "hr.manage",
+    "payroll.read",
+    "payroll.manage",
+    "appointments.cancel",
+    "appointments.create",
+    "appointments.read",
+    "appointments.update",
+    "audit.read",
+    "billing.read",
+    "tariffs.read",
+    "tariffs.manage",
+    "clinical.read",
+    "facilities.read",
+    "facilities.update",
+    "facilities.modules.manage",
+    "inpatient.read",
+    "insurance.read",
+    "insurance.sha.read",
+    "insurance.sha.eligibility.check",
+    "insurance.sha.benefits.validate",
+    "insurance.sha.preauthorization.create",
+    "insurance.sha.claims.read",
+    "insurance.sha.claims.prepare",
+    "insurance.sha.claims.submit",
+    "insurance.sha.claims.resubmit",
+    "insurance.sha.remittance.read",
+    "insurance.sha.reconciliation.manage",
+    "insurance.sha.configuration.manage",
+    "insurance.payers.read",
+    "insurance.payers.manage",
+    "insurance.members.read",
+    "insurance.members.manage",
+    "insurance.eligibility.check",
+    "insurance.benefits.validate",
+    "insurance.mappings.manage",
+    "insurance.preauthorization.manage",
+    "insurance.private.claims.prepare",
+    "insurance.private.claims.submit",
+    "insurance.private.remittance.reconcile",
+    "inventory.read",
+    "laboratory.read",
+    "patients.create",
+    "patients.read",
+    "patients.update",
+    "pharmacy.read",
+    "payer_hub.catalogue.read",
+    "payer_hub.facility.manage",
+    "payer_hub.credentials.manage",
+    "payer_hub.production.request",
+    "payment_hub.catalogue.read",
+    "payment_hub.facility.manage",
+    "payment_hub.credentials.manage",
+    "payment_hub.accounts.read",
+    "payment_hub.production.request",
+    "portal.accounts.manage",
+    "portal.audit.read",
+    "portal.invite",
+    "portal.invites.manage",
+    "portal.settings.manage",
+    "practitioners.read",
+    "procurement.read",
+    "procurement.approve",
+    "procurement.reject",
+    "procurement.complete",
+    "reports.export",
+    "reports.read",
+    "roles.read",
+    "users.create",
+    "users.invitations.read",
+    "users.invitations.revoke",
+    "users.invitations.reissue",
+    "users.invite",
+    "users.read",
+    "users.update"
+   ],
+   "source": "src/routes/platform/tenants.routes.ts"
+  },
+  {
+   "name": "BILLING_CLERK",
+   "description": "Handles billing, payment records, and SHA eClaims billing workflows.",
+   "permissions": [
+    "billing.create",
+    "billing.payments.record",
+    "billing.read",
+    "billing.update",
+    "patients.read",
+    "insurance.read",
+    "insurance.claims.create",
+    "insurance.claims.submit",
+    "insurance.claims.manage",
+    "insurance.sha.read",
+    "insurance.sha.eligibility.check",
+    "insurance.sha.benefits.validate",
+    "insurance.sha.preauthorization.create",
+    "insurance.sha.claims.read",
+    "insurance.sha.claims.prepare",
+    "insurance.sha.claims.submit",
+    "insurance.sha.claims.resubmit",
+    "insurance.sha.remittance.read",
+    "insurance.sha.reconciliation.manage",
+    "insurance.payers.read",
+    "insurance.members.read",
+    "insurance.members.manage",
+    "insurance.eligibility.check",
+    "insurance.benefits.validate",
+    "insurance.preauthorization.manage",
+    "insurance.private.claims.prepare",
+    "insurance.private.claims.submit",
+    "insurance.private.remittance.reconcile"
+   ],
+   "source": "src/auth/staff-role-catalogue.ts"
+  },
+  {
+   "name": "CLINICAL_OFFICER",
+   "description": "Provides clinical care under the Clinical Officers Council.",
+   "permissions": [
+    "appointments.read",
+    "clinical.create",
+    "clinical.read",
+    "clinical.update",
+    "inpatient.read",
+    "inpatient.admit",
+    "laboratory.read",
+    "laboratory.orders.create",
+    "patients.read",
+    "patients.update",
+    "maternity.read",
+    "maternity.create",
+    "maternity.update",
+    "insurance.sha.read",
+    "insurance.sha.benefits.validate",
+    "insurance.sha.preauthorization.create",
+    "insurance.payers.read",
+    "insurance.members.read",
+    "insurance.benefits.validate",
+    "insurance.preauthorization.manage"
+   ],
+   "source": "src/auth/staff-role-catalogue.ts"
+  },
+  {
+   "name": "DOCTOR",
+   "description": "Provides clinical care and manages clinical records.",
+   "permissions": [
+    "appointments.read",
+    "clinical.create",
+    "clinical.read",
+    "clinical.update",
+    "inpatient.read",
+    "inpatient.admit",
+    "inpatient.discharge",
+    "laboratory.read",
+    "laboratory.orders.create",
+    "patients.read",
+    "patients.update",
+    "maternity.read",
+    "maternity.create",
+    "maternity.update",
+    "insurance.sha.read",
+    "insurance.sha.benefits.validate",
+    "insurance.sha.preauthorization.create",
+    "insurance.payers.read",
+    "insurance.members.read",
+    "insurance.benefits.validate",
+    "insurance.preauthorization.manage"
+   ],
+   "source": "src/auth/staff-role-catalogue.ts"
+  },
+  {
+   "name": "INVENTORY_OFFICER",
+   "description": "Manages inventory and procurement activities.",
+   "permissions": [
+    "inventory.manage",
+    "inventory.read",
+    "procurement.create",
+    "procurement.read",
+    "procurement.update"
+   ],
+   "source": "src/auth/staff-role-catalogue.ts"
+  },
+  {
+   "name": "LABORATORY_TECHNICIAN",
+   "description": "Handles laboratory orders and results entry.",
+   "permissions": [
+    "laboratory.orders.create",
+    "laboratory.read",
+    "laboratory.results.enter",
+    "patients.read"
+   ],
+   "source": "src/auth/staff-role-catalogue.ts"
+  },
+  {
+   "name": "NURSE",
+   "description": "Provides nursing care and accesses clinical records.",
+   "permissions": [
+    "clinical.create",
+    "clinical.read",
+    "inpatient.read",
+    "inpatient.admit",
+    "patients.read",
+    "maternity.read",
+    "maternity.create",
+    "maternity.update"
+   ],
+   "source": "src/auth/staff-role-catalogue.ts"
+  },
+  {
+   "name": "PHARMACIST",
+   "description": "Handles pharmacy dispensing and pharmacy records.",
+   "permissions": [
+    "patients.read",
+    "pharmacy.dispense",
+    "pharmacy.read"
+   ],
+   "source": "src/auth/staff-role-catalogue.ts"
+  },
+  {
+   "name": "RECEPTIONIST",
+   "description": "Handles patient registration and appointments.",
+   "permissions": [
+    "appointments.create",
+    "appointments.read",
+    "appointments.update",
+    "patients.create",
+    "patients.read",
+    "patients.update",
+    "portal.invite",
+    "maternity.read",
+    "insurance.read",
+    "insurance.sha.read",
+    "insurance.sha.eligibility.check",
+    "insurance.sha.benefits.validate",
+    "insurance.payers.read",
+    "insurance.members.read",
+    "insurance.members.manage",
+    "insurance.eligibility.check",
+    "insurance.benefits.validate"
+   ],
+   "source": "src/auth/staff-role-catalogue.ts"
+  }
+ ],
+ "facilityModules": [
+  "registration",
+  "reception",
+  "website_booking",
+  "opd",
+  "inpatient",
+  "maternity",
+  "theatre",
+  "dialysis",
+  "specialty",
+  "laboratory",
+  "radiology",
+  "pharmacy",
+  "inventory",
+  "procurement",
+  "hr",
+  "payroll",
+  "finance",
+  "accounting",
+  "insurance",
+  "public_health",
+  "analytics",
+  "interoperability",
+  "configuration",
+  "patient_portal",
+  "audit"
+ ],
+ "navModules": [
+  {
+   "module": "dashboard",
+   "permissions": [
+    "patients.read",
+    "appointments.read",
+    "clinical.read",
+    "inpatient.read",
+    "theatre.read",
+    "laboratory.read",
+    "pharmacy.read",
+    "inventory.read",
+    "billing.read",
+    "reports.read"
+   ]
+  },
+  {
+   "module": "registration",
+   "permissions": [
+    "patients.read"
+   ]
+  },
+  {
+   "module": "reception",
+   "permissions": [
+    "appointments.read",
+    "clinical.read",
+    "patients.read"
+   ]
+  },
+  {
+   "module": "opd",
+   "permissions": [
+    "clinical.read"
+   ]
+  },
+  {
+   "module": "inpatient",
+   "permissions": [
+    "inpatient.read"
+   ]
+  },
+  {
+   "module": "maternity",
+   "permissions": [
+    "maternity.read"
+   ]
+  },
+  {
+   "module": "theatre",
+   "permissions": [
+    "theatre.read"
+   ]
+  },
+  {
+   "module": "dialysis",
+   "permissions": [
+    "dialysis.read"
+   ]
+  },
+  {
+   "module": "specialty",
+   "permissions": [
+    "clinical.read"
+   ]
+  },
+  {
+   "module": "laboratory",
+   "permissions": [
+    "laboratory.read"
+   ]
+  },
+  {
+   "module": "radiology",
+   "permissions": [
+    "laboratory.read",
+    "clinical.read"
+   ]
+  },
+  {
+   "module": "pharmacy",
+   "permissions": [
+    "pharmacy.read"
+   ]
+  },
+  {
+   "module": "inventory",
+   "permissions": [
+    "inventory.read"
+   ]
+  },
+  {
+   "module": "procurement",
+   "permissions": [
+    "procurement.read"
+   ]
+  },
+  {
+   "module": "hr",
+   "permissions": [
+    "hr.read"
+   ]
+  },
+  {
+   "module": "payroll",
+   "permissions": [
+    "payroll.read"
+   ]
+  },
+  {
+   "module": "finance",
+   "permissions": [
+    "billing.read"
+   ]
+  },
+  {
+   "module": "payment_transactions",
+   "permissions": [
+    "bank_payments.read"
+   ]
+  },
+  {
+   "module": "accounting",
+   "permissions": [
+    "accounting.read"
+   ]
+  },
+  {
+   "module": "fixed_assets",
+   "permissions": [
+    "assets.read"
+   ]
+  },
+  {
+   "module": "claims",
+   "permissions": [
+    "insurance.read",
+    "insurance.sha.read",
+    "insurance.sha.eligibility.check",
+    "insurance.sha.benefits.validate",
+    "insurance.sha.preauthorization.create",
+    "insurance.sha.claims.read"
+   ]
+  },
+  {
+   "module": "private_insurance",
+   "permissions": [
+    "insurance.read",
+    "insurance.payers.read",
+    "insurance.payers.manage",
+    "insurance.members.read",
+    "insurance.members.manage",
+    "insurance.eligibility.check",
+    "insurance.benefits.validate",
+    "insurance.preauthorization.manage",
+    "insurance.private.claims.prepare",
+    "insurance.private.claims.submit",
+    "insurance.private.remittance.reconcile"
+   ]
+  },
+  {
+   "module": "analytics",
+   "permissions": [
+    "reports.read"
+   ]
+  },
+  {
+   "module": "public_health",
+   "permissions": [
+    "reports.read"
+   ]
+  },
+  {
+   "module": "interoperability",
+   "permissions": [
+    "interop.fhir.patient.read"
+   ]
+  },
+  {
+   "module": "configuration",
+   "permissions": [
+    "system.settings.manage",
+    "payment_hub.catalogue.read",
+    "payer_hub.catalogue.read",
+    "users.roles.manage",
+    "roles.permissions.manage",
+    "facilities.update",
+    "users.invite"
+   ]
+  },
+  {
+   "module": "patient_portal",
+   "permissions": [
+    "portal.accounts.manage"
+   ]
+  },
+  {
+   "module": "audit",
+   "permissions": [
+    "audit.read",
+    "audit.security.read"
+   ]
+  }
+ ],
+ "permissions": [
+  {
+   "code": "accounting.assets.manage",
+   "name": "Manage Fixed Asset Register & Depreciation",
+   "module": "accounting",
+   "description": "Register fixed assets, record additions/disposals, and post periodic depreciation.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "accounting.bank.manage",
+   "name": "Manage Bank Accounts & Reconciliation",
+   "module": "accounting",
+   "description": "Configure facility bank accounts, import bank statements, match transactions, and complete bank reconciliations.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 8,
+   "routeExamples": [
+    "POST /api/accounting/bank/accounts",
+    "POST /api/accounting/bank/accounts/:id/statements"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "accounting.coa.manage",
+   "name": "Manage Chart of Accounts & Periods",
+   "module": "accounting",
+   "description": "Create and update chart of accounts and financial periods.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/accounting/accounts",
+    "POST /api/accounting/periods"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "accounting.equity.approve",
+   "name": "Approve reviewed partner equity statements",
+   "module": "accounting",
+   "description": "Facility-scoped partner statements; separate from ledger, budgets and procurement. Explicit role assignment required.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "accounting.equity.audit",
+   "name": "Read partner equity audit history",
+   "module": "accounting",
+   "description": "Facility-scoped partner statements; separate from ledger, budgets and procurement. Explicit role assignment required.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "accounting.equity.export",
+   "name": "Export full partner equity statements",
+   "module": "accounting",
+   "description": "Facility-scoped partner statements; separate from ledger, budgets and procurement. Explicit role assignment required.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "accounting.equity.manage",
+   "name": "Prepare draft partner equity statements",
+   "module": "accounting",
+   "description": "Facility-scoped partner statements; separate from ledger, budgets and procurement. Explicit role assignment required.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "accounting.equity.partners",
+   "name": "Manage effective-dated partner register",
+   "module": "accounting",
+   "description": "Facility-scoped partner statements; separate from ledger, budgets and procurement. Explicit role assignment required.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "accounting.equity.read",
+   "name": "View partner equity statements",
+   "module": "accounting",
+   "description": "Facility-scoped partner statements; separate from ledger, budgets and procurement. Explicit role assignment required.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 13,
+   "routeExamples": [
+    "GET /api/partner-equity/partners",
+    "PUT /api/partner-equity/partners"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "accounting.equity.review",
+   "name": "Independently review partner equity statements",
+   "module": "accounting",
+   "description": "Facility-scoped partner statements; separate from ledger, budgets and procurement. Explicit role assignment required.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "accounting.expenses.approve",
+   "name": "Approve & Post Expense Requests",
+   "module": "accounting",
+   "description": "Approve or reject expense requests and post approved expenses to the ledger.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/accounting/expenses/:id/approve-and-post",
+    "POST /api/accounting/expenses/:id/decision"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "accounting.expenses.request",
+   "name": "Submit Expense Requests",
+   "module": "accounting",
+   "description": "Create expense requests and attach supporting documentation.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/accounting/expenses"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "accounting.journals.post",
+   "name": "Post General Ledger Journals & Reversals",
+   "module": "accounting",
+   "description": "Post balanced double-entry journals and controlled reversals or adjustment entries.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 7,
+   "routeExamples": [
+    "POST /api/accounting/billing-postings/:sourceType/:sourceId",
+    "POST /api/accounting/expenses/:id/approve-and-post"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "accounting.payables.manage",
+   "name": "Manage Accounts Payable & Supplier Payments",
+   "module": "accounting",
+   "description": "Record supplier invoices, match purchase orders, and record supplier payments.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "accounting.periods.close",
+   "name": "Close Financial Periods",
+   "module": "accounting",
+   "description": "Close or lock accounting financial periods against new postings.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/accounting/periods/:id/close"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "accounting.planning.approve",
+   "name": "Independently approve and archive budget plans",
+   "module": "accounting",
+   "description": "Facility-scoped planning projections only; no actual expenditure or procurement posting.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "accounting.planning.audit",
+   "name": "Read planning audit history",
+   "module": "accounting",
+   "description": "Facility-scoped planning projections only; no actual expenditure or procurement posting.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "GET /api/budget-planning/audit"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "accounting.planning.export",
+   "name": "Issue and export planning reports",
+   "module": "accounting",
+   "description": "Facility-scoped planning projections only; no actual expenditure or procurement posting.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "accounting.planning.import",
+   "name": "Import planning workbooks",
+   "module": "accounting",
+   "description": "Facility-scoped planning projections only; no actual expenditure or procurement posting.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "accounting.planning.manage",
+   "name": "Manage draft budget plans",
+   "module": "accounting",
+   "description": "Facility-scoped planning projections only; no actual expenditure or procurement posting.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "GET /api/budget-planning/reset",
+    "POST /api/budget-planning/reset/execute"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "accounting.planning.read",
+   "name": "View budget plans",
+   "module": "accounting",
+   "description": "Facility-scoped planning projections only; no actual expenditure or procurement posting.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 32,
+   "routeExamples": [
+    "GET /api/budget-planning/audit",
+    "GET /api/budget-planning/imports"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "accounting.planning.reset",
+   "name": "Reset draft planning data",
+   "module": "accounting",
+   "description": "Destructive draft-only facility reset; additionally requires FACILITY_ADMIN and planning manage permission.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "GET /api/budget-planning/reset",
+    "POST /api/budget-planning/reset/execute"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "accounting.read",
+   "name": "View Accounting & Financial Statements",
+   "module": "accounting",
+   "description": "View chart of accounts, general ledger, financial statements, cashbook, AP/AR, and profitability reports.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 64,
+   "routeExamples": [
+    "GET /api/accounting/accounts",
+    "GET /api/accounting/bank"
+   ],
+   "navModules": [
+    "accounting"
+   ]
+  },
+  {
+   "code": "accounting.reports.export",
+   "name": "Export Accounting Reports",
+   "module": "accounting",
+   "description": "Export trial balance, profit & loss, balance sheet, fixed asset, and reconciliation schedules.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "GET /api/accounting/trial-balance.csv"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "appointments.cancel",
+   "name": "Cancel Appointments",
+   "module": "appointments",
+   "description": "Cancel appointments.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/appointments/:id/cancel",
+    "POST /api/dialysis/schedules/:id/cancel"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "appointments.categories.manage",
+   "name": "Manage appointment categories",
+   "module": "appointments",
+   "description": "Configure facility appointment categories and optional service references; this does not authorize billing.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/appointments/categories",
+    "PATCH /api/appointments/categories/:id"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "appointments.create",
+   "name": "Create Appointments",
+   "module": "appointments",
+   "description": "Create appointments.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "RECEPTIONIST"
+   ],
+   "routeCount": 4,
+   "routeExamples": [
+    "POST /api/appointments",
+    "POST /api/appointments/:id/check-in"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "appointments.read",
+   "name": "View Appointments",
+   "module": "appointments",
+   "description": "View patient appointments.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "CLINICAL_OFFICER",
+    "DOCTOR",
+    "RECEPTIONIST"
+   ],
+   "routeCount": 5,
+   "routeExamples": [
+    "GET /api/appointments",
+    "GET /api/appointments/:id/history"
+   ],
+   "navModules": [
+    "dashboard",
+    "reception"
+   ]
+  },
+  {
+   "code": "appointments.update",
+   "name": "Update Appointments",
+   "module": "appointments",
+   "description": "Update appointments.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "RECEPTIONIST"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "POST /api/appointments/:id/check-in",
+    "POST /api/appointments/:id/reschedule"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "assets.depreciate",
+   "name": "Post Depreciation",
+   "module": "assets",
+   "description": "Run and post monthly depreciation to the general ledger.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/fixed-assets/depreciation/run"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "assets.dispose",
+   "name": "Dispose of Fixed Assets",
+   "module": "assets",
+   "description": "Write off, sell or retire an asset and post the disposal journal.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "POST /api/fixed-assets/:id/dispose",
+    "POST /api/fixed-assets/:id/impair"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "assets.manage",
+   "name": "Manage Fixed Assets",
+   "module": "assets",
+   "description": "Register assets, maintain categories, move custodians and record maintenance.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 7,
+   "routeExamples": [
+    "POST /api/fixed-assets",
+    "PUT /api/fixed-assets/:id"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "assets.read",
+   "name": "View Fixed Assets",
+   "module": "assets",
+   "description": "View the facility asset register, maintenance, transfers and depreciation history.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 11,
+   "routeExamples": [
+    "GET /api/fixed-assets",
+    "GET /api/fixed-assets/:id"
+   ],
+   "navModules": [
+    "fixed_assets"
+   ]
+  },
+  {
+   "code": "audit.read",
+   "name": "View Audit Logs",
+   "module": "audit",
+   "description": "View system audit logs.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "GET /api/audit-logs",
+    "GET /api/insurance/diagnostics"
+   ],
+   "navModules": [
+    "audit"
+   ]
+  },
+  {
+   "code": "audit.security.read",
+   "name": "View Security Audit Logs",
+   "module": "audit",
+   "description": "View authentication and security audit events.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "GET /api/integrations/dha/calls"
+   ],
+   "navModules": [
+    "audit"
+   ]
+  },
+  {
+   "code": "auth.mfa.manage",
+   "name": "Manage MFA",
+   "module": "authentication",
+   "description": "Manage multi-factor authentication settings.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "auth.password.reset",
+   "name": "Reset Passwords",
+   "module": "authentication",
+   "description": "Perform authorized password reset operations.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "auth.sessions.read",
+   "name": "View Sessions",
+   "module": "authentication",
+   "description": "View active authentication sessions.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "auth.sessions.revoke",
+   "name": "Revoke Sessions",
+   "module": "authentication",
+   "description": "Revoke authentication sessions.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "bank_payments.configure",
+   "name": "Administer Facility Bank Accounts and Bank-only Policy",
+   "module": "billing",
+   "description": "Administer Facility Bank Accounts and Bank-only Policy; facility-scoped and audited.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "bank_payments.read",
+   "name": "View Bank Payments",
+   "module": "billing",
+   "description": "View Bank Payments; facility-scoped and audited.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": [
+    "payment_transactions"
+   ]
+  },
+  {
+   "code": "bank_payments.settle",
+   "name": "Approve Verified Bank Settlement",
+   "module": "billing",
+   "description": "Approve Verified Bank Settlement; facility-scoped and audited.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "bank_payments.submit",
+   "name": "Submit Pending Bank Transfers",
+   "module": "billing",
+   "description": "Submit Pending Bank Transfers; facility-scoped and audited.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "bank_payments.verify",
+   "name": "Independently Verify Bank Evidence",
+   "module": "billing",
+   "description": "Independently Verify Bank Evidence; facility-scoped and audited.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "billing.create",
+   "name": "Create Bills",
+   "module": "billing",
+   "description": "Create patient bills.",
+   "roles": [
+    "SUPER_ADMIN",
+    "BILLING_CLERK"
+   ],
+   "routeCount": 5,
+   "routeExamples": [
+    "POST /api/admissions/:id/accrue-bed-days",
+    "POST /api/admissions/:id/bed-billing-retry"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "billing.payments.record",
+   "name": "Record Payments",
+   "module": "billing",
+   "description": "Record patient payments.",
+   "roles": [
+    "SUPER_ADMIN",
+    "BILLING_CLERK"
+   ],
+   "routeCount": 5,
+   "routeExamples": [
+    "GET /api/billing/payments",
+    "POST /api/billing/payments"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "billing.read",
+   "name": "View Billing",
+   "module": "billing",
+   "description": "View billing information.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK"
+   ],
+   "routeCount": 98,
+   "routeExamples": [
+    "GET /api/accounting/billing-consistency",
+    "GET /api/accounting/billing-gl-reconciliation"
+   ],
+   "navModules": [
+    "dashboard",
+    "finance"
+   ]
+  },
+  {
+   "code": "billing.refunds.approve",
+   "name": "Independently Review Refund Requests",
+   "module": "billing",
+   "description": "Independently approve, reject or revoke a patient-receipt refund request; no transfer is initiated.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "GET /api/billing/refund-requests",
+    "POST /api/billing/refund-requests/:id/decision"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "billing.refunds.record",
+   "name": "Record Manual Refunds",
+   "module": "billing",
+   "description": "Request and record an approved externally performed refund; does not initiate transfers.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 5,
+   "routeExamples": [
+    "GET /api/billing/refund-requests",
+    "POST /api/billing/refund-requests"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "billing.update",
+   "name": "Update Bills",
+   "module": "billing",
+   "description": "Update billing records.",
+   "roles": [
+    "SUPER_ADMIN",
+    "BILLING_CLERK"
+   ],
+   "routeCount": 10,
+   "routeExamples": [
+    "POST /api/admissions/:id/bed-billing-encounter",
+    "POST /api/admissions/:id/bed-history-review"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "tariffs.manage",
+   "name": "Manage Service Tariffs",
+   "module": "billing",
+   "description": "Create, update, and deactivate facility service tariffs.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 18,
+   "routeExamples": [
+    "POST /api/billing/charge-attempts/:id/retry",
+    "POST /api/billing/charge-attempts/:id/void"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "tariffs.read",
+   "name": "View Service Tariffs",
+   "module": "billing",
+   "description": "View service tariffs within the authorized facility.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 11,
+   "routeExamples": [
+    "GET /api/billing/charge-attempts",
+    "GET /api/billing/lab-service-diagnostics"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "clinical.create",
+   "name": "Create Clinical Records",
+   "module": "clinical",
+   "description": "Create clinical records.",
+   "roles": [
+    "SUPER_ADMIN",
+    "CLINICAL_OFFICER",
+    "DOCTOR",
+    "NURSE"
+   ],
+   "routeCount": 10,
+   "routeExamples": [
+    "POST /api/admissions/:id/vitals",
+    "POST /api/diagnoses"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "clinical.icd11.manage",
+   "name": "Manage ICD-11 Sync & Mapping Reviews",
+   "module": "clinical",
+   "description": "Synchronize WHO ICD-11 catalogue entries and review ambiguous ICD-10-to-ICD-11 mappings.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/icd11/mappings/:code/review"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "clinical.icd11.read",
+   "name": "Search ICD-11 Catalogue & Mappings",
+   "module": "clinical",
+   "description": "Search WHO ICD-11 diagnosis codes, release metadata, and verified ICD-10-to-ICD-11 mappings.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "GET /api/icd11/mappings/:code",
+    "GET /api/icd11/search"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "clinical.read",
+   "name": "View Clinical Records",
+   "module": "clinical",
+   "description": "View clinical records.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "CLINICAL_OFFICER",
+    "DOCTOR",
+    "NURSE"
+   ],
+   "routeCount": 73,
+   "routeExamples": [
+    "POST /api/admissions/:id/bed-billing-encounter",
+    "POST /api/admissions/:id/bed-history-review"
+   ],
+   "navModules": [
+    "dashboard",
+    "reception",
+    "opd",
+    "specialty",
+    "radiology"
+   ]
+  },
+  {
+   "code": "clinical.update",
+   "name": "Update Clinical Records",
+   "module": "clinical",
+   "description": "Update clinical records.",
+   "roles": [
+    "SUPER_ADMIN",
+    "CLINICAL_OFFICER",
+    "DOCTOR"
+   ],
+   "routeCount": 6,
+   "routeExamples": [
+    "PUT /api/encounters/:id",
+    "POST /api/encounters/:id/consultation-selection"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "dialysis.adverse_events.manage",
+   "name": "Record Dialysis Adverse Events & Follow-Up",
+   "module": "dialysis",
+   "description": "Document intradialytic or post-dialysis adverse events, interventions, and follow-up outcomes.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/dialysis/adverse-events/:id/follow-up",
+    "POST /api/dialysis/sessions/:id/adverse-events"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "dialysis.assessments.manage",
+   "name": "Record Dialysis Patient Assessments",
+   "module": "dialysis",
+   "description": "Create and update renal assessments and clinical fitness checks.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/dialysis/assessments",
+    "POST /api/dialysis/treatment-plans"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "dialysis.machines.manage",
+   "name": "Manage Dialysis Machines & Maintenance",
+   "module": "dialysis",
+   "description": "Register dialysis machines, isolation bays, disinfection timestamps, and preventive maintenance.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/dialysis/machines",
+    "PATCH /api/dialysis/machines/:id/status"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "dialysis.plans.authorize",
+   "name": "Authorize Dialysis Treatment Plans",
+   "module": "dialysis",
+   "description": "Prescribe, authorize, amend, or discontinue facility-validated dialysis treatment plans.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/dialysis/treatment-plans/:id/authorize"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "dialysis.protocols.manage",
+   "name": "Configure Facility Dialysis Protocols",
+   "module": "dialysis",
+   "description": "Configure facility-approved dialysis protocol validation rules and required fields.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/dialysis/protocols"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "dialysis.read",
+   "name": "View Dialysis Unit",
+   "module": "dialysis",
+   "description": "View dialysis machines, schedules, patient assessments, treatment plans, sessions, and operational reports.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "GET /api/dialysis/workspace"
+   ],
+   "navModules": [
+    "dialysis"
+   ]
+  },
+  {
+   "code": "dialysis.schedule.manage",
+   "name": "Manage Dialysis Schedules & Machine Allocation",
+   "module": "dialysis",
+   "description": "Schedule, check in, reschedule, or cancel dialysis slots and allocate dialysis bays/machines.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/dialysis/schedules",
+    "POST /api/dialysis/schedules/:id/cancel"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "dialysis.sessions.record",
+   "name": "Record Dialysis Sessions & Consumables",
+   "module": "dialysis",
+   "description": "Initiate dialysis sessions, record intradialytic observations and stock-linked consumables, and complete or terminate sessions.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 4,
+   "routeExamples": [
+    "POST /api/dialysis/schedules/:id/start",
+    "POST /api/dialysis/sessions/:id/complete"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "facilities.approve",
+   "name": "Approve Facilities",
+   "module": "facilities",
+   "description": "Approve facility onboarding.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "facilities.create",
+   "name": "Create Facilities",
+   "module": "facilities",
+   "description": "Create healthcare facilities.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "facilities.deactivate",
+   "name": "Deactivate Facilities",
+   "module": "facilities",
+   "description": "Deactivate healthcare facilities.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "facilities.modules.manage",
+   "name": "Manage Facility Modules",
+   "module": "facilities",
+   "description": "",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "facilities.read",
+   "name": "View Facilities",
+   "module": "facilities",
+   "description": "View healthcare facilities.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "facilities.update",
+   "name": "Update Facilities",
+   "module": "facilities",
+   "description": "Update healthcare facility information.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": [
+    "configuration"
+   ]
+  },
+  {
+   "code": "facility.branding.manage",
+   "name": "Manage Facility Letterhead",
+   "module": "facilities",
+   "description": "",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 4,
+   "routeExamples": [
+    "POST /api/facility-branding/facilities/:facilityId/letterheads",
+    "PATCH /api/facility-branding/facilities/:facilityId/letterheads/:letterheadId"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "facility.branding.read",
+   "name": "View Facility Letterhead",
+   "module": "facilities",
+   "description": "View the letterhead versions this facility has uploaded and which one is active.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 4,
+   "routeExamples": [
+    "GET /api/facility-branding/facilities/:facilityId/letterheads",
+    "GET /api/facility-branding/facilities/:facilityId/letterheads/:letterheadId"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "hr.approve",
+   "name": "Approve Leave",
+   "module": "hr",
+   "description": "Approve or reject leave requests recorded by another user.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/hr/leave-requests/:id/decide"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "hr.manage",
+   "name": "Manage Human Resources",
+   "module": "hr",
+   "description": "Register employees, record attendance, rosters and leave requests.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 12,
+   "routeExamples": [
+    "POST /api/hr/attendance",
+    "POST /api/hr/departments"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "hr.read",
+   "name": "View Human Resources",
+   "module": "hr",
+   "description": "View employees, departments, attendance, rosters and leave.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 11,
+   "routeExamples": [
+    "GET /api/hr/attendance",
+    "GET /api/hr/departments"
+   ],
+   "navModules": [
+    "hr"
+   ]
+  },
+  {
+   "code": "inpatient.admit",
+   "name": "Admit Patients",
+   "module": "inpatient",
+   "description": "Admit patients.",
+   "roles": [
+    "SUPER_ADMIN",
+    "CLINICAL_OFFICER",
+    "DOCTOR",
+    "NURSE"
+   ],
+   "routeCount": 4,
+   "routeExamples": [
+    "POST /api/admissions",
+    "POST /api/admissions/:id/transfer"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "inpatient.beds.create",
+   "name": "Create Beds",
+   "module": "inpatient",
+   "description": "Add beds to a ward, singly or in a numbered batch.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/beds"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "inpatient.beds.delete",
+   "name": "Delete Beds",
+   "module": "inpatient",
+   "description": "Delete a bed that has never held a patient. A bed with admission history can only be taken out of service.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "DELETE /api/beds/:id"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "inpatient.beds.update",
+   "name": "Update Beds",
+   "module": "inpatient",
+   "description": "Change a bed number, type, daily charge or housekeeping status.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "PUT /api/beds/:id"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "inpatient.discharge",
+   "name": "Discharge Patients",
+   "module": "inpatient",
+   "description": "Discharge admitted patients.",
+   "roles": [
+    "SUPER_ADMIN",
+    "DOCTOR"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/admissions/:id/discharge"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "inpatient.read",
+   "name": "View Inpatient Records",
+   "module": "inpatient",
+   "description": "View inpatient admissions and records.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "CLINICAL_OFFICER",
+    "DOCTOR",
+    "NURSE"
+   ],
+   "routeCount": 19,
+   "routeExamples": [
+    "GET /api/admissions",
+    "POST /api/admissions/:id/bed-billing-encounter"
+   ],
+   "navModules": [
+    "dashboard",
+    "inpatient"
+   ]
+  },
+  {
+   "code": "inpatient.wards.create",
+   "name": "Create Wards",
+   "module": "inpatient",
+   "description": "Add wards to this facility. Reading wards needs inpatient.read.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/wards"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "inpatient.wards.delete",
+   "name": "Delete Wards",
+   "module": "inpatient",
+   "description": "Delete a ward that has never held a patient. A ward with admission history can only be retired.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "DELETE /api/wards/:id"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "inpatient.wards.update",
+   "name": "Update Wards",
+   "module": "inpatient",
+   "description": "Rename a ward, change its type, allocation or daily rate, and retire or reactivate it.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "PUT /api/inpatient/bed-billing-policy",
+    "PUT /api/wards/:id"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "insurance.benefits.validate",
+   "name": "Validate Private Insurance Benefits & Copayments",
+   "module": "insurance",
+   "description": "Validate mapped benefits, limits, deductibles, and copayments across private insurers.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK",
+    "CLINICAL_OFFICER",
+    "DOCTOR",
+    "RECEPTIONIST"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "GET /api/insurance/benefits",
+    "POST /api/insurance/benefits/validate"
+   ],
+   "navModules": [
+    "private_insurance"
+   ]
+  },
+  {
+   "code": "insurance.claims.create",
+   "name": "Create Claims",
+   "module": "insurance",
+   "description": "Create insurance or SHA claims.",
+   "roles": [
+    "SUPER_ADMIN",
+    "BILLING_CLERK"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "POST /api/claims",
+    "POST /api/claims/:id/submit"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "insurance.claims.manage",
+   "name": "Manage Claims",
+   "module": "insurance",
+   "description": "Manage insurance and SHA claims.",
+   "roles": [
+    "SUPER_ADMIN",
+    "BILLING_CLERK"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "POST /api/claims/:id/adjudicate",
+    "POST /api/claims/:id/settle"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "insurance.claims.submit",
+   "name": "Submit Claims",
+   "module": "insurance",
+   "description": "Submit insurance or SHA claims.",
+   "roles": [
+    "SUPER_ADMIN",
+    "BILLING_CLERK"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "insurance.eligibility.check",
+   "name": "Check Private Insurance Eligibility",
+   "module": "insurance",
+   "description": "Initiate adapter-backed or explicitly labelled manual eligibility checks for private insurers.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK",
+    "RECEPTIONIST"
+   ],
+   "routeCount": 4,
+   "routeExamples": [
+    "GET /api/insurance/eligibility",
+    "GET /api/insurance/eligibility/:verificationId"
+   ],
+   "navModules": [
+    "private_insurance"
+   ]
+  },
+  {
+   "code": "insurance.mappings.manage",
+   "name": "Manage Insurer Service Mappings & Benefit Rules",
+   "module": "insurance",
+   "description": "Configure effective-dated service-code mappings, benefit limits, exclusions, and copayment rules per insurer.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 4,
+   "routeExamples": [
+    "POST /api/insurance/benefits",
+    "PATCH /api/insurance/benefits/:ruleId"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "insurance.members.manage",
+   "name": "Manage Insurance Memberships & Policies",
+   "module": "insurance",
+   "description": "Register patient insurance policies and record auditable membership corrections.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK",
+    "RECEPTIONIST"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/insurance/members",
+    "PATCH /api/insurance/members/:memberId"
+   ],
+   "navModules": [
+    "private_insurance"
+   ]
+  },
+  {
+   "code": "insurance.members.read",
+   "name": "View Insurance Memberships & Policies",
+   "module": "insurance",
+   "description": "View patient insurance memberships, principal/dependent links, and policy validity records.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK",
+    "CLINICAL_OFFICER",
+    "DOCTOR",
+    "RECEPTIONIST"
+   ],
+   "routeCount": 5,
+   "routeExamples": [
+    "GET /api/insurance/eligibility",
+    "GET /api/insurance/eligibility/:verificationId"
+   ],
+   "navModules": [
+    "private_insurance"
+   ]
+  },
+  {
+   "code": "insurance.payers.manage",
+   "name": "Manage Private Insurer Configurations",
+   "module": "insurance",
+   "description": "Configure private insurers, integration modes, secret environment references, and claim/preauth requirements.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/insurance/payers",
+    "PATCH /api/insurance/payers/:payerId"
+   ],
+   "navModules": [
+    "private_insurance"
+   ]
+  },
+  {
+   "code": "insurance.payers.read",
+   "name": "View Private Insurer Configurations",
+   "module": "insurance",
+   "description": "View configured private insurers (Britam, PACIS, gateways), capability matrices, and connection status.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK",
+    "CLINICAL_OFFICER",
+    "DOCTOR",
+    "RECEPTIONIST"
+   ],
+   "routeCount": 9,
+   "routeExamples": [
+    "GET /api/insurance/benefits",
+    "GET /api/insurance/diagnostics"
+   ],
+   "navModules": [
+    "private_insurance"
+   ]
+  },
+  {
+   "code": "insurance.preauthorization.manage",
+   "name": "Manage Private Insurance Preauthorizations",
+   "module": "insurance",
+   "description": "Create, attach clinical documents, submit, and update private insurer preauthorization requests.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK",
+    "CLINICAL_OFFICER",
+    "DOCTOR"
+   ],
+   "routeCount": 6,
+   "routeExamples": [
+    "GET /api/insurance/preauthorizations",
+    "POST /api/insurance/preauthorizations"
+   ],
+   "navModules": [
+    "private_insurance"
+   ]
+  },
+  {
+   "code": "insurance.private.claims.prepare",
+   "name": "Prepare & Validate Private Insurance Claims",
+   "module": "insurance",
+   "description": "Assemble, review, correct, and validate private insurance claims from JaliCare invoices and clinical records.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK"
+   ],
+   "routeCount": 9,
+   "routeExamples": [
+    "GET /api/insurance/claims",
+    "GET /api/insurance/claims/:claimId"
+   ],
+   "navModules": [
+    "private_insurance"
+   ]
+  },
+  {
+   "code": "insurance.private.claims.submit",
+   "name": "Submit & Resubmit Private Insurance Claims",
+   "module": "insurance",
+   "description": "Submit and resubmit validated private insurance claims and record external adjudication responses.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK"
+   ],
+   "routeCount": 8,
+   "routeExamples": [
+    "GET /api/insurance/claims",
+    "GET /api/insurance/claims/:claimId"
+   ],
+   "navModules": [
+    "private_insurance"
+   ]
+  },
+  {
+   "code": "insurance.private.remittance.reconcile",
+   "name": "Import & Reconcile Private Insurance Remittances",
+   "module": "insurance",
+   "description": "Import private insurer remittance advices and reconcile allocations against claims and invoices.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK"
+   ],
+   "routeCount": 4,
+   "routeExamples": [
+    "GET /api/insurance/reconciliation",
+    "GET /api/insurance/remittances"
+   ],
+   "navModules": [
+    "private_insurance"
+   ]
+  },
+  {
+   "code": "insurance.read",
+   "name": "View Insurance",
+   "module": "insurance",
+   "description": "View insurance and SHA information.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK",
+    "RECEPTIONIST"
+   ],
+   "routeCount": 25,
+   "routeExamples": [
+    "GET /api/claims",
+    "GET /api/claims/:id/items"
+   ],
+   "navModules": [
+    "claims",
+    "private_insurance"
+   ]
+  },
+  {
+   "code": "insurance.sha.benefits.validate",
+   "name": "Validate SHA Service Benefits",
+   "module": "insurance",
+   "description": "Validate service coverage and benefits against SHA rules.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK",
+    "CLINICAL_OFFICER",
+    "DOCTOR",
+    "RECEPTIONIST"
+   ],
+   "routeCount": 5,
+   "routeExamples": [
+    "GET /api/insurance/sha/benefit-rules",
+    "POST /api/insurance/sha/benefits/hie-lookup"
+   ],
+   "navModules": [
+    "claims"
+   ]
+  },
+  {
+   "code": "insurance.sha.claims.prepare",
+   "name": "Prepare SHA eClaims",
+   "module": "insurance",
+   "description": "Assemble and validate SHA eClaims packages from clinical and billing records.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK"
+   ],
+   "routeCount": 6,
+   "routeExamples": [
+    "POST /api/insurance/evidence/preview",
+    "GET /api/insurance/sha/authorizations"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "insurance.sha.claims.read",
+   "name": "View SHA eClaims",
+   "module": "insurance",
+   "description": "View SHA eClaims packages, status history, and rejection details.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK"
+   ],
+   "routeCount": 8,
+   "routeExamples": [
+    "GET /api/insurance/sha/claims",
+    "GET /api/insurance/sha/claims/:claimId"
+   ],
+   "navModules": [
+    "claims"
+   ]
+  },
+  {
+   "code": "insurance.sha.claims.resubmit",
+   "name": "Resubmit Rejected SHA eClaims",
+   "module": "insurance",
+   "description": "Correct and resubmit rejected SHA eClaims packages with audit trail.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/insurance/sha/claims/:claimId/resubmit"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "insurance.sha.claims.submit",
+   "name": "Submit SHA eClaims",
+   "module": "insurance",
+   "description": "Submit validated SHA eClaims packages to the payer gateway.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/insurance/sha/claims/:claimId/submit"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "insurance.sha.configuration.manage",
+   "name": "Manage SHA Payer Configuration & Rules",
+   "module": "insurance",
+   "description": "Manage SHA payer configuration, service code mappings, and benefit rule approvals.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 9,
+   "routeExamples": [
+    "GET /api/insurance/sha/benefit-rules",
+    "POST /api/insurance/sha/benefit-rules"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "insurance.sha.eligibility.check",
+   "name": "Check SHA Patient Eligibility",
+   "module": "insurance",
+   "description": "Initiate or retry SHA patient eligibility verification.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK",
+    "RECEPTIONIST"
+   ],
+   "routeCount": 6,
+   "routeExamples": [
+    "GET /api/insurance/sha/eligibility",
+    "GET /api/insurance/sha/eligibility/:verificationId"
+   ],
+   "navModules": [
+    "claims"
+   ]
+  },
+  {
+   "code": "insurance.sha.preauthorization.create",
+   "name": "Create & Submit SHA Preauthorization",
+   "module": "insurance",
+   "description": "Create and submit SHA preauthorization requests.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK",
+    "CLINICAL_OFFICER",
+    "DOCTOR"
+   ],
+   "routeCount": 9,
+   "routeExamples": [
+    "GET /api/insurance/sha/authorizations",
+    "POST /api/insurance/sha/authorizations/consent"
+   ],
+   "navModules": [
+    "claims"
+   ]
+  },
+  {
+   "code": "insurance.sha.read",
+   "name": "View SHA eClaims & Readiness",
+   "module": "insurance",
+   "description": "View SHA eClaims connection readiness, eligibility history, and benefit status.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK",
+    "CLINICAL_OFFICER",
+    "DOCTOR",
+    "RECEPTIONIST"
+   ],
+   "routeCount": 19,
+   "routeExamples": [
+    "GET /api/insurance/sha/authorizations",
+    "GET /api/insurance/sha/benefit-rules"
+   ],
+   "navModules": [
+    "claims"
+   ]
+  },
+  {
+   "code": "insurance.sha.reconciliation.manage",
+   "name": "Reconcile SHA Remittances",
+   "module": "insurance",
+   "description": "Record SHA remittance advices and reconcile claims against invoices.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK"
+   ],
+   "routeCount": 10,
+   "routeExamples": [
+    "POST /api/insurance/sha/claims/:claimId/adjudicate",
+    "POST /api/insurance/sha/claims/:claimId/dispatch-review"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "insurance.sha.remittance.read",
+   "name": "View SHA Remittances",
+   "module": "insurance",
+   "description": "View SHA remittance advices and payment statuses.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "GET /api/insurance/sha/operational-report",
+    "GET /api/insurance/sha/remittances"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "interop.fhir.patient.read",
+   "name": "Export FHIR Patient Resource",
+   "module": "interop",
+   "description": "Read and export patient demographics through the FHIR interoperability endpoint.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "GET /api/interop/fhir/patient/:id"
+   ],
+   "navModules": [
+    "interoperability"
+   ]
+  },
+  {
+   "code": "inventory.manage",
+   "name": "Manage Inventory",
+   "module": "inventory",
+   "description": "Manage inventory items and stock.",
+   "roles": [
+    "SUPER_ADMIN",
+    "INVENTORY_OFFICER"
+   ],
+   "routeCount": 14,
+   "routeExamples": [
+    "POST /api/dialysis/sessions/:id/consumables",
+    "POST /api/inventory"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "inventory.read",
+   "name": "View Inventory",
+   "module": "inventory",
+   "description": "View inventory.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "INVENTORY_OFFICER"
+   ],
+   "routeCount": 13,
+   "routeExamples": [
+    "GET /api/analytics/summary",
+    "GET /api/inventory"
+   ],
+   "navModules": [
+    "dashboard",
+    "inventory"
+   ]
+  },
+  {
+   "code": "laboratory.orders.create",
+   "name": "Create Laboratory Orders",
+   "module": "laboratory",
+   "description": "Create laboratory test orders.",
+   "roles": [
+    "SUPER_ADMIN",
+    "CLINICAL_OFFICER",
+    "DOCTOR",
+    "LABORATORY_TECHNICIAN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/lab-orders",
+    "POST /api/lab-orders/batch"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "laboratory.read",
+   "name": "View Laboratory",
+   "module": "laboratory",
+   "description": "View laboratory records.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "CLINICAL_OFFICER",
+    "DOCTOR",
+    "LABORATORY_TECHNICIAN"
+   ],
+   "routeCount": 7,
+   "routeExamples": [
+    "GET /api/analytics/summary",
+    "GET /api/facility-services/available"
+   ],
+   "navModules": [
+    "dashboard",
+    "laboratory",
+    "radiology"
+   ]
+  },
+  {
+   "code": "laboratory.results.enter",
+   "name": "Enter Laboratory Results",
+   "module": "laboratory",
+   "description": "Enter laboratory results.",
+   "roles": [
+    "SUPER_ADMIN",
+    "LABORATORY_TECHNICIAN"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "PUT /api/lab-orders/:id/status",
+    "POST /api/lab-results"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "laboratory.results.verify",
+   "name": "Verify Laboratory Results",
+   "module": "laboratory",
+   "description": "Verify laboratory results.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/lab-orders/:id/complete",
+    "POST /api/lab-results/:id/verify"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "maternity.create",
+   "name": "Record Maternity Care",
+   "module": "maternity",
+   "description": "Book pregnancies and record antenatal visits, labour and partograph observations.",
+   "roles": [
+    "SUPER_ADMIN",
+    "CLINICAL_OFFICER",
+    "DOCTOR",
+    "NURSE"
+   ],
+   "routeCount": 6,
+   "routeExamples": [
+    "POST /api/immunisation/records",
+    "POST /api/maternity/anc-visits"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "maternity.read",
+   "name": "View Maternity Records",
+   "module": "maternity",
+   "description": "View antenatal visits, labour records, partographs and delivery records.",
+   "roles": [
+    "SUPER_ADMIN",
+    "CLINICAL_OFFICER",
+    "DOCTOR",
+    "NURSE",
+    "RECEPTIONIST"
+   ],
+   "routeCount": 15,
+   "routeExamples": [
+    "GET /api/facility-services/available",
+    "GET /api/immunisation/card"
+   ],
+   "navModules": [
+    "maternity"
+   ]
+  },
+  {
+   "code": "maternity.update",
+   "name": "Update Maternity Records",
+   "module": "maternity",
+   "description": "Correct or close maternity records, including recording a delivery.",
+   "roles": [
+    "SUPER_ADMIN",
+    "CLINICAL_OFFICER",
+    "DOCTOR",
+    "NURSE"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "POST /api/maternity/deliveries",
+    "PATCH /api/maternity/labours/:id"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "patients.create",
+   "name": "Register Patients",
+   "module": "patients",
+   "description": "Register new patients.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "RECEPTIONIST"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/patients"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "patients.deactivate",
+   "name": "Deactivate Patients",
+   "module": "patients",
+   "description": "Deactivate patient records where permitted.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "patients.documents.read",
+   "name": "Read signed patient documents",
+   "module": "patients",
+   "description": "Read signed patient documents within the authorized facility; explicit assignment required.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "patients.documents.release",
+   "name": "Release patient documents to portal",
+   "module": "patients",
+   "description": "Release patient documents to portal within the authorized facility; explicit assignment required.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "patients.documents.upload",
+   "name": "Upload signed patient documents",
+   "module": "patients",
+   "description": "Upload signed patient documents within the authorized facility; explicit assignment required.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/patient-documents/patients/:patientId"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "patients.read",
+   "name": "View Patients",
+   "module": "patients",
+   "description": "View patient records within the authorized facility.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "BILLING_CLERK",
+    "CLINICAL_OFFICER",
+    "DOCTOR",
+    "LABORATORY_TECHNICIAN",
+    "NURSE",
+    "PHARMACIST",
+    "RECEPTIONIST"
+   ],
+   "routeCount": 12,
+   "routeExamples": [
+    "GET /api/analytics/summary",
+    "POST /api/dashboard/search"
+   ],
+   "navModules": [
+    "dashboard",
+    "registration",
+    "reception"
+   ]
+  },
+  {
+   "code": "patients.update",
+   "name": "Update Patients",
+   "module": "patients",
+   "description": "Update patient demographic information.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "CLINICAL_OFFICER",
+    "DOCTOR",
+    "RECEPTIONIST"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "PUT /api/patients/:id",
+    "POST /api/patients/:id/consents"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payer_hub.assign",
+   "name": "Assign Payers to Facilities",
+   "module": "payer_hub",
+   "description": "Grant or revoke payer assignments.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "GET /api/payer-hub/platform/facilities",
+    "PUT /api/payer-hub/platform/payers/:id/facilities/:facilityId"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payer_hub.catalogue.read",
+   "name": "View Facility Payer Catalogue",
+   "module": "payer_hub",
+   "description": "View assigned payers, manual workflow availability and onboarding blockers.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "GET /api/payer-hub/facility/catalogue"
+   ],
+   "navModules": [
+    "configuration"
+   ]
+  },
+  {
+   "code": "payer_hub.credentials.manage",
+   "name": "Manage Payer Credential References",
+   "module": "payer_hub",
+   "description": "Configure facility-specific server-side environment references, never raw credentials.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "PUT /api/payer-hub/facility/payers/:id/environments/:environment",
+    "POST /api/payer-hub/facility/payers/:id/environments/:environment/revoke"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payer_hub.facility.manage",
+   "name": "Manage Facility Payer Activation",
+   "module": "payer_hub",
+   "description": "Request assigned payers and configure facility activation.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 4,
+   "routeExamples": [
+    "GET /api/payer-hub/facility/configuration-audit",
+    "POST /api/payer-hub/facility/payers/:id/access-request"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payer_hub.global.manage",
+   "name": "Manage Global Payer Registry",
+   "module": "payer_hub",
+   "description": "Register payers and control internal workflow policy.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "POST /api/payer-hub/platform/payers",
+    "PATCH /api/payer-hub/platform/payers/:id"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payer_hub.global.read",
+   "name": "View Global Payer Registry",
+   "module": "payer_hub",
+   "description": "View payer definitions and assignment metadata without clinical or financial records.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "GET /api/payer-hub/platform"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payer_hub.production.approve",
+   "name": "Review Payer Production Requests",
+   "module": "payer_hub",
+   "description": "Review production requests; approval remains blocked until verified.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/payer-hub/platform/assignments/:id/production-decision"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payer_hub.production.request",
+   "name": "Request Payer Production Approval",
+   "module": "payer_hub",
+   "description": "Request a platform production review without enabling live transport.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/payer-hub/facility/payers/:id/production-request"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payment_hub.accounts.read",
+   "name": "View Masked Payment Accounts",
+   "module": "payment_hub",
+   "description": "View masked facility payment-account mappings.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "payment_hub.assign",
+   "name": "Assign Payment Providers",
+   "module": "payment_hub",
+   "description": "Grant or revoke provider availability for selected facilities.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "GET /api/payment-hub/platform/facilities",
+    "PUT /api/payment-hub/platform/providers/:id/facilities/:facilityId"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payment_hub.catalogue.read",
+   "name": "View Facility Payment Catalogue",
+   "module": "payment_hub",
+   "description": "View facility-specific provider availability and setup status.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "GET /api/payment-hub/facility/catalogue"
+   ],
+   "navModules": [
+    "configuration"
+   ]
+  },
+  {
+   "code": "payment_hub.collection.initiate",
+   "name": "Initiate Payment Collection",
+   "module": "payment_hub",
+   "description": "Request an approved payment collection without treating acceptance as payment.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 4,
+   "routeExamples": [
+    "POST /api/payment-hub/facility/collections",
+    "GET /api/payment-hub/facility/collections/integrations"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payment_hub.credentials.manage",
+   "name": "Manage Facility Provider Credentials",
+   "module": "payment_hub",
+   "description": "Store encrypted facility-specific credentials without viewing them.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "PUT /api/payment-hub/facility/integrations/:id/credentials",
+    "POST /api/payment-hub/facility/integrations/:id/credentials/reencrypt"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payment_hub.facility.manage",
+   "name": "Manage Facility Payment Integrations",
+   "module": "payment_hub",
+   "description": "Configure available integrations, masked account aliases and sandbox health checks.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 6,
+   "routeExamples": [
+    "GET /api/payment-hub/facility/configuration-audit",
+    "POST /api/payment-hub/facility/integrations/:id/accounts"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payment_hub.global.manage",
+   "name": "Manage Global Payment Providers",
+   "module": "payment_hub",
+   "description": "Manage provider metadata, environments and shared-secret references.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 4,
+   "routeExamples": [
+    "POST /api/payment-hub/platform/providers",
+    "PATCH /api/payment-hub/platform/providers/:id"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payment_hub.global.read",
+   "name": "View Global Payment Providers",
+   "module": "payment_hub",
+   "description": "View non-sensitive provider registry and aggregate status.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "GET /api/payment-hub/platform"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payment_hub.payments.verify",
+   "name": "Check Provider Payment Status",
+   "module": "payment_hub",
+   "description": "Query permitted payment requests without posting receipts.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/payment-hub/facility/transactions/:id/query"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payment_hub.production.approve",
+   "name": "Approve Production Integration Requests",
+   "module": "payment_hub",
+   "description": "Record a platform production approval or rejection; adapter security gates remain mandatory.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/payment-hub/platform/integrations/:id/production-decision"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payment_hub.production.request",
+   "name": "Request Production Payment Access",
+   "module": "payment_hub",
+   "description": "Request a platform production-activation review.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/payment-hub/facility/integrations/:id/production-request"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payment_hub.reconciliation.manage",
+   "name": "Reconcile Payment Transactions",
+   "module": "payment_hub",
+   "description": "Manually review and match verified transactions to existing receipts.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/payment-hub/facility/reconciliations/:id/void",
+    "POST /api/payment-hub/facility/transactions/:id/reconcile"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payment_hub.transactions.read",
+   "name": "View Payment Transactions",
+   "module": "payment_hub",
+   "description": "View facility-scoped payment requests and unverified notifications.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "GET /api/payment-hub/facility/transactions"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payment_hub.transfers.initiate",
+   "name": "Initiate Provider Transfers",
+   "module": "payment_hub",
+   "description": "Reserved for explicitly approved, implemented transfers; currently unavailable.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "payroll.approve",
+   "name": "Approve Payroll",
+   "module": "payroll",
+   "description": "Approve a payroll run calculated by another user.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "PUT /api/payroll/account-settings",
+    "POST /api/payroll/runs/:id/approve"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payroll.manage",
+   "name": "Prepare Payroll",
+   "module": "payroll",
+   "description": "Create periods, set pay components and calculate a payroll run.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 6,
+   "routeExamples": [
+    "PUT /api/payroll/account-settings",
+    "POST /api/payroll/components"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payroll.post",
+   "name": "Post Payroll to Ledger",
+   "module": "payroll",
+   "description": "Post an approved payroll run to the general ledger.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/payroll/runs/:id/post"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "payroll.read",
+   "name": "View Payroll",
+   "module": "payroll",
+   "description": "View payroll periods, runs and payslips.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 13,
+   "routeExamples": [
+    "GET /api/payroll/account-settings",
+    "GET /api/payroll/accounts"
+   ],
+   "navModules": [
+    "payroll"
+   ]
+  },
+  {
+   "code": "payroll.statutory.manage",
+   "name": "Record Statutory Payroll Rules",
+   "module": "payroll",
+   "description": "Record effective-dated statutory versions with their authority source; the application ships none.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 4,
+   "routeExamples": [
+    "POST /api/payroll/form-profiles",
+    "POST /api/payroll/statutory-versions"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "pharmacy.dispense",
+   "name": "Dispense Medicines",
+   "module": "pharmacy",
+   "description": "Dispense prescribed medicines.",
+   "roles": [
+    "SUPER_ADMIN",
+    "PHARMACIST"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/pharmacy/dispense",
+    "POST /api/pharmacy/dispense/status"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "pharmacy.inventory.manage",
+   "name": "Manage Pharmacy Inventory",
+   "module": "pharmacy",
+   "description": "Manage pharmacy inventory.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "pharmacy.read",
+   "name": "View Pharmacy",
+   "module": "pharmacy",
+   "description": "View pharmacy records.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "PHARMACIST"
+   ],
+   "routeCount": 4,
+   "routeExamples": [
+    "GET /api/facility-services/available",
+    "GET /api/facility-tariffs/by-service-code/:code"
+   ],
+   "navModules": [
+    "dashboard",
+    "pharmacy"
+   ]
+  },
+  {
+   "code": "platform.manage",
+   "name": "Manage Platform",
+   "module": "platform",
+   "description": "Manage global JaliCare platform configuration.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "platform.read",
+   "name": "View Platform",
+   "module": "platform",
+   "description": "View platform-wide JaliCare administration information.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "platform.settings.manage",
+   "name": "Manage Platform Settings",
+   "module": "platform",
+   "description": "Manage global platform settings.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "portal.accounts.manage",
+   "name": "Manage Patient Portal Accounts",
+   "module": "portal",
+   "description": "Search portal accounts, view activation status, suspend, reactivate, revoke and force a password reset.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 9,
+   "routeExamples": [
+    "GET /api/portal/admin/accounts",
+    "GET /api/portal/admin/accounts/:accountId"
+   ],
+   "navModules": [
+    "patient_portal"
+   ]
+  },
+  {
+   "code": "portal.audit.read",
+   "name": "Review Portal Audit Events",
+   "module": "portal",
+   "description": "Read portal invitation, activation and account-administration events for this facility.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "GET /api/portal/admin/audit"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "portal.invite",
+   "name": "Invite Patients to the Portal",
+   "module": "portal",
+   "description": "Issue an activation invitation to a patient at this facility and see its delivery status.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "RECEPTIONIST"
+   ],
+   "routeCount": 4,
+   "routeExamples": [
+    "POST /api/portal/admin/invitations/:invitationId/handed-over",
+    "POST /api/portal/admin/invitations/:invitationId/link"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "portal.invites.manage",
+   "name": "Revoke Portal Invitations",
+   "module": "portal",
+   "description": "Revoke an invitation that has not yet been used, and resend one within the facility limit.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/portal/admin/invitations/:invitationId/revoke"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "portal.settings.manage",
+   "name": "Manage Patient Portal Settings",
+   "module": "portal",
+   "description": "Configure invitation expiry, resend limits, delivery channels and which record sections the portal releases.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "GET /api/portal/admin/settings",
+    "PUT /api/portal/admin/settings"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "practitioners.create",
+   "name": "Create Practitioners",
+   "module": "practitioners",
+   "description": "Create practitioner records.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "practitioners.read",
+   "name": "View Practitioners",
+   "module": "practitioners",
+   "description": "View healthcare practitioners.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "practitioners.update",
+   "name": "Update Practitioners",
+   "module": "practitioners",
+   "description": "Update practitioner information.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "practitioners.verify",
+   "name": "Verify Practitioner Credentials",
+   "module": "practitioners",
+   "description": "Verify professional credentials and registrations.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "approval_policies.manage",
+   "name": "Manage Approval Policies",
+   "module": "procurement",
+   "description": "Create, amend and retire the facility approval thresholds. Audited.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "approval_policies.read",
+   "name": "View Approval Policies",
+   "module": "procurement",
+   "description": "See the amount thresholds that decide which approval authority a facility requires.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "procurement.approve",
+   "name": "Approve Purchase Orders",
+   "module": "procurement",
+   "description": "Approve itemized purchase orders created and edited by other users.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/procurement/requisitions/:id/approve",
+    "POST /api/procurement/requisitions/:id/reject"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "procurement.complete",
+   "name": "Complete Purchase Orders",
+   "module": "procurement",
+   "description": "Record administrative completion of approved purchase orders.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 7,
+   "routeExamples": [
+    "POST /api/procurement/goods-received",
+    "POST /api/procurement/supplier-credit-notes"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "procurement.create",
+   "name": "Create Suppliers and Purchase Orders",
+   "module": "procurement",
+   "description": "Create supplier records and pending purchase orders.",
+   "roles": [
+    "SUPER_ADMIN",
+    "INVENTORY_OFFICER"
+   ],
+   "routeCount": 6,
+   "routeExamples": [
+    "POST /api/procurement/requisitions",
+    "PUT /api/procurement/requisitions/:id"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "procurement.delete",
+   "name": "Cancel Procurement",
+   "module": "procurement",
+   "description": "Cancel pending orders and deactivate suppliers without deleting history.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "DELETE /api/purchase-orders/:id",
+    "DELETE /api/suppliers/:id"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "procurement.read",
+   "name": "View Suppliers and Purchase Orders",
+   "module": "procurement",
+   "description": "View tenant suppliers and facility purchase orders and history.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN",
+    "INVENTORY_OFFICER"
+   ],
+   "routeCount": 35,
+   "routeExamples": [
+    "GET /api/procurement/goods-received",
+    "POST /api/procurement/goods-received"
+   ],
+   "navModules": [
+    "procurement"
+   ]
+  },
+  {
+   "code": "procurement.reject",
+   "name": "Reject Purchase Orders",
+   "module": "procurement",
+   "description": "Reject pending purchase orders with a reason.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "procurement.update",
+   "name": "Edit Procurement",
+   "module": "procurement",
+   "description": "Edit pending purchase orders and supplier details.",
+   "roles": [
+    "SUPER_ADMIN",
+    "INVENTORY_OFFICER"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "PUT /api/purchase-orders/:id",
+    "PUT /api/suppliers/:id"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "public_health.reports.create",
+   "name": "Create Public Health Reports",
+   "module": "public_health",
+   "description": "Record disease surveillance reports for an authorized facility.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/public-health/reports",
+    "POST /api/public-health/reports/:id/correction"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "radiology.consent.exception",
+   "name": "Authorize procedure consent exception",
+   "module": "radiology",
+   "description": "Authorize procedure consent exception within the authorized facility; explicit assignment required.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "radiology.consent.policy",
+   "name": "Manage facility radiology consent policy",
+   "module": "radiology",
+   "description": "Manage facility radiology consent policy within the authorized facility; explicit assignment required.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "radiology.consent.verify",
+   "name": "Verify procedure-specific consent",
+   "module": "radiology",
+   "description": "Verify procedure-specific consent within the authorized facility; explicit assignment required.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "radiology.read",
+   "name": "View Radiology",
+   "module": "radiology",
+   "description": "View radiology orders and reports.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "GET /api/facility-services/available",
+    "GET /api/facility-tariffs/by-service-code/:code"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "reports.export",
+   "name": "Export Reports",
+   "module": "reports",
+   "description": "Export authorized reports.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "reports.read",
+   "name": "View Reports",
+   "module": "reports",
+   "description": "View authorized reports.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 12,
+   "routeExamples": [
+    "GET /api/analytics/revenue",
+    "GET /api/analytics/summary"
+   ],
+   "navModules": [
+    "dashboard",
+    "analytics",
+    "public_health"
+   ]
+  },
+  {
+   "code": "roles.create",
+   "name": "Create Roles",
+   "module": "roles",
+   "description": "Create custom roles.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "roles.permissions.manage",
+   "name": "Manage Role Permissions",
+   "module": "roles",
+   "description": "Assign and revoke permissions from roles.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": [
+    "configuration"
+   ]
+  },
+  {
+   "code": "roles.read",
+   "name": "View Roles",
+   "module": "roles",
+   "description": "View roles and their permissions.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "roles.update",
+   "name": "Update Roles",
+   "module": "roles",
+   "description": "Update custom roles.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "system.health.read",
+   "name": "View System Health",
+   "module": "system",
+   "description": "View system health and operational status.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "system.settings.manage",
+   "name": "Manage System Settings",
+   "module": "system",
+   "description": "Manage system configuration.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "GET /api/integrations/dha/calls",
+    "GET /api/integrations/dha/service-mappings"
+   ],
+   "navModules": [
+    "configuration"
+   ]
+  },
+  {
+   "code": "tenants.create",
+   "name": "Create Tenants",
+   "module": "tenants",
+   "description": "Create new healthcare organization tenants.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "tenants.deactivate",
+   "name": "Deactivate Tenants",
+   "module": "tenants",
+   "description": "Deactivate a tenant organization.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "tenants.read",
+   "name": "View Tenants",
+   "module": "tenants",
+   "description": "View registered healthcare organizations and tenants.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "tenants.update",
+   "name": "Update Tenants",
+   "module": "tenants",
+   "description": "Update tenant information.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "theatre.read",
+   "name": "Read theatre schedule",
+   "module": "theatre",
+   "description": "View facility theatre cases, rooms, practitioners and scheduling history.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 7,
+   "routeExamples": [
+    "GET /api/analytics/summary",
+    "GET /api/theatre-cases"
+   ],
+   "navModules": [
+    "dashboard",
+    "theatre"
+   ]
+  },
+  {
+   "code": "theatre.reports.read",
+   "name": "Read theatre scheduling reports",
+   "module": "theatre",
+   "description": "View aggregated facility scheduling reports, not clinical outcomes.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "GET /api/theatre/reports/schedule"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "theatre.rooms.manage",
+   "name": "Manage theatre rooms",
+   "module": "theatre",
+   "description": "Create rooms and change their operational state.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/theatre/rooms",
+    "PATCH /api/theatre/rooms/:id"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "theatre.schedule.create",
+   "name": "Schedule theatre cases",
+   "module": "theatre",
+   "description": "Create a structured theatre booking.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/theatre-cases",
+    "POST /api/theatre/cases"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "theatre.schedule.manage",
+   "name": "Change theatre bookings",
+   "module": "theatre",
+   "description": "Reschedule or cancel a scheduled theatre case.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "PUT /api/theatre-cases/:id",
+    "POST /api/theatre/cases/:id/cancel"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "theatre.schedule.reconcile",
+   "name": "Review historical theatre reservations",
+   "module": "theatre",
+   "description": "Record or revoke an explicit scheduling-only legacy reservation attestation.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/theatre/cases/:id/legacy-review"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "users.create",
+   "name": "Create Users",
+   "module": "users",
+   "description": "Create user accounts.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "users.deactivate",
+   "name": "Deactivate Users",
+   "module": "users",
+   "description": "Deactivate user accounts.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "users.invitations.read",
+   "name": "View Staff Invitations",
+   "module": "users",
+   "description": "View staff invitations within the authorized scope.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "GET /api/staff-invitations",
+    "GET /api/staff-invitations/verification-dashboard"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "users.invitations.reissue",
+   "name": "Reissue Staff Invitations",
+   "module": "users",
+   "description": "Generate a replacement link for an unused staff invitation within the authorized scope.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/staff-invitations/:id/reissue"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "users.invitations.revoke",
+   "name": "Revoke Staff Invitations",
+   "module": "users",
+   "description": "Revoke unused staff invitations within the authorized scope.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/staff-invitations/:id/revoke"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "users.invite",
+   "name": "Invite Staff",
+   "module": "users",
+   "description": "Invite staff to an authorized facility using a secure invitation link.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 11,
+   "routeExamples": [
+    "POST /api/staff-invitations",
+    "POST /api/staff-invitations/manual-verification"
+   ],
+   "navModules": [
+    "configuration"
+   ]
+  },
+  {
+   "code": "users.read",
+   "name": "View Users",
+   "module": "users",
+   "description": "View users within the authorized scope.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "users.roles.manage",
+   "name": "Manage User Roles",
+   "module": "users",
+   "description": "Assign and revoke user roles.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": [
+    "configuration"
+   ]
+  },
+  {
+   "code": "users.update",
+   "name": "Update Users",
+   "module": "users",
+   "description": "Update user accounts.",
+   "roles": [
+    "SUPER_ADMIN",
+    "FACILITY_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "booking.clients.manage",
+   "name": "Manage Website Booking API Clients",
+   "module": "website_booking",
+   "description": "Create, rotate, and revoke WordPress/external website booking API keys and capacity rules.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/booking/admin/clients",
+    "POST /api/booking/admin/clients/:id/revoke"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "booking.manage",
+   "name": "Manage Website Bookings & Reminders",
+   "module": "website_booking",
+   "description": "Reschedule or cancel website bookings, link patient records, and send appointment reminders.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "POST /api/booking/admin/bookings/:id/confirm",
+    "POST /api/booking/admin/bookings/:id/reminders"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "booking.read",
+   "name": "View Website Bookings",
+   "module": "website_booking",
+   "description": "View website bookings, booking references, slot availability, and notification delivery logs.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "GET /api/booking/admin/workspace"
+   ],
+   "navModules": []
+  }
+ ],
+ "findings": {
+  "unknownCodesInRoles": [],
+  "unknownCodesInFacilityAdminSet": [],
+  "unknownCodesInNavigation": [],
+  "unknownCodesInRoutes": [],
+  "permissionsHeldByNoRole": [],
+  "permissionsUsedByNoRoute": [
+   "platform.read",
+   "platform.manage",
+   "platform.settings.manage",
+   "tenants.read",
+   "tenants.create",
+   "tenants.update",
+   "tenants.deactivate",
+   "facilities.read",
+   "facilities.create",
+   "facilities.update",
+   "facilities.modules.manage",
+   "facilities.approve",
+   "facilities.deactivate",
+   "users.read",
+   "users.create",
+   "users.update",
+   "users.deactivate",
+   "users.roles.manage",
+   "roles.read",
+   "roles.create",
+   "roles.update",
+   "roles.permissions.manage",
+   "auth.sessions.read",
+   "auth.sessions.revoke",
+   "auth.password.reset",
+   "auth.mfa.manage",
+   "practitioners.read",
+   "practitioners.create",
+   "practitioners.update",
+   "practitioners.verify",
+   "patients.documents.read",
+   "patients.documents.release",
+   "radiology.consent.verify",
+   "radiology.consent.exception",
+   "radiology.consent.policy",
+   "patients.deactivate",
+   "pharmacy.inventory.manage",
+   "insurance.claims.submit",
+   "procurement.reject",
+   "approval_policies.read",
+   "approval_policies.manage",
+   "reports.export",
+   "system.health.read",
+   "accounting.planning.import",
+   "accounting.planning.approve",
+   "accounting.planning.export",
+   "accounting.equity.manage",
+   "accounting.equity.partners",
+   "accounting.equity.review",
+   "accounting.equity.approve",
+   "accounting.equity.export",
+   "accounting.equity.audit",
+   "accounting.assets.manage",
+   "accounting.payables.manage",
+   "bank_payments.read",
+   "bank_payments.submit",
+   "bank_payments.verify",
+   "bank_payments.settle",
+   "bank_payments.configure",
+   "payment_hub.accounts.read",
+   "payment_hub.transfers.initiate"
+  ]
+ }
+}
