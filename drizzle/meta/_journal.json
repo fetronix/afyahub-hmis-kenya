@@ -722,6 +722,13 @@
       "when": 1796438400000,
       "tag": "0102_portal_document_release",
       "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1796524800000,
+      "tag": "0103_fixed_asset_lifecycle",
+      "breakpoints": true
     }
   ]
 }

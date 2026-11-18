@@ -30,8 +30,21 @@ import {
   type JournalLine,
 } from '../accounting/accounting.service.ts';
 import { db, pool } from '../db/index.ts';
+import {
+  conventionForAsset,
+  resolveDepreciationPolicy,
+  type DepreciationPolicy,
+} from './depreciation-policy.ts';
 import * as schema from '../db/schema.ts';
-import { monthlyDepreciation, periodOf } from './depreciation.ts';
+import {
+  annualRateBpsForLife,
+  depreciationBaseDate,
+  isCommencementConvention,
+  monthlyDepreciation,
+  periodDepreciation,
+  periodOf,
+  type CommencementConvention,
+} from './depreciation.ts';
 
 export type AssetScope = {
   tenantId: number;
@@ -40,14 +53,14 @@ export type AssetScope = {
   actorName: string;
 };
 
-type Tx = NodePgDatabase<Record<string, never>> & { $client: PoolClient };
+export type Tx = NodePgDatabase<Record<string, never>> & { $client: PoolClient };
 
 /**
  * One PostgreSQL transaction that can hold both Drizzle register writes and
  * the ledger's own client-based journal post. Splitting them would allow an
  * asset to be capitalised without its journal, or the reverse.
  */
-async function withTx<T>(fn: (tx: Tx, client: PoolClient) => Promise<T>): Promise<T> {
+export async function withTx<T>(fn: (tx: Tx, client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -74,13 +87,16 @@ export class AssetError extends Error {
   }
 }
 
-function fail(statusCode: number, code: string, message: string): never {
+export function fail(statusCode: number, code: string, message: string): never {
   throw new AssetError(statusCode, code, message);
 }
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
 const ASSET_STATUSES = ['ACTIVE', 'DISPOSED'] as const;
+const ACQUISITION_METHODS = ['PURCHASE', 'DONATION', 'TRANSFER', 'LEASE', 'CONSTRUCTED'] as const;
+/** Statuses that stop ordinary book depreciation. Everything else keeps accruing. */
+const NON_DEPRECIATING_STATUSES = ['DISPOSED', 'RETIRED'] as const;
 const CONDITIONS = ['GOOD', 'FAIR', 'POOR', 'UNDER_REPAIR'] as const;
 const MAINTENANCE_TYPES = ['PREVENTIVE', 'CORRECTIVE', 'INSPECTION'] as const;
 const MAINTENANCE_STATUSES = ['PLANNED', 'COMPLETED', 'CANCELLED'] as const;
@@ -114,7 +130,7 @@ export function positiveId(value: unknown, label: string): number {
   return id;
 }
 
-function money(value: unknown, label: string): bigint {
+export function money(value: unknown, label: string): bigint {
   if (typeof value === 'number') {
     if (!Number.isFinite(value) || value < 0) fail(400, 'INVALID_AMOUNT', `${label} is invalid.`);
     return BigInt(Math.round(value * 100));
@@ -128,11 +144,11 @@ function money(value: unknown, label: string): bigint {
   }
 }
 
-function centsAsKes(cents: bigint): string {
+export function centsAsKes(cents: bigint): string {
   return centsToKes(cents);
 }
 
-function accountingScope(scope: AssetScope): AccountingScope {
+export function accountingScope(scope: AssetScope): AccountingScope {
   return {
     tenantId: scope.tenantId,
     facilityId: scope.facilityId,
@@ -140,7 +156,7 @@ function accountingScope(scope: AssetScope): AccountingScope {
   };
 }
 
-async function audit(
+export async function audit(
   tx: Tx,
   scope: AssetScope,
   resource: string,
@@ -164,7 +180,7 @@ async function audit(
  * repeats this check on post; doing it here produces a precise error before a
  * partially built journal exists.
  */
-async function assertAccounts(tx: Tx, scope: AssetScope, ids: number[]) {
+export async function assertAccounts(tx: Tx, scope: AssetScope, ids: number[]) {
   const unique = [...new Set(ids.filter((id) => Number.isSafeInteger(id) && id > 0))];
   if (unique.length !== ids.length) fail(400, 'INVALID_ACCOUNT', 'An account is missing.');
   const rows = await tx
@@ -182,7 +198,7 @@ async function assertAccounts(tx: Tx, scope: AssetScope, ids: number[]) {
     fail(403, 'ACCOUNT_OUT_OF_SCOPE', 'Every account must be active and belong to this facility.');
 }
 
-async function findAsset(tx: Tx, scope: AssetScope, id: number, forUpdate = false) {
+export async function findAsset(tx: Tx, scope: AssetScope, id: number, forUpdate = false) {
   const rows = await tx
     .select()
     .from(schema.fixedAssets)
@@ -550,6 +566,65 @@ export async function createAsset(scope: AssetScope, input: Record<string, unkno
     'Funding account',
   );
 
+  /*
+   * Registration detail beyond the ledger essentials. Every field is optional so
+   * that a facility migrating an old register can record cost and life first and
+   * fill in the serial number later; nothing here is invented when omitted.
+   */
+  const placedInServiceDate = input.placedInServiceDate
+    ? isoDate(input.placedInServiceDate, 'Date placed in service')
+    : null;
+  if (placedInServiceDate && placedInServiceDate < acquisitionDate)
+    fail(
+      400,
+      'INVALID_SERVICE_DATE',
+      'The date placed in service cannot be before the acquisition date.',
+    );
+  const acquisitionMethod =
+    typeof input.acquisitionMethod === 'string' && input.acquisitionMethod.trim()
+      ? input.acquisitionMethod.trim().toUpperCase()
+      : 'PURCHASE';
+  if (!ACQUISITION_METHODS.includes(acquisitionMethod as (typeof ACQUISITION_METHODS)[number]))
+    fail(
+      400,
+      'INVALID_ACQUISITION_METHOD',
+      'Acquisition method must be PURCHASE, DONATION, TRANSFER, LEASE or CONSTRUCTED.',
+    );
+  const currency =
+    typeof input.currency === 'string' && input.currency.trim()
+      ? input.currency.trim().toUpperCase()
+      : 'KES';
+  if (!/^[A-Z]{3}$/.test(currency))
+    fail(400, 'INVALID_CURRENCY', 'Currency must be a three-letter ISO code.');
+  if (currency !== 'KES')
+    fail(
+      400,
+      'UNSUPPORTED_CURRENCY',
+      'The register and its journals are kept in KES. Record a foreign-currency purchase at its KES value.',
+    );
+  const barcode = optionalText(input.barcode, 'Barcode or QR payload', 120);
+  const supplierId = input.supplierId ? positiveId(input.supplierId, 'Supplier') : null;
+  const goodsReceivedNoteId = input.goodsReceivedNoteId
+    ? positiveId(input.goodsReceivedNoteId, 'Goods received note')
+    : null;
+  const commencementInput = input.depreciationCommencement;
+  const commencementOverride =
+    commencementInput === undefined ||
+    commencementInput === null ||
+    commencementInput === '' ||
+    commencementInput === 'FACILITY_DEFAULT'
+      ? null
+      : String(commencementInput);
+  if (commencementOverride && !isCommencementConvention(commencementOverride))
+    fail(
+      400,
+      'INVALID_COMMENCEMENT',
+      'Depreciation must start under FULL_MONTH, FOLLOWING_MONTH or DAILY_PRORATA, or follow the facility policy.',
+    );
+  const depreciationStartDate = input.depreciationStartDate
+    ? isoDate(input.depreciationStartDate, 'Depreciation start date')
+    : depreciationBaseDate(acquisitionDate, placedInServiceDate).date;
+
   return withTx(async (tx, client) => {
     let category: typeof schema.fixedAssetCategories.$inferSelect | undefined;
     if (categoryId) {
@@ -596,11 +671,72 @@ export async function createAsset(scope: AssetScope, input: Record<string, unkno
       if (!employee) fail(404, 'EMPLOYEE_NOT_FOUND', 'Custodian not found in this facility.');
     }
 
+    if (supplierId) {
+      const [supplier] = await tx
+        .select({ id: schema.suppliers.id })
+        .from(schema.suppliers)
+        .where(
+          and(eq(schema.suppliers.id, supplierId), eq(schema.suppliers.tenantId, scope.tenantId)),
+        )
+        .limit(1);
+      if (!supplier) fail(404, 'SUPPLIER_NOT_FOUND', 'Supplier not found for this facility.');
+    }
+    if (goodsReceivedNoteId) {
+      const [grn] = await tx
+        .select({ id: schema.goodsReceivedNotes.id })
+        .from(schema.goodsReceivedNotes)
+        .where(
+          and(
+            eq(schema.goodsReceivedNotes.id, goodsReceivedNoteId),
+            eq(schema.goodsReceivedNotes.tenantId, scope.tenantId),
+            eq(schema.goodsReceivedNotes.facilityId, scope.facilityId),
+          ),
+        )
+        .limit(1);
+      if (!grn)
+        fail(
+          404,
+          'GOODS_RECEIVED_NOTE_NOT_FOUND',
+          'Goods received note not found in this facility.',
+        );
+    }
+
+    /*
+     * Life falls back to the category, then the facility policy, then the
+     * documented 10-year default. The value written to the asset is what the
+     * schedule uses, so a later policy change cannot silently re-depreciate it.
+     */
+    const policy = await resolveDepreciationPolicy(tx, scope);
     const life = input.usefulLifeMonths
       ? Number(input.usefulLifeMonths)
-      : (category?.defaultUsefulLifeMonths ?? 0);
+      : (category?.defaultUsefulLifeMonths ?? policy.defaultUsefulLifeMonths);
     if (!Number.isInteger(life) || life < 1 || life > 600)
       fail(400, 'INVALID_LIFE', 'Useful life must be between 1 and 600 months.');
+    const annualRateBps = input.annualRateBps
+      ? Number(input.annualRateBps)
+      : policy.defaultAnnualRateBps === 1000 && life !== 120
+        ? annualRateBpsForLife(life)
+        : policy.defaultAnnualRateBps;
+    if (!Number.isInteger(annualRateBps) || annualRateBps < 1 || annualRateBps > 10_000)
+      fail(400, 'INVALID_RATE', 'Annual depreciation rate must be between 0.01% and 100%.');
+    if (barcode) {
+      const [taken] = await tx
+        .select({ id: schema.fixedAssets.id })
+        .from(schema.fixedAssets)
+        .where(
+          and(
+            eq(schema.fixedAssets.facilityId, scope.facilityId),
+            eq(schema.fixedAssets.barcode, barcode),
+          ),
+        )
+        .limit(1);
+      if (taken)
+        fail(
+          409,
+          'BARCODE_EXISTS',
+          'That barcode or QR payload is already attached to another asset in this facility.',
+        );
+    }
 
     const accounts = {
       assetAccountId: positiveId(input.assetAccountId ?? category?.assetAccountId, 'Asset account'),
@@ -645,10 +781,25 @@ export async function createAsset(scope: AssetScope, input: Record<string, unkno
         serviceLine: optionalText(input.serviceLine, 'Service line', 80) ?? undefined,
         serialNumber: optionalText(input.serialNumber, 'Serial number', 120) ?? undefined,
         acquisitionDate,
+        placedInServiceDate: placedInServiceDate ?? undefined,
+        acquisitionMethod,
+        supplierId: supplierId ?? undefined,
+        purchaseReference:
+          optionalText(input.purchaseReference, 'Purchase reference', 120) ?? undefined,
+        goodsReceivedNoteId: goodsReceivedNoteId ?? undefined,
+        currency,
+        fundingSource: optionalText(input.fundingSource, 'Funding source', 120) ?? undefined,
+        description: optionalText(input.description, 'Description', 2000) ?? undefined,
+        manufacturer: optionalText(input.manufacturer, 'Manufacturer', 120) ?? undefined,
+        model: optionalText(input.model, 'Model', 120) ?? undefined,
+        barcode: barcode ?? undefined,
         acquisitionCostKes: centsAsKes(costCents),
         salvageValueKes: centsAsKes(salvageCents),
         usefulLifeMonths: life,
+        annualRateBps,
         depreciationMethod: 'STRAIGHT_LINE',
+        depreciationCommencement: commencementOverride ?? undefined,
+        depreciationStartDate,
         accumulatedDepreciationKes: '0.00',
         netBookValueKes: centsAsKes(costCents),
         ...accounts,
@@ -692,7 +843,7 @@ export async function createAsset(scope: AssetScope, input: Record<string, unkno
       amountKes: centsAsKes(costCents),
       netBookValueAfterKes: centsAsKes(costCents),
       journalEntryId: Number(posted.journal.id),
-      notes: 'Acquisition cost capitalised.',
+      notes: `Acquisition cost capitalised; depreciation ${commencementOverride ?? policy.depreciationCommencement} from ${depreciationStartDate}.`,
       recordedByUserId: scope.actorId,
     });
     await audit(
@@ -830,7 +981,7 @@ export async function depreciationPreview(scope: AssetScope, period: string) {
       and(
         eq(schema.fixedAssets.tenantId, scope.tenantId),
         eq(schema.fixedAssets.facilityId, scope.facilityId),
-        eq(schema.fixedAssets.status, 'ACTIVE'),
+        sql`${schema.fixedAssets.status} <> ALL(${sql.raw(`ARRAY['DISPOSED','RETIRED']`)})`,
       ),
     )
     .orderBy(asc(schema.fixedAssets.assetCode));
@@ -845,16 +996,30 @@ export async function depreciationPreview(scope: AssetScope, period: string) {
       ),
     );
   const done = new Set(existing.map((row) => row.assetId));
+  const policy = await resolveDepreciationPolicy(db, scope);
 
   return assets
     .filter((asset) => asset.acquisitionDate.slice(0, 7) <= period)
     .map((asset) => {
-      const result = monthlyDepreciation({
+      /*
+       * The convention decides which months receive a charge. It is read from
+       * the asset's own override or the facility policy, and returned with the
+       * row so the screen can state the basis rather than imply it.
+       */
+      const convention = conventionForAsset(asset, policy);
+      const inServiceDate = depreciationBaseDate(
+        asset.acquisitionDate,
+        asset.placedInServiceDate,
+      ).date;
+      const result = periodDepreciation({
         /* Impairment and revaluation adjust the basis, never the recorded cost. */
         acquisitionCostCents: basisCentsOf(asset),
         salvageValueCents: BigInt(Math.round(Number(asset.salvageValueKes) * 100)),
         usefulLifeMonths: asset.usefulLifeMonths,
         accumulatedDepreciationCents: accumulatedCentsOf(asset),
+        period,
+        inServiceDate,
+        convention,
       });
       return {
         assetId: asset.id,
@@ -865,6 +1030,10 @@ export async function depreciationPreview(scope: AssetScope, period: string) {
         chargeCents: result.chargeCents.toString(),
         netBookValueAfterCents: result.netBookValueAfterCents.toString(),
         fullyDepreciated: result.fullyDepreciated,
+        convention,
+        inServiceDate,
+        daysInService: result.daysInService,
+        periodDays: result.periodDays,
       };
     });
 }
@@ -885,6 +1054,9 @@ export async function runDepreciation(
       `fixed-asset-dep:${period}`,
       scope.facilityId,
     ]);
+    /* Maintenance and impairment do not pause depreciation; disposal and
+       retirement do. Filtering on ACTIVE alone would silently stop the clock
+       while an asset is being repaired. */
     const assets = await tx
       .select()
       .from(schema.fixedAssets)
@@ -892,10 +1064,11 @@ export async function runDepreciation(
         and(
           eq(schema.fixedAssets.tenantId, scope.tenantId),
           eq(schema.fixedAssets.facilityId, scope.facilityId),
-          eq(schema.fixedAssets.status, 'ACTIVE'),
+          sql`${schema.fixedAssets.status} <> ALL(${sql.raw(`ARRAY['DISPOSED','RETIRED']`)})`,
         ),
       )
       .for('update');
+    const policy = await resolveDepreciationPolicy(tx, scope);
 
     const posted = await tx
       .select({ assetId: schema.fixedAssetMovements.assetId })
@@ -917,11 +1090,15 @@ export async function runDepreciation(
     for (const asset of assets) {
       if (done.has(asset.id)) continue;
       if (asset.acquisitionDate.slice(0, 7) > period) continue;
-      const result = monthlyDepreciation({
+      const convention = conventionForAsset(asset, policy);
+      const result = periodDepreciation({
         acquisitionCostCents: basisCentsOf(asset),
         salvageValueCents: BigInt(Math.round(Number(asset.salvageValueKes) * 100)),
         usefulLifeMonths: asset.usefulLifeMonths,
         accumulatedDepreciationCents: accumulatedCentsOf(asset),
+        period,
+        inServiceDate: depreciationBaseDate(asset.acquisitionDate, asset.placedInServiceDate).date,
+        convention,
       });
       if (result.chargeCents === 0n) continue;
       charges.push({
@@ -1207,8 +1384,10 @@ export async function createMaintenance(scope: AssetScope, input: Record<string,
 
   return withTx(async (tx, client) => {
     const asset = await findAsset(tx, scope, assetId, true);
-    if (asset.status !== 'ACTIVE')
-      fail(409, 'ASSET_DISPOSED', 'A disposed asset cannot be maintained.');
+    /* Maintenance is allowed while an asset is under repair or temporarily out
+       of service; only end-of-life states exclude it. */
+    if (['DISPOSED', 'RETIRED'].includes(asset.status))
+      fail(409, 'ASSET_DISPOSED', 'A disposed or retired asset cannot be maintained.');
     if (expenseAccountId && creditAccountId)
       await assertAccounts(tx, scope, [expenseAccountId, creditAccountId]);
 
@@ -1260,80 +1439,98 @@ export async function completeMaintenance(
       .limit(1)
       .for('update');
     if (!job) fail(404, 'MAINTENANCE_NOT_FOUND', 'Maintenance record not found.');
-    if (job.status !== 'PLANNED')
-      fail(409, 'INVALID_STATUS', 'Only a planned maintenance job can be completed.');
-
-    const costCents = BigInt(Math.round(Number(job.costKes) * 100));
-    let journalId: number | null = job.journalEntryId ?? null;
-    if (costCents > 0n) {
-      const expenseAccountId = positiveId(job.expenseAccountId, 'Expense account');
-      const creditAccountId = positiveId(input.creditAccountId, 'Payment/credit account');
-      await assertAccounts(tx, scope, [expenseAccountId, creditAccountId]);
-      const journal = await postInsideTransaction(client, accountingScope(scope), {
-        entryDate: completedDate,
-        description: `Asset maintenance — ${job.description}`.slice(0, 500),
-        idempotencyKey: `fixed-asset-maintenance:${id}`,
-        lines: [
-          {
-            accountId: expenseAccountId,
-            debitCents: costCents,
-            creditCents: 0n,
-            description: job.description,
-            serviceLine: null,
-          },
-          {
-            accountId: creditAccountId,
-            debitCents: 0n,
-            creditCents: costCents,
-            description: job.description,
-            serviceLine: null,
-          },
-        ],
-        totalCents: costCents,
-        sourceType: 'FIXED_ASSET',
-        sourceId: `MAINT-${id}`,
-      });
-      journalId = Number(journal.journal.id);
-    }
-
-    const [updated] = await tx
-      .update(schema.fixedAssetMaintenance)
-      .set({
-        status: 'COMPLETED',
-        completedDate,
-        journalEntryId: journalId,
-      })
-      .where(eq(schema.fixedAssetMaintenance.id, id))
-      .returning();
-
-    await tx.insert(schema.fixedAssetMovements).values({
-      assetId: job.assetId,
-      facilityId: scope.facilityId,
-      movementType: 'MAINTENANCE',
-      movementDate: completedDate,
-      periodCode: periodOf(completedDate),
-      amountKes: job.costKes,
-      netBookValueAfterKes: (
-        await tx
-          .select({ netBookValueKes: schema.fixedAssets.netBookValueKes })
-          .from(schema.fixedAssets)
-          .where(eq(schema.fixedAssets.id, job.assetId))
-          .limit(1)
-      )[0].netBookValueKes,
-      journalEntryId: journalId,
-      notes: job.description,
-      recordedByUserId: scope.actorId,
-    });
-    await audit(
-      tx,
-      scope,
-      'fixed_asset_maintenance',
-      id,
-      'COMPLETE',
-      `Completed maintenance on ${completedDate}.`,
-    );
-    return updated;
+    return completeMaintenanceInTx(tx, client, scope, job, input, completedDate);
   });
+}
+
+/**
+ * The completion body, callable from a caller that already holds the job row.
+ * Extractng it keeps the schedule completion inside one transaction instead of
+ * opening a second connection that would deadlock against its own row lock.
+ */
+export async function completeMaintenanceInTx(
+  tx: Tx,
+  client: PoolClient,
+  scope: AssetScope,
+  job: typeof schema.fixedAssetMaintenance.$inferSelect,
+  input: Record<string, unknown>,
+  completedDateInput?: string,
+) {
+  const completedDate = completedDateInput ?? isoDate(input.completedDate, 'Completion date');
+  const id = job.id;
+  if (job.status !== 'PLANNED')
+    fail(409, 'INVALID_STATUS', 'Only a planned maintenance job can be completed.');
+
+  const costCents = BigInt(Math.round(Number(job.costKes) * 100));
+  let journalId: number | null = job.journalEntryId ?? null;
+  if (costCents > 0n) {
+    const expenseAccountId = positiveId(job.expenseAccountId, 'Expense account');
+    const creditAccountId = positiveId(input.creditAccountId, 'Payment/credit account');
+    await assertAccounts(tx, scope, [expenseAccountId, creditAccountId]);
+    const journal = await postInsideTransaction(client, accountingScope(scope), {
+      entryDate: completedDate,
+      description: `Asset maintenance — ${job.description}`.slice(0, 500),
+      idempotencyKey: `fixed-asset-maintenance:${id}`,
+      lines: [
+        {
+          accountId: expenseAccountId,
+          debitCents: costCents,
+          creditCents: 0n,
+          description: job.description,
+          serviceLine: null,
+        },
+        {
+          accountId: creditAccountId,
+          debitCents: 0n,
+          creditCents: costCents,
+          description: job.description,
+          serviceLine: null,
+        },
+      ],
+      totalCents: costCents,
+      sourceType: 'FIXED_ASSET',
+      sourceId: `MAINT-${id}`,
+    });
+    journalId = Number(journal.journal.id);
+  }
+
+  const [updated] = await tx
+    .update(schema.fixedAssetMaintenance)
+    .set({
+      status: 'COMPLETED',
+      completedDate,
+      journalEntryId: journalId,
+    })
+    .where(eq(schema.fixedAssetMaintenance.id, id))
+    .returning();
+
+  await tx.insert(schema.fixedAssetMovements).values({
+    assetId: job.assetId,
+    facilityId: scope.facilityId,
+    movementType: 'MAINTENANCE',
+    movementDate: completedDate,
+    periodCode: periodOf(completedDate),
+    amountKes: job.costKes,
+    netBookValueAfterKes: (
+      await tx
+        .select({ netBookValueKes: schema.fixedAssets.netBookValueKes })
+        .from(schema.fixedAssets)
+        .where(eq(schema.fixedAssets.id, job.assetId))
+        .limit(1)
+    )[0].netBookValueKes,
+    journalEntryId: journalId,
+    notes: job.description,
+    recordedByUserId: scope.actorId,
+  });
+  await audit(
+    tx,
+    scope,
+    'fixed_asset_maintenance',
+    id,
+    'COMPLETE',
+    `Completed maintenance on ${completedDate}.`,
+  );
+  return updated;
 }
 
 export async function listTransfers(scope: AssetScope) {
@@ -1425,11 +1622,11 @@ export async function assetDepreciationHistory(scope: AssetScope, id: number) {
    ============================================================ */
 
 /** The amount still being depreciated: the carrying basis, or cost if never adjusted. */
-function basisCentsOf(asset: typeof schema.fixedAssets.$inferSelect): bigint {
+export function basisCentsOf(asset: typeof schema.fixedAssets.$inferSelect): bigint {
   return BigInt(Math.round(Number(asset.carryingBasisKes ?? asset.acquisitionCostKes) * 100));
 }
 
-function accumulatedCentsOf(asset: typeof schema.fixedAssets.$inferSelect): bigint {
+export function accumulatedCentsOf(asset: typeof schema.fixedAssets.$inferSelect): bigint {
   return BigInt(Math.round(Number(asset.accumulatedDepreciationKes) * 100));
 }
 

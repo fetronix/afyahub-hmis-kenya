@@ -1160,6 +1160,55 @@ const PERMISSIONS = [
     module: 'assets',
     description: 'Write off, sell or retire an asset and post the disposal journal.',
   },
+  {
+    code: 'assets.acquisitions.approve',
+    name: 'Approve Asset Acquisitions',
+    module: 'assets',
+    description:
+      'Approve an acquisition before it is capitalised. Separates the officer who registers an asset from the officer who accepts its cost.',
+  },
+  {
+    code: 'assets.depreciation.configure',
+    name: 'Configure Depreciation Policy',
+    module: 'assets',
+    description:
+      'Set the facility useful life, annual rate, depreciation commencement convention and financial-year start used by every schedule.',
+  },
+  {
+    code: 'assets.depreciation.approve',
+    name: 'Approve and Post Depreciation',
+    module: 'assets',
+    description:
+      'Approve a prepared depreciation batch, post it to the ledger and reverse a posted batch with a reason. Never grants the right to prepare a batch silently.',
+  },
+  {
+    code: 'assets.maintenance.manage',
+    name: 'Manage Asset Maintenance',
+    module: 'assets',
+    description:
+      'Create and retire preventive schedules, open corrective jobs, record repairs, parts, downtime and costs, and verify completion.',
+  },
+  {
+    code: 'assets.inspections.perform',
+    name: 'Perform Asset Inspections',
+    module: 'assets',
+    description:
+      'Schedule, record and complete physical inspections with checklists, findings, recommendations and follow-up.',
+  },
+  {
+    code: 'assets.transfer',
+    name: 'Transfer Fixed Assets',
+    module: 'assets',
+    description:
+      'Move an asset between departments, locations or custodians with an effective date, reason and audit trail.',
+  },
+  {
+    code: 'assets.reports.financial',
+    name: 'View Fixed Asset Financial Reports',
+    module: 'assets',
+    description:
+      'Generate and export the asset register, depreciation, valuation, maintenance and reconciliation reports. Financial values only; clinical roles must not hold it.',
+  },
 
   /* ==========================================================
      WORKFORCE — HR AND PAYROLL

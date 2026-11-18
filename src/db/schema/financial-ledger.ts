@@ -17,9 +17,11 @@ import {
   uniqueIndex,
   index,
 } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { users } from './auth.ts';
 import { billingInvoices } from './billing.ts';
 import { purchaseOrders, suppliers } from './inventory.ts';
+import { goodsReceivedNotes } from './procurement.ts';
 import { patients } from './patients.ts';
 import { departments, facilities, tenants } from './tenancy.ts';
 
@@ -265,6 +267,27 @@ export const fixedAssets = pgTable(
     disposalGainLossAccountId: integer('disposal_gain_loss_account_id'),
     supplierInvoiceId: integer('supplier_invoice_id'),
     purchaseOrderId: integer('purchase_order_id'),
+    /* Added by 0103: identification, acquisition provenance and the recorded
+       depreciation policy. `depreciationCommencement` NULL means "follow the
+       facility setting"; it is never silently defaulted at read time. */
+    description: text('description'),
+    manufacturer: text('manufacturer'),
+    model: text('model'),
+    barcode: text('barcode'),
+    placedInServiceDate: text('placed_in_service_date'),
+    acquisitionMethod: text('acquisition_method').default('PURCHASE').notNull(),
+    supplierId: integer('supplier_id').references(() => suppliers.id),
+    purchaseReference: text('purchase_reference'),
+    goodsReceivedNoteId: integer('goods_received_note_id').references(() => goodsReceivedNotes.id),
+    currency: text('currency').default('KES').notNull(),
+    fundingSource: text('funding_source'),
+    annualRateBps: integer('annual_rate_bps'),
+    depreciationCommencement: text('depreciation_commencement'),
+    depreciationStartDate: text('depreciation_start_date'),
+    retiredAt: timestamp('retired_at'),
+    retirementReason: text('retirement_reason'),
+    approvedByUserId: integer('approved_by_user_id').references(() => users.id),
+    approvedAt: timestamp('approved_at'),
     createdByUserId: integer('created_by_user_id').references(() => users.id),
     notes: text('notes'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -303,11 +326,11 @@ export const fixedAssetMovements = pgTable(
     createdAt: timestamp('created_at').defaultNow().notNull(),
   },
   (table) => ({
-    depPeriodIdx: uniqueIndex('fixed_asset_movements_dep_period_idx').on(
-      table.assetId,
-      table.movementType,
-      table.periodCode,
-    ),
+    /* Narrowed by 0103: once-per-period applies to capitalisation,
+       depreciation and disposal, not to maintenance or revaluations. */
+    depPeriodIdx: uniqueIndex('fixed_asset_movements_once_per_period_idx')
+      .on(table.assetId, table.movementType, table.periodCode)
+      .where(sql`${table.movementType} in ('CAPITALISATION', 'DEPRECIATION', 'DISPOSAL')`),
   }),
 );
 
