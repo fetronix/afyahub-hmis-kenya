@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-18T05:35:25.891Z",
+ "generatedAt": "2026-11-18T07:42:57.691Z",
  "generatedBy": "scripts/docs/build-permissions-matrix.ts",
  "sources": {
   "catalogue": "src/seeds/permissions.ts",
@@ -9,12 +9,12 @@
   "routeUsage": "docs/evidence/API_ROUTE_INVENTORY.json"
  },
  "totals": {
-  "permissions": 214,
+  "permissions": 221,
   "roles": 10,
   "facilityModules": 25,
   "navModules": 28,
   "permissionsHeldByNoRole": 0,
-  "permissionsUsedByNoRoute": 61
+  "permissionsUsedByNoRoute": 62
  },
  "superAdminExclusions": [],
  "roles": [
@@ -157,6 +157,13 @@
     "assets.manage",
     "assets.depreciate",
     "assets.dispose",
+    "assets.acquisitions.approve",
+    "assets.depreciation.configure",
+    "assets.depreciation.approve",
+    "assets.maintenance.manage",
+    "assets.inspections.perform",
+    "assets.transfer",
+    "assets.reports.financial",
     "hr.read",
     "hr.manage",
     "hr.approve",
@@ -1129,6 +1136,18 @@
    "navModules": []
   },
   {
+   "code": "assets.acquisitions.approve",
+   "name": "Approve Asset Acquisitions",
+   "module": "assets",
+   "description": "Approve an acquisition before it is capitalised. Separates the officer who registers an asset from the officer who accepts its cost.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
    "code": "assets.depreciate",
    "name": "Post Depreciation",
    "module": "assets",
@@ -1136,9 +1155,39 @@
    "roles": [
     "SUPER_ADMIN"
    ],
+   "routeCount": 3,
+   "routeExamples": [
+    "POST /api/fixed-assets/depreciation/batches",
+    "DELETE /api/fixed-assets/depreciation/batches/:batchId"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "assets.depreciation.approve",
+   "name": "Approve and Post Depreciation",
+   "module": "assets",
+   "description": "Approve a prepared depreciation batch, post it to the ledger and reverse a posted batch with a reason. Never grants the right to prepare a batch silently.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 3,
+   "routeExamples": [
+    "POST /api/fixed-assets/depreciation/batches/:batchId/approve",
+    "POST /api/fixed-assets/depreciation/batches/:batchId/post"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "assets.depreciation.configure",
+   "name": "Configure Depreciation Policy",
+   "module": "assets",
+   "description": "Set the facility useful life, annual rate, depreciation commencement convention and financial-year start used by every schedule.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
    "routeCount": 1,
    "routeExamples": [
-    "POST /api/fixed-assets/depreciation/run"
+    "PUT /api/fixed-assets/settings"
    ],
    "navModules": []
   },
@@ -1158,6 +1207,36 @@
    "navModules": []
   },
   {
+   "code": "assets.inspections.perform",
+   "name": "Perform Asset Inspections",
+   "module": "assets",
+   "description": "Schedule, record and complete physical inspections with checklists, findings, recommendations and follow-up.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/fixed-assets/inspections",
+    "POST /api/fixed-assets/inspections/:id/complete"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "assets.maintenance.manage",
+   "name": "Manage Asset Maintenance",
+   "module": "assets",
+   "description": "Create and retire preventive schedules, open corrective jobs, record repairs, parts, downtime and costs, and verify completion.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 7,
+   "routeExamples": [
+    "POST /api/fixed-assets/maintenance/:id/complete-corrective",
+    "POST /api/fixed-assets/maintenance/:id/verify"
+   ],
+   "navModules": []
+  },
+  {
    "code": "assets.manage",
    "name": "Manage Fixed Assets",
    "module": "assets",
@@ -1165,7 +1244,7 @@
    "roles": [
     "SUPER_ADMIN"
    ],
-   "routeCount": 7,
+   "routeCount": 8,
    "routeExamples": [
     "POST /api/fixed-assets",
     "PUT /api/fixed-assets/:id"
@@ -1180,7 +1259,7 @@
    "roles": [
     "SUPER_ADMIN"
    ],
-   "routeCount": 11,
+   "routeCount": 26,
    "routeExamples": [
     "GET /api/fixed-assets",
     "GET /api/fixed-assets/:id"
@@ -1188,6 +1267,35 @@
    "navModules": [
     "fixed_assets"
    ]
+  },
+  {
+   "code": "assets.reports.financial",
+   "name": "View Fixed Asset Financial Reports",
+   "module": "assets",
+   "description": "Generate and export the asset register, depreciation, valuation, maintenance and reconciliation reports. Financial values only; clinical roles must not hold it.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 2,
+   "routeExamples": [
+    "POST /api/fixed-assets/reports/:key",
+    "POST /api/fixed-assets/reports/:key/export"
+   ],
+   "navModules": []
+  },
+  {
+   "code": "assets.transfer",
+   "name": "Transfer Fixed Assets",
+   "module": "assets",
+   "description": "Move an asset between departments, locations or custodians with an effective date, reason and audit trail.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 1,
+   "routeExamples": [
+    "POST /api/fixed-assets/:id/transfer"
+   ],
+   "navModules": []
   },
   {
    "code": "audit.read",
@@ -4040,6 +4148,7 @@
    "procurement.reject",
    "approval_policies.read",
    "approval_policies.manage",
+   "assets.acquisitions.approve",
    "reports.export",
    "system.health.read",
    "accounting.planning.import",

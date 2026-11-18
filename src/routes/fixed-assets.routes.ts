@@ -320,7 +320,7 @@ router.put('/:id', requirePermission('assets.manage'), async (req: AuthRequest, 
 
 router.post(
   '/:id/transfer',
-  requirePermission('assets.manage'),
+  requirePermission('assets.transfer'),
   async (req: AuthRequest, res: Response) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
     const access = await scope(req, res, body.facilityId ?? req.query.facilityId);

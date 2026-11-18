@@ -10,11 +10,11 @@ Generated: 2026-11-18
 
 | Measure | Value |
 | --- | --- |
-| Effective HTTP routes | 725 |
-| Route registrations parsed from source | 748 |
-| Routes matched to a source registration | 725 |
+| Effective HTTP routes | 759 |
+| Route registrations parsed from source | 782 |
+| Routes matched to a source registration | 759 |
 | Unauthenticated routes | 13 |
-| Routes behind a permission or administrator guard | 640 |
+| Routes behind a permission or administrator guard | 674 |
 | Path prefixes | 70 |
 
 Permissions are read from the handler chain and from router-level guards: a `requirePermission` call on the router itself applies to every route registered on it and is reported here as if it were written on each route. Where no permission appears, authorisation is either absent by design (public routes) or decided inside the service that receives the request context; the last case is marked "checked in service".
@@ -97,53 +97,53 @@ Limits are configured in `src/middleware/http-security.middleware.ts` and are ra
 
 | Prefix | Routes | Share |
 | --- | --- | --- |
-| [`/api/insurance`](#apiinsurance) | 91 | 12.6% |
-| [`/api/portal`](#apiportal) | 42 | 5.8% |
-| [`/api/accounting`](#apiaccounting) | 37 | 5.1% |
-| [`/api/budget-planning`](#apibudget-planning) | 35 | 4.8% |
-| [`/api/payment-hub`](#apipayment-hub) | 28 | 3.9% |
-| [`/api/procurement`](#apiprocurement) | 25 | 3.4% |
-| [`/api/inventory`](#apiinventory) | 25 | 3.4% |
-| [`/api/payroll`](#apipayroll) | 25 | 3.4% |
-| [`/api/hr`](#apihr) | 24 | 3.3% |
-| [`/api/fixed-assets`](#apifixed-assets) | 22 | 3.0% |
-| [`/api/platform`](#apiplatform) | 21 | 2.9% |
-| [`/api/maternity`](#apimaternity) | 18 | 2.5% |
-| [`/api/dialysis`](#apidialysis) | 16 | 2.2% |
-| [`/api/billing`](#apibilling) | 16 | 2.2% |
-| [`/api/payer-hub`](#apipayer-hub) | 15 | 2.1% |
-| [`/api/partner-equity`](#apipartner-equity) | 13 | 1.8% |
-| [`/api/patients`](#apipatients) | 12 | 1.7% |
-| [`/api/admissions`](#apiadmissions) | 12 | 1.7% |
-| [`/api/theatre`](#apitheatre) | 12 | 1.7% |
-| [`/api/patient-documents`](#apipatient-documents) | 11 | 1.5% |
-| [`/api/booking`](#apibooking) | 11 | 1.5% |
-| [`/api/invoices`](#apiinvoices) | 10 | 1.4% |
-| [`/api/facility-services`](#apifacility-services) | 10 | 1.4% |
-| [`/api/appointments`](#apiappointments) | 10 | 1.4% |
+| [`/api/insurance`](#apiinsurance) | 91 | 12.0% |
+| [`/api/fixed-assets`](#apifixed-assets) | 56 | 7.4% |
+| [`/api/portal`](#apiportal) | 42 | 5.5% |
+| [`/api/accounting`](#apiaccounting) | 37 | 4.9% |
+| [`/api/budget-planning`](#apibudget-planning) | 35 | 4.6% |
+| [`/api/payment-hub`](#apipayment-hub) | 28 | 3.7% |
+| [`/api/procurement`](#apiprocurement) | 25 | 3.3% |
+| [`/api/inventory`](#apiinventory) | 25 | 3.3% |
+| [`/api/payroll`](#apipayroll) | 25 | 3.3% |
+| [`/api/hr`](#apihr) | 24 | 3.2% |
+| [`/api/platform`](#apiplatform) | 21 | 2.8% |
+| [`/api/maternity`](#apimaternity) | 18 | 2.4% |
+| [`/api/dialysis`](#apidialysis) | 16 | 2.1% |
+| [`/api/billing`](#apibilling) | 16 | 2.1% |
+| [`/api/payer-hub`](#apipayer-hub) | 15 | 2.0% |
+| [`/api/partner-equity`](#apipartner-equity) | 13 | 1.7% |
+| [`/api/patients`](#apipatients) | 12 | 1.6% |
+| [`/api/admissions`](#apiadmissions) | 12 | 1.6% |
+| [`/api/theatre`](#apitheatre) | 12 | 1.6% |
+| [`/api/patient-documents`](#apipatient-documents) | 11 | 1.4% |
+| [`/api/booking`](#apibooking) | 11 | 1.4% |
+| [`/api/invoices`](#apiinvoices) | 10 | 1.3% |
+| [`/api/facility-services`](#apifacility-services) | 10 | 1.3% |
+| [`/api/appointments`](#apiappointments) | 10 | 1.3% |
 | [`/api/bank-payments`](#apibank-payments) | 9 | 1.2% |
 | [`/api/staff-invitations`](#apistaff-invitations) | 9 | 1.2% |
 | [`/api/facility-branding`](#apifacility-branding) | 8 | 1.1% |
 | [`/api/documents`](#apidocuments) | 8 | 1.1% |
 | [`/api/facility-tariffs`](#apifacility-tariffs) | 8 | 1.1% |
 | [`/api/purchase-orders`](#apipurchase-orders) | 8 | 1.1% |
-| [`/api/auth`](#apiauth) | 7 | 1.0% |
-| [`/api/reporting`](#apireporting) | 7 | 1.0% |
-| [`/api/integrations`](#apiintegrations) | 7 | 1.0% |
-| [`/api/claims`](#apiclaims) | 7 | 1.0% |
+| [`/api/auth`](#apiauth) | 7 | 0.9% |
+| [`/api/reporting`](#apireporting) | 7 | 0.9% |
+| [`/api/integrations`](#apiintegrations) | 7 | 0.9% |
+| [`/api/claims`](#apiclaims) | 7 | 0.9% |
 | [`/api/staff-roles`](#apistaff-roles) | 6 | 0.8% |
 | [`/api/medications`](#apimedications) | 6 | 0.8% |
 | [`/api/beds`](#apibeds) | 6 | 0.8% |
 | [`/api/immunisation`](#apiimmunisation) | 5 | 0.7% |
 | [`/api/lab-orders`](#apilab-orders) | 5 | 0.7% |
-| [`/api/facilities`](#apifacilities) | 4 | 0.6% |
-| [`/api/icd11`](#apiicd11) | 4 | 0.6% |
-| [`/api/inpatient`](#apiinpatient) | 4 | 0.6% |
-| [`/api/wards`](#apiwards) | 4 | 0.6% |
-| [`/api/suppliers`](#apisuppliers) | 4 | 0.6% |
-| [`/api/approval-policies`](#apiapproval-policies) | 4 | 0.6% |
-| [`/api/encounters`](#apiencounters) | 4 | 0.6% |
-| [`/api/public-health`](#apipublic-health) | 4 | 0.6% |
+| [`/api/facilities`](#apifacilities) | 4 | 0.5% |
+| [`/api/icd11`](#apiicd11) | 4 | 0.5% |
+| [`/api/inpatient`](#apiinpatient) | 4 | 0.5% |
+| [`/api/wards`](#apiwards) | 4 | 0.5% |
+| [`/api/suppliers`](#apisuppliers) | 4 | 0.5% |
+| [`/api/approval-policies`](#apiapproval-policies) | 4 | 0.5% |
+| [`/api/encounters`](#apiencounters) | 4 | 0.5% |
+| [`/api/public-health`](#apipublic-health) | 4 | 0.5% |
 | [`/api/notifications`](#apinotifications) | 3 | 0.4% |
 | [`/api/nursing-notes`](#apinursing-notes) | 3 | 0.4% |
 | [`/api/radiology-orders`](#apiradiology-orders) | 3 | 0.4% |
@@ -622,34 +622,68 @@ Facility module gate: `opd`.
 
 ## /api/fixed-assets
 
-22 routes.
+56 routes.
 
-4 distinct permission codes are required across this prefix: `assets.read`, `assets.manage`, `assets.dispose`, `assets.depreciate`.
+10 distinct permission codes are required across this prefix: `assets.read`, `assets.manage`, `assets.dispose`, `assets.transfer`, `assets.depreciate`, `assets.depreciation.approve`, `assets.inspections.perform`, `assets.maintenance.manage`, `assets.reports.financial`, `assets.depreciation.configure`.
 
 | Method | Route | Purpose | Auth | Permission | Input | Scope | Handler | Source |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| GET | `/api/fixed-assets` | List fixedassets | Staff session | `assets.read` | — | facility | `assets.listAssets` | `src/routes/fixed-assets.routes.ts:165` |
-| POST | `/api/fixed-assets` | Create a fixed asset | Staff session | `assets.manage` | — | facility | `assets.createAsset` | `src/routes/fixed-assets.routes.ts:304` |
-| GET | `/api/fixed-assets/:id` | Read a fixed asset | Staff session | `assets.read` | — | facility | `assets.assetDetail` | `src/routes/fixed-assets.routes.ts:292` |
-| PUT | `/api/fixed-assets/:id` | Update a fixed asset | Staff session | `assets.manage` | — | facility | `assets.updateAsset` | `src/routes/fixed-assets.routes.ts:315` |
-| POST | `/api/fixed-assets/:id/dispose` | Create action on a dispose | Staff session | `assets.dispose` | — | facility | `assets.disposeAsset` | `src/routes/fixed-assets.routes.ts:345` |
-| POST | `/api/fixed-assets/:id/impair` | Impairment and revaluation are accounting judgements that move money between the register and the ledger, so they are gated with `assets.dispose` — the write-off authority — not with register-edit rights. | Staff session | `assets.dispose` | — | facility | `assets.impairAsset` | `src/routes/fixed-assets.routes.ts:367` |
-| POST | `/api/fixed-assets/:id/revalue` | Create action on a revalue | Staff session | `assets.dispose` | — | facility | `assets.revalueAsset` | `src/routes/fixed-assets.routes.ts:384` |
-| POST | `/api/fixed-assets/:id/transfer` | Create action on a transfer | Staff session | `assets.manage` | — | facility | `assets.transferAsset` | `src/routes/fixed-assets.routes.ts:328` |
-| GET | `/api/fixed-assets/categories` | List categories | Staff session | `assets.read` | — | facility | `assets.listCategories` | `src/routes/fixed-assets.routes.ts:136` |
-| POST | `/api/fixed-assets/categories` | Create a category | Staff session | `assets.manage` | — | facility | `assets.createCategory` | `src/routes/fixed-assets.routes.ts:150` |
-| GET | `/api/fixed-assets/depreciation/preview` | Preview: depreciation preview | Staff session | `assets.read` | — | facility | `assets.depreciationPreview` | `src/routes/fixed-assets.routes.ts:193` |
-| POST | `/api/fixed-assets/depreciation/run` | Create a run | Staff session | `assets.depreciate` | — | facility | `assets.runDepreciation` | `src/routes/fixed-assets.routes.ts:207` |
-| GET | `/api/fixed-assets/maintenance` | List maintenance | Staff session | `assets.read` | — | facility | `assets.listMaintenance` | `src/routes/fixed-assets.routes.ts:227` |
-| POST | `/api/fixed-assets/maintenance` | Create a maintenance | Staff session | `assets.manage` | — | facility | `assets.createMaintenance` | `src/routes/fixed-assets.routes.ts:246` |
-| POST | `/api/fixed-assets/maintenance/:id/complete` | Complete: maintenance complete | Staff session | `assets.manage` | — | facility | `assets.completeMaintenance` | `src/routes/fixed-assets.routes.ts:261` |
-| GET | `/api/fixed-assets/options` | Reference options | Staff session | `assets.read` | — | facility | `assets.assetOptions` | `src/routes/fixed-assets.routes.ts:122` |
-| GET | `/api/fixed-assets/overview` | Overview | Staff session | `assets.read` | — | facility | `assets.assetOverview` | `src/routes/fixed-assets.routes.ts:108` |
-| GET | `/api/fixed-assets/report` | List report | Staff session | `assets.read` | — | facility | `assets.assetRegisterReport` | `src/routes/fixed-assets.routes.ts:183` |
-| GET | `/api/fixed-assets/tax/rates` | List tax rates | Staff session | `assets.read` | — | facility | `assets.listTaxRates` | `src/routes/fixed-assets.routes.ts:401` |
-| POST | `/api/fixed-assets/tax/rates` | Create a rate | Staff session | `assets.manage` | — | facility | `assets.createTaxRate` | `src/routes/fixed-assets.routes.ts:415` |
-| GET | `/api/fixed-assets/tax/schedule` | List tax schedule | Staff session | `assets.read` | — | facility | `assets.taxDepreciationSchedule` | `src/routes/fixed-assets.routes.ts:430` |
-| GET | `/api/fixed-assets/transfers` | List transfers | Staff session | `assets.read` | — | facility | `assets.listTransfers` | `src/routes/fixed-assets.routes.ts:278` |
+| GET | `/api/fixed-assets` | List fixedassets | Staff session | `assets.read` | — | facility | `assets.listAssets` | `src/routes/fixed-assets.routes.ts:170` |
+| POST | `/api/fixed-assets` | Create a fixed asset | Staff session | `assets.manage` | — | facility | `assets.createAsset` | `src/routes/fixed-assets.routes.ts:297` |
+| GET | `/api/fixed-assets/:id` | Read a fixed asset | Staff session | `assets.read` | — | facility | `assets.assetDetail` | `src/routes/fixed-assets.routes.ts:1123` |
+| PUT | `/api/fixed-assets/:id` | Update a fixed asset | Staff session | `assets.manage` | — | facility | `assets.updateAsset` | `src/routes/fixed-assets.routes.ts:308` |
+| POST | `/api/fixed-assets/:id/dispose` | Create action on a dispose | Staff session | `assets.dispose` | — | facility | `assets.disposeAsset` | `src/routes/fixed-assets.routes.ts:338` |
+| GET | `/api/fixed-assets/:id/documents` | Read a document | Staff session | `assets.read` | — | facility | `maintenance.listAssetDocuments` | `src/routes/fixed-assets.routes.ts:954` |
+| POST | `/api/fixed-assets/:id/documents` | Create action on a document | Staff session | `assets.manage` | — | facility | `maintenance.uploadAssetDocument` | `src/routes/fixed-assets.routes.ts:970` |
+| POST | `/api/fixed-assets/:id/impair` | Impairment and revaluation are accounting judgements that move money between the register and the ledger, so they are gated with `assets.dispose` — the write-off authority — not with register-edit rights. | Staff session | `assets.dispose` | — | facility | `assets.impairAsset` | `src/routes/fixed-assets.routes.ts:360` |
+| GET | `/api/fixed-assets/:id/operations` | Read an operation | Staff session | `assets.read` | — | facility | `maintenance.assetOperations` | `src/routes/fixed-assets.routes.ts:938` |
+| POST | `/api/fixed-assets/:id/revalue` | Create action on a revalue | Staff session | `assets.dispose` | — | facility | `assets.revalueAsset` | `src/routes/fixed-assets.routes.ts:377` |
+| POST | `/api/fixed-assets/:id/status` | Create action on a status | Staff session | `assets.manage` | — | facility | `maintenance.changeAssetStatus` | `src/routes/fixed-assets.routes.ts:921` |
+| POST | `/api/fixed-assets/:id/transfer` | Create action on a transfer | Staff session | `assets.transfer` | — | facility | `assets.transferAsset` | `src/routes/fixed-assets.routes.ts:321` |
+| GET | `/api/fixed-assets/categories` | List categories | Staff session | `assets.read` | — | facility | `assets.listCategories` | `src/routes/fixed-assets.routes.ts:141` |
+| POST | `/api/fixed-assets/categories` | Create a category | Staff session | `assets.manage` | — | facility | `assets.createCategory` | `src/routes/fixed-assets.routes.ts:155` |
+| GET | `/api/fixed-assets/dashboard` | List dashboard | Staff session | `assets.read` | — | facility | `maintenance.assetCounters` | `src/routes/fixed-assets.routes.ts:1021` |
+| GET | `/api/fixed-assets/depreciation/batches` | List depreciation batches | Staff session | `assets.read` | — | facility | `batches.listDepreciationBatches` | `src/routes/fixed-assets.routes.ts:470` |
+| POST | `/api/fixed-assets/depreciation/batches` | Create a batche | Staff session | `assets.depreciate` | — | facility | `batches.prepareDepreciationBatch` | `src/routes/fixed-assets.routes.ts:525` |
+| DELETE | `/api/fixed-assets/depreciation/batches/:batchId` | Delete a batche | Staff session | `assets.depreciate` | — | facility | `batches.discardDepreciationBatch` | `src/routes/fixed-assets.routes.ts:606` |
+| GET | `/api/fixed-assets/depreciation/batches/:batchId` | Read a batche | Staff session | `assets.read` | — | facility | `batches.getDepreciationBatch` | `src/routes/fixed-assets.routes.ts:489` |
+| POST | `/api/fixed-assets/depreciation/batches/:batchId/approve` | Approve: batches approve | Staff session | `assets.depreciation.approve` | — | facility | `batches.approveDepreciationBatch` | `src/routes/fixed-assets.routes.ts:540` |
+| POST | `/api/fixed-assets/depreciation/batches/:batchId/post` | Post: batches post | Staff session | `assets.depreciation.approve` | — | facility | `batches.postDepreciationBatch` | `src/routes/fixed-assets.routes.ts:562` |
+| POST | `/api/fixed-assets/depreciation/batches/:batchId/reverse` | Reverse: batches reverse | Staff session | `assets.depreciation.approve` | — | facility | `batches.reverseDepreciationBatch` | `src/routes/fixed-assets.routes.ts:584` |
+| POST | `/api/fixed-assets/depreciation/batches/preview` | Preview: batches preview | Staff session | `assets.read` | — | facility | `batches.previewDepreciationBatch` | `src/routes/fixed-assets.routes.ts:510` |
+| GET | `/api/fixed-assets/depreciation/preview` | Preview: depreciation preview | Staff session | `assets.read` | — | facility | `assets.depreciationPreview` | `src/routes/fixed-assets.routes.ts:198` |
+| POST | `/api/fixed-assets/depreciation/run` | Create a run | Staff session | `assets.depreciate` | — | facility | `assets.runDepreciation` | `src/routes/fixed-assets.routes.ts:212` |
+| GET | `/api/fixed-assets/depreciation/schedule/:assetId` | Read a schedule | Staff session | `assets.read` | — | facility | `batches.assetDepreciationSchedule` | `src/routes/fixed-assets.routes.ts:627` |
+| GET | `/api/fixed-assets/documents/:documentId` | Read a document | Staff session | `assets.read` | — | facility | `maintenance.getAssetDocument` | `src/routes/fixed-assets.routes.ts:987` |
+| GET | `/api/fixed-assets/inspections` | List inspections | Staff session | `assets.read` | — | facility | `maintenance.listInspections` | `src/routes/fixed-assets.routes.ts:845` |
+| POST | `/api/fixed-assets/inspections` | Create an inspection | Staff session | `assets.inspections.perform` | — | facility | `maintenance.createInspection` | `src/routes/fixed-assets.routes.ts:866` |
+| POST | `/api/fixed-assets/inspections/:id/complete` | Complete: inspections complete | Staff session | `assets.inspections.perform` | — | facility | `maintenance.completeInspection` | `src/routes/fixed-assets.routes.ts:881` |
+| GET | `/api/fixed-assets/lifecycle` | List lifecycle | Staff session | `assets.read` | — | facility | `maintenance.listLifecycleEvents` | `src/routes/fixed-assets.routes.ts:902` |
+| GET | `/api/fixed-assets/maintenance` | List maintenance | Staff session | `assets.read` | — | facility | `assets.listMaintenance` | `src/routes/fixed-assets.routes.ts:232` |
+| POST | `/api/fixed-assets/maintenance` | Create a maintenance | Staff session | `assets.manage` | — | facility | `assets.createMaintenance` | `src/routes/fixed-assets.routes.ts:251` |
+| POST | `/api/fixed-assets/maintenance/:id/complete` | Complete: maintenance complete | Staff session | `assets.manage` | — | facility | `assets.completeMaintenance` | `src/routes/fixed-assets.routes.ts:266` |
+| POST | `/api/fixed-assets/maintenance/:id/complete-corrective` | Create action on a complete corrective | Staff session | `assets.maintenance.manage` | — | facility | `maintenance.completeCorrectiveMaintenance` | `src/routes/fixed-assets.routes.ts:807` |
+| POST | `/api/fixed-assets/maintenance/:id/verify` | Verify: maintenance verify | Staff session | `assets.maintenance.manage` | — | facility | `maintenance.verifyMaintenance` | `src/routes/fixed-assets.routes.ts:824` |
+| POST | `/api/fixed-assets/maintenance/corrective` | Create a corrective | Staff session | `assets.maintenance.manage` | — | facility | `maintenance.createCorrectiveMaintenance` | `src/routes/fixed-assets.routes.ts:792` |
+| GET | `/api/fixed-assets/maintenance/dashboard` | List maintenance dashboard | Staff session | `assets.read` | — | facility | `maintenance.maintenanceDashboard` | `src/routes/fixed-assets.routes.ts:778` |
+| GET | `/api/fixed-assets/maintenance/jobs` | List maintenance jobs | Staff session | `assets.read` | — | facility | `maintenance.listMaintenanceJobs` | `src/routes/fixed-assets.routes.ts:758` |
+| GET | `/api/fixed-assets/maintenance/schedules` | List maintenance schedules | Staff session | `assets.read` | — | facility | `maintenance.listMaintenanceSchedules` | `src/routes/fixed-assets.routes.ts:657` |
+| POST | `/api/fixed-assets/maintenance/schedules` | Create a schedule | Staff session | `assets.maintenance.manage` | — | facility | `maintenance.createMaintenanceSchedule` | `src/routes/fixed-assets.routes.ts:677` |
+| PUT | `/api/fixed-assets/maintenance/schedules/:scheduleId` | Update a schedule | Staff session | `assets.maintenance.manage` | — | facility | `maintenance.updateMaintenanceSchedule` | `src/routes/fixed-assets.routes.ts:692` |
+| POST | `/api/fixed-assets/maintenance/schedules/:scheduleId/complete` | Complete: schedules complete | Staff session | `assets.maintenance.manage` | — | facility | `maintenance.completeScheduledMaintenance` | `src/routes/fixed-assets.routes.ts:736` |
+| POST | `/api/fixed-assets/maintenance/schedules/:scheduleId/retire` | Create action on a retire | Staff session | `assets.maintenance.manage` | — | facility | `maintenance.retireMaintenanceSchedule` | `src/routes/fixed-assets.routes.ts:714` |
+| GET | `/api/fixed-assets/options` | Reference options | Staff session | `assets.read` | — | facility | `assets.assetOptions` | `src/routes/fixed-assets.routes.ts:127` |
+| GET | `/api/fixed-assets/overview` | Overview | Staff session | `assets.read` | — | facility | `assets.assetOverview` | `src/routes/fixed-assets.routes.ts:113` |
+| GET | `/api/fixed-assets/report` | List report | Staff session | `assets.read` | — | facility | `assets.assetRegisterReport` | `src/routes/fixed-assets.routes.ts:188` |
+| GET | `/api/fixed-assets/reports` | List reports | Staff session | `assets.read` | — | — | `ASSET_REPORTS.map` | `src/routes/fixed-assets.routes.ts:1040` |
+| POST | `/api/fixed-assets/reports/:key` | Create action on a report | Staff session | `assets.reports.financial` | — | facility | `reports.buildAssetReport` | `src/routes/fixed-assets.routes.ts:1069` |
+| POST | `/api/fixed-assets/reports/:key/export` | Export: reports export | Staff session | `assets.reports.financial` | — | facility | `reports.buildAssetReport` | `src/routes/fixed-assets.routes.ts:1090` |
+| GET | `/api/fixed-assets/settings` | List settings | Staff session | `assets.read` | — | facility | `batches.getDepreciationSettings` | `src/routes/fixed-assets.routes.ts:441` |
+| PUT | `/api/fixed-assets/settings` | Update a setting | Staff session | `assets.depreciation.configure` | — | facility | `batches.updateDepreciationSettings` | `src/routes/fixed-assets.routes.ts:455` |
+| GET | `/api/fixed-assets/tax/rates` | List tax rates | Staff session | `assets.read` | — | facility | `assets.listTaxRates` | `src/routes/fixed-assets.routes.ts:394` |
+| POST | `/api/fixed-assets/tax/rates` | Create a rate | Staff session | `assets.manage` | — | facility | `assets.createTaxRate` | `src/routes/fixed-assets.routes.ts:408` |
+| GET | `/api/fixed-assets/tax/schedule` | List tax schedule | Staff session | `assets.read` | — | facility | `assets.taxDepreciationSchedule` | `src/routes/fixed-assets.routes.ts:423` |
+| GET | `/api/fixed-assets/transfers` | List transfers | Staff session | `assets.read` | — | facility | `assets.listTransfers` | `src/routes/fixed-assets.routes.ts:283` |
 
 ## /api/health
 
