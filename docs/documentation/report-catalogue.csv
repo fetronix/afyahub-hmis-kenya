@@ -1,0 +1,145 @@
+id,name,category,status,engine,workflow,summary,dependency
+printables-sick-off-certificates,Sick-off certificates,Clinical & Patient,unavailable,,,Certificates of sick leave issued to a patient.,"Approved certificate, signatory and output."
+printables-medical-notes,Medical notes,Clinical & Patient,unavailable,,,Clinical notes printed for referral or records.,Signed print template and referral workflow.
+printables-referral-letters,Referral letters,Clinical & Patient,unavailable,,,Letters referring a patient to another facility.,Signed print template and referral workflow.
+printables-inpatient-statements,Inpatient statements,Clinical & Patient,unavailable,,,Inpatient charges and payments for a stay.,Approved integrated printable output and clinical sign-off.
+printables-discharge-summaries,Discharge summaries,Clinical & Patient,existing-document,,discharge,Discharge summary for a completed admission.,Approved integrated printable output and clinical sign-off.
+printables-operation-notes,Operation notes,Clinical & Patient,unavailable,,,Theatre operation notes for a completed procedure.,Structured authorized notes and approved printable output.
+printables-anaesthetist-notes,Anaesthetist notes,Clinical & Patient,unavailable,,,Anaesthetic record for a theatre case.,Structured authorized notes and approved printable output.
+printables-bill-consent-forms,Bill consent forms,Clinical & Patient,unavailable,,,Signed financial consent for treatment.,"Financial-consent workflow, signatory and approved template."
+printables-radiology-reports,Radiology reports,Laboratory & Radiology,existing-document,,radiology,Radiology report for a completed imaging request.,Verified released result and approved print template.
+printables-laboratory-reports,Laboratory reports,Laboratory & Radiology,existing-document,,laboratory,Laboratory report for a verified result.,Verified released result and approved print template.
+printables-invoices,Invoices,Billing & Revenue,existing-document,,invoice,Finalized invoice document for a patient.,Real printable output and facility-approved template unverified.
+printables-receipts,Receipts,Billing & Revenue,unavailable,,,Payment receipt issued at the cashier.,Standalone receipt print template.
+printables-purchase-requisitions,Purchase requisitions,Procurement & Supplier,unavailable,,,Requisition document raised by a department.,Requisition or receiving workflow and approved template.
+printables-local-purchase-orders,Local purchase orders,Procurement & Supplier,unavailable,,,Purchase order issued to a supplier.,Approved LPO output and print validation.
+printables-goods-received-notes,Goods received notes,Procurement & Supplier,unavailable,,,Goods received note for a delivery.,Requisition or receiving workflow and approved template.
+financial-cashier-daily-summary,Cashier daily summary,Billing & Revenue,available,cashier-receipts,,Receipts taken by one cashier on a day.,"Complete transaction-date data, cashier/department identity and verified reconciliation."
+financial-all-cashier-daily-summary,All-cashier daily summary,Billing & Revenue,available,cashier-receipts,,Receipts taken by every cashier in the period.,"Complete transaction-date data, cashier/department identity and verified reconciliation."
+financial-department-receipt-summary,Department receipt summary,Billing & Revenue,unavailable,,,Receipts summarised by department.,"Complete transaction-date data, cashier/department identity and verified reconciliation."
+financial-department-receipt-breakdown,Department receipt breakdown,Billing & Revenue,unavailable,,,Receipts broken down by department and method.,"Complete transaction-date data, cashier/department identity and verified reconciliation."
+financial-managerial-daily-summary,Managerial daily summary,Billing & Revenue,unavailable,,,Daily receipts and refunds for management.,"Complete transaction-date data, cashier/department identity and verified reconciliation."
+financial-trial-balance,Trial balance,Finance & Accounting,available,ledger-trial-movements,,Debit and credit balances by posted ledger account.,"Opening balances, posting completeness, mappings and source reconciliation; the available view is posted account movements only."
+financial-income-statement,Income statement,Finance & Accounting,available,ledger-income,,Income and expenditure from posted journals.,"Posting completeness, recognized revenue/cost policies, account mappings and source reconciliation."
+financial-balance-sheet,Balance sheet,Finance & Accounting,available,ledger-balance-sheet,,"Assets, liabilities and equity as posted.","Posting completeness, opening balances, classification, account mappings and source reconciliation."
+financial-monthly-profit-and-loss,Monthly profit and loss,Finance & Accounting,unavailable,,,Monthly profit and loss from posted journals.,"Auto posting, mappings, costs and source reconciliation; current statements are not complete."
+financial-cash-flow-statement,Cash flow statement,Finance & Accounting,unavailable,,,Cash movements derived from posted journals.,Dedicated controlled workflow and reconciled classification.
+financial-budget-management,Budget management,Management & Budget,unavailable,,,Budget against actual expenditure.,Dedicated controlled workflow and reconciled classification.
+financial-credit-notes,Credit notes,Billing & Revenue,unavailable,,,Credit notes raised against invoices.,Dedicated controlled workflow and reconciled classification.
+financial-waiver-reports,Waiver reports,Billing & Revenue,unavailable,,,Charges waived and their recorded reasons.,Dedicated controlled workflow and reconciled classification.
+financial-income-by-cashier,Income by cashier,Billing & Revenue,unavailable,,,Income attributed to each cashier.,Approved attribution and verified payer/bank/provider reconciliation; no inferred settlement.
+financial-departmental-revenue,Departmental revenue,Billing & Revenue,unavailable,,,Revenue recorded by department.,Approved attribution and verified payer/bank/provider reconciliation; no inferred settlement.
+financial-patient-outstanding-balances,Patient outstanding balances,Billing & Revenue,available,invoice-balances,,Invoices with a recorded outstanding balance.,Approved attribution and verified payer/bank/provider reconciliation; no inferred settlement.
+financial-sha-receivables,SHA receivables,Billing & Revenue,unavailable,,,Amounts owed by the Social Health Authority.,Approved attribution and verified payer/bank/provider reconciliation; no inferred settlement.
+financial-private-insurance-receivables,Private insurance receivables,Billing & Revenue,unavailable,,,Amounts owed by private insurers.,Approved attribution and verified payer/bank/provider reconciliation; no inferred settlement.
+financial-m-pesa-reconciliation,M-Pesa reconciliation,Billing & Revenue,unavailable,,,Mobile-money payments against recorded receipts.,Approved attribution and verified payer/bank/provider reconciliation; no inferred settlement.
+financial-card-payment-reconciliation,Card payment reconciliation,Billing & Revenue,unavailable,,,Card payments against recorded receipts.,Approved attribution and verified payer/bank/provider reconciliation; no inferred settlement.
+financial-refund-reports,Refund reports,Billing & Revenue,available,recorded-refunds,,Refunds paid and their authorisation.,Approved attribution and verified payer/bank/provider reconciliation; no inferred settlement.
+stock-goods-stock-usage,Stock usage,Inventory & Stock Management,unavailable,,,Stock issued to departments in the period.,Complete movement/receipt/return ledger and report.
+stock-goods-stock-movements,Stock movements,Inventory & Stock Management,available,inventory-movements,,Every recorded movement of stock items.,"Recorded movement register only; historical opening/closing balances, cost valuation and completeness before movement capture are not established."
+stock-goods-goods-received,Goods received,Inventory & Stock Management,unavailable,,,Stock received into the stores.,Complete movement/receipt/return ledger and report.
+stock-goods-goods-returned,Goods returned,Inventory & Stock Management,unavailable,,,Stock returned to the stores.,Complete movement/receipt/return ledger and report.
+stock-goods-lpo-summaries,LPO summaries,Procurement & Supplier,available,purchase-orders,,Purchase orders and their suppliers.,Complete filtered/exportable report.
+stock-goods-inward-invoices,Inward invoices,Inventory & Stock Management,unavailable,,,Supplier invoices received against goods.,Stock-linked invoice classification and matching.
+stock-goods-outward-invoices,Outward invoices,Inventory & Stock Management,unavailable,,,Issues invoiced out of the stores.,Stock-linked invoice classification and matching.
+stock-goods-bin-cards,Bin cards,Inventory & Stock Management,unavailable,,,Bin-card history for an item.,"Location-aware movement ledger, stocktake and transfers."
+stock-goods-inventory-by-store,Inventory by store,Inventory & Stock Management,available,inventory-store,,Current balances by store location.,"Complete safe grouping, historical/cost evidence, filters and export."
+stock-goods-inventory-by-category,Inventory by category,Inventory & Stock Management,available,inventory-category,,Current balances by item category.,"Complete safe grouping, historical/cost evidence, filters and export."
+stock-goods-expiry-reports,Expiry reports,Inventory & Stock Management,available,inventory-expiry,,Batches approaching or past expiry.,"Complete safe grouping, historical/cost evidence, filters and export."
+stock-goods-stock-variance,Stock variance,Inventory & Stock Management,unavailable,,,Counting differences against recorded stock.,"Location-aware movement ledger, stocktake and transfers."
+stock-goods-stock-transfers,Stock transfers,Inventory & Stock Management,unavailable,,,Transfers between stores.,"Location-aware movement ledger, stocktake and transfers."
+stock-goods-goods-price-lists,Goods price lists,Inventory & Stock Management,unavailable,,,Recorded selling prices for items.,"Complete safe grouping, historical/cost evidence, filters and export."
+stock-goods-supplier-reports,Supplier reports,Procurement & Supplier,unavailable,,,Supplier activity and recorded orders.,"Complete safe grouping, historical/cost evidence, filters and export."
+stock-goods-stock-valuation,Stock valuation,Inventory & Stock Management,unavailable,,,Stock value at recorded batch cost.,"Complete safe grouping, historical/cost evidence, filters and export."
+stock-goods-asset-register,Asset register,Finance & Accounting,unavailable,,,Fixed-asset register with recorded values.,"Mounted asset, movement and maintenance workflows."
+stock-goods-asset-tracking,Asset tracking,Finance & Accounting,unavailable,,,Movement of fixed assets between locations.,"Mounted asset, movement and maintenance workflows."
+stock-goods-asset-maintenance,Asset maintenance,Finance & Accounting,unavailable,,,Maintenance recorded against fixed assets.,"Mounted asset, movement and maintenance workflows."
+departmental-opd-opd-attendance,OPD attendance,Clinical & Patient,available,outpatient-encounters,,Outpatient attendances recorded in the period.,"Defined report events, referral lifecycle, clinician attribution and exports."
+departmental-opd-consultation-reports,Consultation reports,Clinical & Patient,unavailable,,,Consultations held in outpatient departments.,"Defined report events, referral lifecycle, clinician attribution and exports."
+departmental-opd-diagnosis-reports,Diagnosis reports,Clinical & Patient,available,outpatient-diagnoses,,Diagnoses recorded during outpatient visits.,"Recorded encounter/diagnosis register only; deduplicated morbidity, verified MOH 705 definitions and facility acceptance remain outstanding."
+departmental-opd-referral-reports,Referral reports,Clinical & Patient,unavailable,,,Outpatient referrals made to other services.,"Defined report events, referral lifecycle, clinician attribution and exports."
+departmental-opd-doctor-workload,Doctor workload,Clinical & Patient,unavailable,,,Outpatient workload per clinician.,"Defined report events, referral lifecycle, clinician attribution and exports."
+departmental-inpatient-current-inpatient-list,Current inpatient list,Clinical & Patient,available,current-inpatients,,"Patients currently admitted, with ward and bed.",Scoped detailed reports and reconciliation of billing; rate evidence and policy.
+departmental-inpatient-admissions,Admissions,Clinical & Patient,available,inpatient-admissions,,Admissions recorded in the period.,Scoped detailed reports and reconciliation of billing; rate evidence and policy.
+departmental-inpatient-discharges,Discharges,Clinical & Patient,available,inpatient-discharges,,Discharges recorded in the period.,Scoped detailed reports and reconciliation of billing; rate evidence and policy.
+departmental-inpatient-ward-occupancy,Ward occupancy,Clinical & Patient,unavailable,,,Bed occupancy by ward.,Scoped detailed reports and reconciliation of billing; rate evidence and policy.
+departmental-inpatient-bed-billing,Bed billing,Clinical & Patient,unavailable,,,Bed charges accrued during admissions.,Scoped detailed reports and reconciliation of billing; rate evidence and policy.
+departmental-laboratory-test-reports,Test reports,Laboratory & Radiology,available,laboratory-orders,,Laboratory tests ordered and their status.,"Precise result/release and timing rules, grouped reports and safe exports."
+departmental-laboratory-patient-reports,Patient reports,Laboratory & Radiology,unavailable,,,Laboratory activity grouped by patient.,"Precise result/release and timing rules, grouped reports and safe exports."
+departmental-laboratory-specimen-reports,Specimen reports,Laboratory & Radiology,unavailable,,,Specimens received by the laboratory.,"Precise result/release and timing rules, grouped reports and safe exports."
+departmental-laboratory-sample-reports,Sample reports,Laboratory & Radiology,unavailable,,,Samples logged by the laboratory.,"Precise result/release and timing rules, grouped reports and safe exports."
+departmental-laboratory-section-reports,Section reports,Laboratory & Radiology,unavailable,,,Laboratory workload by section.,"Precise result/release and timing rules, grouped reports and safe exports."
+departmental-laboratory-pending-results,Pending results,Laboratory & Radiology,unavailable,,,Orders awaiting a result or verification.,"Precise result/release and timing rules, grouped reports and safe exports."
+departmental-laboratory-released-results,Released results,Laboratory & Radiology,unavailable,,,Results released to the patient or clinician.,"Precise result/release and timing rules, grouped reports and safe exports."
+departmental-laboratory-turnaround-times,Turnaround times,Laboratory & Radiology,unavailable,,,Order-to-result turnaround times.,"Precise result/release and timing rules, grouped reports and safe exports."
+departmental-radiology-imaging-requests,Imaging requests,Laboratory & Radiology,available,radiology-requests,,Imaging requests and their status.,"Completed procedure definition, report grouping; reconciled finance for revenue."
+departmental-radiology-completed-procedures,Completed procedures,Laboratory & Radiology,unavailable,,,Completed imaging procedures.,"Completed procedure definition, report grouping; reconciled finance for revenue."
+departmental-radiology-patient-reports,Patient reports,Laboratory & Radiology,unavailable,,,Radiology activity grouped by patient.,"Completed procedure definition, report grouping; reconciled finance for revenue."
+departmental-radiology-radiology-revenue,Radiology revenue,Billing & Revenue,unavailable,,,Charges recorded for imaging.,"Completed procedure definition, report grouping; reconciled finance for revenue."
+departmental-pharmacy-prescriptions,Prescriptions,Pharmacy,unavailable,,,Prescriptions written in the period.,"Report filtering, full movement ledger and controlled returns."
+departmental-pharmacy-dispensing,Dispensing,Pharmacy,available,pharmacy-dispensations,,Medicines dispensed from the pharmacy.,"Report filtering, full movement ledger and controlled returns."
+departmental-pharmacy-drug-movement,Drug movement,Pharmacy,unavailable,,,Pharmacy stock movement by medicine.,"Report filtering, full movement ledger and controlled returns."
+departmental-pharmacy-returns,Returns,Pharmacy,unavailable,,,Medicines returned to the pharmacy.,"Report filtering, full movement ledger and controlled returns."
+departmental-pharmacy-stock-and-expiry,Stock and expiry,Pharmacy,unavailable,,,Pharmacy stock levels and batch expiry.,"Report filtering, full movement ledger and controlled returns."
+departmental-theatre-procedure-lists,Procedure lists,Clinical & Patient,unavailable,,,Procedures performed in theatre.,Actual performed cases and utilization definitions.
+departmental-theatre-patient-procedure-reports,Patient procedure reports,Clinical & Patient,unavailable,,,Theatre procedures grouped by patient.,Actual performed cases and utilization definitions.
+departmental-theatre-theatre-utilization,Theatre utilization,Clinical & Patient,unavailable,,,Theatre utilisation and case counts.,Actual performed cases and utilization definitions.
+departmental-maternity-mch-anc,ANC,Clinical & Patient,unavailable,,,Antenatal care visits and registrations.,Validated grouped reports and privacy controls.
+departmental-maternity-mch-deliveries,Deliveries,Clinical & Patient,unavailable,,,Deliveries conducted at the facility.,Validated grouped reports and privacy controls.
+departmental-maternity-mch-postnatal,Postnatal,Clinical & Patient,unavailable,,,Postnatal care visits.,Validated grouped reports and privacy controls.
+departmental-maternity-mch-child-health,Child health,Clinical & Patient,unavailable,,,Child health and immunisation visits.,Validated grouped reports and privacy controls.
+departmental-dialysis-patient-sessions,Patient sessions,Clinical & Patient,unavailable,,,Dialysis sessions by patient.,Clinician-verified session facts and reconciled billing; no inferred completion.
+departmental-dialysis-treatment-records,Treatment records,Clinical & Patient,unavailable,,,Dialysis treatment records.,Clinician-verified session facts and reconciled billing; no inferred completion.
+departmental-dialysis-session-billing,Session billing,Clinical & Patient,unavailable,,,Charges raised for dialysis sessions.,Clinician-verified session facts and reconciled billing; no inferred completion.
+departmental-social-work-waivers,Waivers,Billing & Revenue,unavailable,,,Waivers approved through social work.,"Approved, confidential case and waiver workflows."
+departmental-social-work-counselling,Counselling,Clinical & Patient,unavailable,,,Counselling sessions recorded by social work.,"Approved, confidential case and waiver workflows."
+departmental-social-work-patient-support-reports,Patient support reports,Clinical & Patient,unavailable,,,Patient support recorded by social work.,"Approved, confidential case and waiver workflows."
+records-birth-reports,Birth reports,Clinical & Patient,unavailable,,,Births registered at the facility.,Defined reporting data and relationships; cashier finance reconciliation where applicable.
+records-death-reports,Death reports,Clinical & Patient,unavailable,,,Deaths recorded at the facility.,Defined reporting data and relationships; cashier finance reconciliation where applicable.
+records-current-inpatient-lists,Current inpatient lists,Clinical & Patient,available,current-inpatients,,Inpatient register for the selected ward.,Defined reporting data and relationships; cashier finance reconciliation where applicable.
+records-patient-reports,Patient reports,Clinical & Patient,available,patient-registrations,,Patient register with recorded demographics.,Complete longitudinal records and governed patient-report definitions; the available view covers facility registrations only.
+records-patient-review-reports,Patient review reports,Clinical & Patient,unavailable,,,Patients due or booked for review.,Defined reporting data and relationships; cashier finance reconciliation where applicable.
+records-unregistered-patient-reports,Unregistered patient reports,Clinical & Patient,unavailable,,,Patients without a completed registration.,Defined reporting data and relationships; cashier finance reconciliation where applicable.
+records-referral-reports,Referral reports,Clinical & Patient,unavailable,,,Referrals recorded in the period.,Defined reporting data and relationships; cashier finance reconciliation where applicable.
+records-opd-diagnosis-reports,OPD diagnosis reports,Clinical & Patient,available,outpatient-diagnoses,,Outpatient diagnosis register.,"Recorded encounter/diagnosis register only; deduplicated morbidity, verified MOH 705 definitions and facility acceptance remain outstanding."
+records-ipd-diagnosis-reports,IPD diagnosis reports,Clinical & Patient,unavailable,,,Inpatient diagnosis register.,Defined reporting data and relationships; cashier finance reconciliation where applicable.
+records-triage-analysis,Triage analysis,Clinical & Patient,unavailable,,,Triage categories recorded at reception.,Defined reporting data and relationships; cashier finance reconciliation where applicable.
+records-doctors-workload,Doctors' workload,HR & Workforce,unavailable,,,Clinical workload per doctor.,Defined reporting data and relationships; cashier finance reconciliation where applicable.
+records-nurses-workload,Nurses' workload,HR & Workforce,unavailable,,,Clinical workload per nurse.,Defined reporting data and relationships; cashier finance reconciliation where applicable.
+records-cashier-workload,Cashier workload,Billing & Revenue,unavailable,,,Receipts and refunds handled per cashier.,Defined reporting data and relationships; cashier finance reconciliation where applicable.
+records-inpatient-discharges,Inpatient discharges,Clinical & Patient,available,inpatient-discharges,,Inpatient discharge register.,Defined reporting data and relationships; cashier finance reconciliation where applicable.
+records-moh-505-idsr,MOH 505-IDSR,MOH & Regulatory,unavailable,,,MOH 505 integrated disease surveillance return.,"Current authoritative forms, indicator dictionaries, approved data mappings and submission process."
+records-moh-705a,MOH 705A,MOH & Regulatory,unavailable,,,MOH 705A outpatient summary return.,"Current authoritative forms, indicator dictionaries, approved data mappings and submission process."
+records-moh-705b,MOH 705B,MOH & Regulatory,unavailable,,,MOH 705B outpatient diagnosis return.,"Current authoritative forms, indicator dictionaries, approved data mappings and submission process."
+records-moh-717,MOH 717,MOH & Regulatory,unavailable,,,MOH 717 inpatient diagnosis return.,"Current authoritative forms, indicator dictionaries, approved data mappings and submission process."
+records-moh-301-ipd-admissions,MOH 301-IPD admissions,MOH & Regulatory,unavailable,,,MOH 301 inpatient admission register.,"Current authoritative forms, indicator dictionaries, approved data mappings and submission process."
+records-moh-204-opd-register,MOH 204-OPD register,MOH & Regulatory,unavailable,,,MOH 204 outpatient register.,"Current authoritative forms, indicator dictionaries, approved data mappings and submission process."
+records-moh-240-laboratory-and-radiology-reports,MOH 240 laboratory and radiology reports,MOH & Regulatory,unavailable,,,MOH 240 laboratory and radiology return.,"Current authoritative forms, indicator dictionaries, approved data mappings and submission process."
+records-moh-financial-reports,MOH financial reports,MOH & Regulatory,unavailable,,,Statutory financial returns.,"Current authoritative forms, indicator dictionaries, approved data mappings and submission process."
+hr-employee-list,Employee list,HR & Workforce,unavailable,,,Staff establishment as recorded.,Employment register and HR-authorized report.
+hr-employee-summaries,Employee summaries,HR & Workforce,unavailable,,,Staff grouped by department and role.,Employment register and HR-authorized report.
+hr-salary-summaries,Salary summaries,HR & Workforce,unavailable,,,Payroll totals by period.,Payroll and approved current-year HR/KRA and secure payment policies.
+hr-individual-payslips,Individual payslips,HR & Workforce,unavailable,,,Payslip for one employee.,Payroll and approved current-year HR/KRA and secure payment policies.
+hr-all-payslips,All payslips,HR & Workforce,unavailable,,,Payslips for every employee in a period.,Payroll and approved current-year HR/KRA and secure payment policies.
+hr-attendance,Attendance,HR & Workforce,unavailable,,,Recorded staff attendance.,Payroll and approved current-year HR/KRA and secure payment policies.
+hr-overtime,Overtime,HR & Workforce,unavailable,,,Overtime recorded and paid.,Payroll and approved current-year HR/KRA and secure payment policies.
+hr-leave-reports,Leave reports,HR & Workforce,unavailable,,,Leave taken and outstanding.,Payroll and approved current-year HR/KRA and secure payment policies.
+hr-monthly-deductions,Monthly deductions,HR & Workforce,unavailable,,,Statutory and other monthly deductions.,Payroll and approved current-year HR/KRA and secure payment policies.
+hr-monthly-bank-summaries,Monthly bank summaries,HR & Workforce,unavailable,,,Net pay by bank for a payroll period.,Payroll and approved current-year HR/KRA and secure payment policies.
+hr-individual-bank-summaries,Individual bank summaries,HR & Workforce,unavailable,,,Net pay to one employee’s bank account.,Payroll and approved current-year HR/KRA and secure payment policies.
+hr-p9a-reports,P9A reports,HR & Workforce,unavailable,,,P9A statutory payroll return.,Payroll and approved current-year HR/KRA and secure payment policies.
+hr-p10-reports,P10 reports,HR & Workforce,unavailable,,,P10 statutory payroll return.,Payroll and approved current-year HR/KRA and secure payment policies.
+hr-p10a-reports,P10A reports,HR & Workforce,unavailable,,,P10A statutory payroll return.,Payroll and approved current-year HR/KRA and secure payment policies.
+hr-locum-reports,Locum reports,HR & Workforce,unavailable,,,Locum engagements and payments.,Payroll and approved current-year HR/KRA and secure payment policies.
+activity-system-user-list,System user list,Management & Budget,unavailable,,,Accounts with access to the system.,"Durable complete logs, server filtering/pagination, specific access policy and exports."
+activity-queue-reports,Queue reports,Management & Budget,unavailable,,,Patient queues and waiting times.,"Durable complete logs, server filtering/pagination, specific access policy and exports."
+activity-complete-activity-logs,Complete activity logs,Management & Budget,unavailable,,,Full system activity log.,"Durable complete logs, server filtering/pagination, specific access policy and exports."
+activity-activity-logs-by-user,Activity logs by user,Management & Budget,unavailable,,,Activity log grouped by user.,"Durable complete logs, server filtering/pagination, specific access policy and exports."
+activity-failed-login-reports,Failed login reports,Management & Budget,unavailable,,,Failed sign-in attempts.,"Durable complete logs, server filtering/pagination, specific access policy and exports."
+activity-patient-record-access-logs,Patient record access logs,Management & Budget,unavailable,,,Who opened which patient record.,"Durable complete logs, server filtering/pagination, specific access policy and exports."
+activity-financial-approval-logs,Financial approval logs,Management & Budget,unavailable,,,Approvals recorded for financial actions.,"Durable complete logs, server filtering/pagination, specific access policy and exports."
+activity-sms-reports,SMS reports,Management & Budget,unavailable,,,SMS messages sent and their status.,Authorized provider and verified delivery events.
+activity-notification-delivery-reports,Notification delivery reports,Management & Budget,unavailable,,,Notification delivery outcomes.,Authorized provider and verified delivery events.
+activity-messages-reports,Messages reports,Management & Budget,unavailable,,,Messages exchanged with patients.,Message/delivery data and report definitions.
+activity-custom-administrative-reports,Custom administrative reports,Management & Budget,unavailable,,,Administrative reports configured locally.,Governed report definitions or durable job-run failure records.
+activity-background-job-failures,Background job failures,Management & Budget,unavailable,,,Background jobs that failed.,Governed report definitions or durable job-run failure records.

@@ -1,0 +1,535 @@
+{
+  "generatedAt": "2026-11-19T22:13:55.340Z",
+  "count": 88,
+  "files": [
+    {
+      "dest": "01-platform/01-login-screen.png",
+      "source": "docs/project/delivery-evidence/phase-5/01-login.png",
+      "origin": "Phase 5 delivery evidence run",
+      "bytes": 776545
+    },
+    {
+      "dest": "01-platform/02-mobile-shell.png",
+      "source": "docs/audits/accounting-workspace-evidence/10-mobile-dashboard.png",
+      "origin": "Accounting workspace evidence run (mobile viewport)",
+      "bytes": 46960
+    },
+    {
+      "dest": "02-dashboard/01-dashboard-desktop.png",
+      "source": "docs/dashboard/screenshots/desktop-synthetic.png",
+      "origin": "Dashboard responsive-evidence run",
+      "bytes": 329722
+    },
+    {
+      "dest": "02-dashboard/02-notifications.png",
+      "source": "docs/dashboard/screenshots/refinement-desktop-notifications-synthetic.png",
+      "origin": "Dashboard notifications refinement run",
+      "bytes": 344312
+    },
+    {
+      "dest": "02-dashboard/03-operational-overview.png",
+      "source": "docs/dashboard/screenshots/refinement-desktop-operations-synthetic.png",
+      "origin": "Dashboard operations refinement run",
+      "bytes": 197908
+    },
+    {
+      "dest": "02-dashboard/04-dashboard-mobile.png",
+      "source": "docs/dashboard/screenshots/mobile-synthetic.png",
+      "origin": "Dashboard mobile capture",
+      "bytes": 132251
+    },
+    {
+      "dest": "02-dashboard/05-dashboard-tablet.png",
+      "source": "docs/dashboard/screenshots/tablet-synthetic.png",
+      "origin": "Dashboard tablet capture",
+      "bytes": 285698
+    },
+    {
+      "dest": "03-patient-management/01-patient-management.png",
+      "source": "docs/ui/screenshots/registration-desktop-synthetic.png",
+      "origin": "Presentation-readiness responsive run",
+      "bytes": 225416
+    },
+    {
+      "dest": "03-patient-management/02-patient-management-mobile.png",
+      "source": "docs/ui/screenshots/registration-small-mobile-synthetic.png",
+      "origin": "Presentation-readiness responsive run",
+      "bytes": 31668
+    },
+    {
+      "dest": "03-patient-management/03-patient-document.png",
+      "source": "docs/audits/clinical-documents-evidence/01-patient-consent-preview.png",
+      "origin": "Clinical-documents evidence run",
+      "bytes": 196859
+    },
+    {
+      "dest": "03-patient-management/04-document-audit.png",
+      "source": "docs/audits/clinical-documents-evidence/02-patient-document-audit.png",
+      "origin": "Clinical-documents evidence run",
+      "bytes": 239100
+    },
+    {
+      "dest": "03-patient-management/05-portal-documents.png",
+      "source": "docs/audits/clinical-documents-evidence/03-patient-portal-own-documents.png",
+      "origin": "Clinical-documents evidence run",
+      "bytes": 104332
+    },
+    {
+      "dest": "03-patient-management/06-portal-medical-record.png",
+      "source": "docs/audits/portal-medical-record-evidence/01-portal-medical-record-section.png",
+      "origin": "Portal medical-record evidence run",
+      "bytes": 194922
+    },
+    {
+      "dest": "04-reception/01-appointment-queue.png",
+      "source": "docs/ui/screenshots/reception-desktop-synthetic.png",
+      "origin": "Presentation-readiness responsive run",
+      "bytes": 198312
+    },
+    {
+      "dest": "04-reception/02-appointment-modal-mobile.png",
+      "source": "docs/ui/screenshots/appointment-modal-small-mobile-synthetic.png",
+      "origin": "Presentation-readiness responsive run",
+      "bytes": 30930
+    },
+    {
+      "dest": "05-outpatient/01-outpatient-workspace.png",
+      "source": "docs/ui/screenshots/specialty-desktop-synthetic.png",
+      "origin": "Presentation-readiness responsive run",
+      "bytes": 169607
+    },
+    {
+      "dest": "05-outpatient/02-encounter-doctor-a.png",
+      "source": "docs/audits/responsible-doctor-evidence/01-doctor-a-default.png",
+      "origin": "Responsible-doctor evidence run",
+      "bytes": 71317
+    },
+    {
+      "dest": "05-outpatient/03-records-search.png",
+      "source": "docs/audits/responsible-doctor-evidence/03-records-search-selection.png",
+      "origin": "Responsible-doctor evidence run",
+      "bytes": 114860
+    },
+    {
+      "dest": "10-laboratory/01-laboratory-workspace.png",
+      "source": "docs/ui/screenshots/laboratory-desktop-synthetic.png",
+      "origin": "Presentation-readiness responsive run",
+      "bytes": 145032
+    },
+    {
+      "dest": "10-laboratory/02-laboratory-tablet.png",
+      "source": "docs/ui/screenshots/laboratory-tablet-synthetic.png",
+      "origin": "Presentation-readiness responsive run",
+      "bytes": 145071
+    },
+    {
+      "dest": "11-radiology/01-radiology-workspace.png",
+      "source": "docs/ui/screenshots/radiology-desktop-synthetic.png",
+      "origin": "Presentation-readiness responsive run",
+      "bytes": 188611
+    },
+    {
+      "dest": "11-radiology/02-radiology-consent-verified.png",
+      "source": "docs/audits/radiology-consent-evidence/01-radiology-verified.png",
+      "origin": "Radiology consent evidence run",
+      "bytes": 110237
+    },
+    {
+      "dest": "11-radiology/03-report-portal-release.png",
+      "source": "docs/audits/radiology-consent-evidence/03-portal-release.png",
+      "origin": "Radiology consent evidence run",
+      "bytes": 34634
+    },
+    {
+      "dest": "11-radiology/04-consent-mobile.png",
+      "source": "docs/audits/radiology-consent-evidence/04-mobile-consent.png",
+      "origin": "Radiology consent evidence run",
+      "bytes": 104954
+    },
+    {
+      "dest": "11-radiology/05-verified-consent.png",
+      "source": "docs/audits/presentation-readiness-evidence/04-radiology-verified-consent.png",
+      "origin": "Presentation-readiness evidence run",
+      "bytes": 227491
+    },
+    {
+      "dest": "15-human-resources/01-hr-overview.png",
+      "source": "docs/project/delivery-evidence/phase-5/02-human-resources-overview.png",
+      "origin": "Phase 5 delivery evidence run",
+      "bytes": 176449
+    },
+    {
+      "dest": "15-human-resources/02-employees.png",
+      "source": "docs/project/delivery-evidence/phase-5/03-hr-tab-1-employees.png",
+      "origin": "Phase 5 delivery evidence run",
+      "bytes": 176449
+    },
+    {
+      "dest": "15-human-resources/03-attendance-roster.png",
+      "source": "docs/project/delivery-evidence/phase-5/03-hr-tab-3-attendance-roster.png",
+      "origin": "Phase 5 delivery evidence run",
+      "bytes": 183997
+    },
+    {
+      "dest": "15-human-resources/04-employee-record.png",
+      "source": "docs/project/delivery-evidence/phase-5/04-hr-employee-record.png",
+      "origin": "Phase 5 delivery evidence run",
+      "bytes": 170332
+    },
+    {
+      "dest": "16-payroll/01-salary-components.png",
+      "source": "docs/audits/payroll-evidence/03-salary-components.png",
+      "origin": "Payroll evidence run",
+      "bytes": 195358
+    },
+    {
+      "dest": "16-payroll/02-calculated-review.png",
+      "source": "docs/audits/payroll-evidence/04-calculated-review.png",
+      "origin": "Payroll evidence run",
+      "bytes": 173588
+    },
+    {
+      "dest": "16-payroll/03-finalised-run.png",
+      "source": "docs/audits/payroll-evidence/05-finalized-payroll.png",
+      "origin": "Payroll evidence run",
+      "bytes": 161521
+    },
+    {
+      "dest": "16-payroll/04-payslip.png",
+      "source": "docs/audits/payroll-evidence/07-individual-payslip.png",
+      "origin": "Payroll evidence run",
+      "bytes": 170524
+    },
+    {
+      "dest": "16-payroll/05-ledger-mapping.png",
+      "source": "docs/audits/payroll-readiness-evidence/09-ledger-mapping.png",
+      "origin": "Payroll readiness evidence run",
+      "bytes": 197868
+    },
+    {
+      "dest": "16-payroll/06-statutory-rules.png",
+      "source": "docs/project/delivery-evidence/phase-5/06-payroll-statutory-rules.png",
+      "origin": "Phase 5 delivery evidence run",
+      "bytes": 191867
+    },
+    {
+      "dest": "17-billing/01-billing-workspace.png",
+      "source": "docs/ui/screenshots/billing-desktop-synthetic.png",
+      "origin": "Presentation-readiness responsive run",
+      "bytes": 242201
+    },
+    {
+      "dest": "17-billing/02-billing-mobile.png",
+      "source": "docs/ui/screenshots/billing-small-mobile-synthetic.png",
+      "origin": "Presentation-readiness responsive run",
+      "bytes": 33209
+    },
+    {
+      "dest": "18-accounting/01-accounting-dashboard.png",
+      "source": "docs/audits/accounting-workspace-evidence/01-accounting-dashboard.png",
+      "origin": "Accounting workspace evidence run",
+      "bytes": 210712
+    },
+    {
+      "dest": "18-accounting/02-chart-of-accounts.png",
+      "source": "docs/audits/accounting-workspace-evidence/02-chart-of-accounts.png",
+      "origin": "Accounting workspace evidence run",
+      "bytes": 220564
+    },
+    {
+      "dest": "18-accounting/03-financial-periods.png",
+      "source": "docs/audits/accounting-workspace-evidence/03-financial-periods.png",
+      "origin": "Accounting workspace evidence run",
+      "bytes": 191006
+    },
+    {
+      "dest": "18-accounting/04-journal-entries.png",
+      "source": "docs/audits/accounting-workspace-evidence/04-journal-entries.png",
+      "origin": "Accounting workspace evidence run",
+      "bytes": 220881
+    },
+    {
+      "dest": "18-accounting/05-income-statement.png",
+      "source": "docs/audits/accounting-workspace-evidence/05-income-statement.png",
+      "origin": "Accounting workspace evidence run",
+      "bytes": 171937
+    },
+    {
+      "dest": "18-accounting/06-billing-settlement.png",
+      "source": "docs/audits/accounting-workspace-evidence/06-billing-settlement.png",
+      "origin": "Accounting workspace evidence run",
+      "bytes": 177641
+    },
+    {
+      "dest": "18-accounting/07-expenses-payables.png",
+      "source": "docs/audits/accounting-workspace-evidence/07-expenses-payables.png",
+      "origin": "Accounting workspace evidence run",
+      "bytes": 175183
+    },
+    {
+      "dest": "18-accounting/08-payroll-mapping.png",
+      "source": "docs/audits/accounting-workspace-evidence/08-payroll-mapping-blockers.png",
+      "origin": "Accounting workspace evidence run",
+      "bytes": 217550
+    },
+    {
+      "dest": "18-accounting/09-banking-workspace.png",
+      "source": "docs/audits/accounting-workspace-evidence/09-existing-banking-workspace.png",
+      "origin": "Accounting workspace evidence run",
+      "bytes": 145276
+    },
+    {
+      "dest": "18-accounting/10-read-only-permission.png",
+      "source": "docs/audits/accounting-workspace-evidence/12-read-only-permissions.png",
+      "origin": "Accounting workspace evidence run",
+      "bytes": 147100
+    },
+    {
+      "dest": "19-partners-equity/01-dashboard.png",
+      "source": "docs/testing/financial-system/screenshots/17-partners-equity/01-partners-equity-dashboard.png",
+      "origin": "Financial-system verification run, partners equity",
+      "bytes": 236410
+    },
+    {
+      "dest": "19-partners-equity/02-filtered-dashboard.png",
+      "source": "docs/testing/financial-system/screenshots/17-partners-equity/02-partners-equity-filtered-dashboard.png",
+      "origin": "Financial-system verification run, partners equity",
+      "bytes": 243327
+    },
+    {
+      "dest": "19-partners-equity/03-contribution-register.png",
+      "source": "docs/testing/financial-system/screenshots/17-partners-equity/03-contribution-register.png",
+      "origin": "Financial-system verification run, partners equity",
+      "bytes": 302146
+    },
+    {
+      "dest": "19-partners-equity/04-contribution-draft.png",
+      "source": "docs/testing/financial-system/screenshots/17-partners-equity/04-contribution-entry-draft.png",
+      "origin": "Financial-system verification run, partners equity",
+      "bytes": 272319
+    },
+    {
+      "dest": "19-partners-equity/05-contribution-posted.png",
+      "source": "docs/testing/financial-system/screenshots/17-partners-equity/05-contribution-approved-and-posted.png",
+      "origin": "Financial-system verification run, partners equity",
+      "bytes": 413091
+    },
+    {
+      "dest": "19-partners-equity/06-partner-statement.png",
+      "source": "docs/testing/financial-system/screenshots/17-partners-equity/06-partner-statement.png",
+      "origin": "Financial-system verification run, partners equity",
+      "bytes": 425699
+    },
+    {
+      "dest": "19-partners-equity/07-changes-in-equity.png",
+      "source": "docs/testing/financial-system/screenshots/17-partners-equity/07-changes-in-equity-annual.png",
+      "origin": "Financial-system verification run, partners equity",
+      "bytes": 342417
+    },
+    {
+      "dest": "19-partners-equity/08-reconciliation.png",
+      "source": "docs/testing/financial-system/screenshots/17-partners-equity/08-reconciliation-after-reversal.png",
+      "origin": "Financial-system verification run, partners equity",
+      "bytes": 262419
+    },
+    {
+      "dest": "19-partners-equity/09-access-required.png",
+      "source": "docs/audits/partner-equity-visibility-evidence/01-access-required.png",
+      "origin": "Partner equity visibility evidence run",
+      "bytes": 177577
+    },
+    {
+      "dest": "20-fixed-assets/01-register.png",
+      "source": "docs/project/delivery-evidence/phase-5/11-fixed-assets-register.png",
+      "origin": "Phase 5 delivery evidence run",
+      "bytes": 179114
+    },
+    {
+      "dest": "20-fixed-assets/02-asset-detail.png",
+      "source": "docs/project/delivery-evidence/phase-5/12-fixed-asset-detail.png",
+      "origin": "Phase 5 delivery evidence run",
+      "bytes": 178088
+    },
+    {
+      "dest": "20-fixed-assets/03-categories.png",
+      "source": "docs/project/delivery-evidence/phase-5/13-fixed-assets-categories.png",
+      "origin": "Phase 5 delivery evidence run",
+      "bytes": 158091
+    },
+    {
+      "dest": "20-fixed-assets/04-maintenance.png",
+      "source": "docs/project/delivery-evidence/phase-5/14-fixed-assets-maintenance.png",
+      "origin": "Phase 5 delivery evidence run",
+      "bytes": 152427
+    },
+    {
+      "dest": "20-fixed-assets/05-depreciation-preview.png",
+      "source": "docs/project/delivery-evidence/phase-5/16-fixed-assets-depreciation-preview.png",
+      "origin": "Phase 5 delivery evidence run",
+      "bytes": 192943
+    },
+    {
+      "dest": "22-procurement/01-overview.png",
+      "source": "docs/project/delivery-evidence/phase-5/17-procurement-overview.png",
+      "origin": "Phase 5 delivery evidence run",
+      "bytes": 234464
+    },
+    {
+      "dest": "22-procurement/02-requisition-form.png",
+      "source": "docs/project/delivery-evidence/phase-5/19-procurement-requisition-form.png",
+      "origin": "Phase 5 delivery evidence run",
+      "bytes": 191180
+    },
+    {
+      "dest": "22-procurement/03-requisition-saved.png",
+      "source": "docs/project/delivery-evidence/phase-5/20-procurement-requisition-saved.png",
+      "origin": "Phase 5 delivery evidence run",
+      "bytes": 208267
+    },
+    {
+      "dest": "22-procurement/04-receiving.png",
+      "source": "docs/project/delivery-evidence/phase-5/21-procurement-receiving.png",
+      "origin": "Phase 5 delivery evidence run",
+      "bytes": 207650
+    },
+    {
+      "dest": "21-inventory/01-inventory-workspace.png",
+      "source": "docs/ui/screenshots/inventory-desktop-synthetic.png",
+      "origin": "Presentation-readiness responsive run",
+      "bytes": 201371
+    },
+    {
+      "dest": "21-inventory/02-adjustment-posted.png",
+      "source": "docs/project/delivery-evidence/phase-5/24-inventory-adjustment-posted.png",
+      "origin": "Phase 5 delivery evidence run",
+      "bytes": 175461
+    },
+    {
+      "dest": "21-inventory/03-transfer.png",
+      "source": "docs/project/delivery-evidence/phase-5/26-inventory-transfer.png",
+      "origin": "Phase 5 delivery evidence run",
+      "bytes": 202319
+    },
+    {
+      "dest": "21-inventory/04-valuation.png",
+      "source": "docs/project/delivery-evidence/phase-5/27-inventory-reorder-valuation.png",
+      "origin": "Phase 5 delivery evidence run",
+      "bytes": 179415
+    },
+    {
+      "dest": "21-inventory/05-stock-movements-report.png",
+      "source": "docs/audits/reporting-programme-batch-1-evidence/05-branded-pdf-first-page.png",
+      "origin": "Reporting programme batch 1 evidence run (stock movement report PDF)",
+      "bytes": 154230
+    },
+    {
+      "dest": "23-insurance/01-sha-eclaims.png",
+      "source": "docs/ui/screenshots/sha-eclaims-desktop-synthetic.png",
+      "origin": "Presentation-readiness responsive run",
+      "bytes": 215417
+    },
+    {
+      "dest": "24-private-insurance/01-private-insurance.png",
+      "source": "docs/ui/screenshots/private-insurance-desktop-synthetic.png",
+      "origin": "Presentation-readiness responsive run",
+      "bytes": 197175
+    },
+    {
+      "dest": "25-reporting/01-catalogue.png",
+      "source": "docs/audits/presentation-readiness-evidence/06-reporting-centre-catalogue.png",
+      "origin": "Presentation-readiness evidence run",
+      "bytes": 208750
+    },
+    {
+      "dest": "25-reporting/02-report-results.png",
+      "source": "docs/audits/presentation-readiness-evidence/07b-reporting-centre-returned-rows.png",
+      "origin": "Presentation-readiness evidence run",
+      "bytes": 81344
+    },
+    {
+      "dest": "25-reporting/03-movement-workbench.png",
+      "source": "docs/audits/reporting-programme-batch-1-evidence/01-movement-workbench.png",
+      "origin": "Reporting programme batch 1 evidence run",
+      "bytes": 256936
+    },
+    {
+      "dest": "25-reporting/04-movement-rows.png",
+      "source": "docs/audits/reporting-programme-batch-1-evidence/02-actual-movement-rows.png",
+      "origin": "Reporting programme batch 1 evidence run",
+      "bytes": 38586
+    },
+    {
+      "dest": "25-reporting/05-empty-result.png",
+      "source": "docs/audits/reporting-programme-batch-1-evidence/03-empty-result.png",
+      "origin": "Reporting programme batch 1 evidence run",
+      "bytes": 251212
+    },
+    {
+      "dest": "25-reporting/06-exported-pdf.png",
+      "source": "docs/audits/reporting-programme-batch-1-evidence/05-branded-pdf-first-page.png",
+      "origin": "Reporting programme batch 1 evidence run",
+      "bytes": 154230
+    },
+    {
+      "dest": "25-reporting/07-clinical-document-report.png",
+      "source": "docs/audits/presentation-readiness-evidence/08-reporting-centre-clinical-document.png",
+      "origin": "Presentation-readiness evidence run",
+      "bytes": 256849
+    },
+    {
+      "dest": "26-configuration/01-configuration.png",
+      "source": "docs/ui/screenshots/settings-desktop-synthetic.png",
+      "origin": "Presentation-readiness responsive run",
+      "bytes": 176178
+    },
+    {
+      "dest": "26-configuration/02-platform-administration.png",
+      "source": "docs/ui/screenshots/platform-administration-desktop-synthetic.png",
+      "origin": "Presentation-readiness responsive run",
+      "bytes": 183148
+    },
+    {
+      "dest": "26-configuration/03-letterhead-version.png",
+      "source": "docs/audits/clinical-documents-evidence/05-letterhead-active-version.png",
+      "origin": "Clinical-documents evidence run",
+      "bytes": 220478
+    },
+    {
+      "dest": "27-audit/01-audit-trail.png",
+      "source": "docs/ui/screenshots/audit-desktop-synthetic.png",
+      "origin": "Presentation-readiness responsive run",
+      "bytes": 201441
+    },
+    {
+      "dest": "27-audit/02-audit-events.png",
+      "source": "docs/audits/syrona-zero-fill-evidence/browser/08-audit.png",
+      "origin": "Zero-fill planning evidence run",
+      "bytes": 202496
+    },
+    {
+      "dest": "28-planning/01-planning-dashboard.png",
+      "source": "docs/audits/syrona-zero-fill-evidence/browser/01-dashboard.png",
+      "origin": "Zero-fill planning evidence run",
+      "bytes": 201887
+    },
+    {
+      "dest": "28-planning/02-import-preview.png",
+      "source": "docs/audits/syrona-zero-fill-evidence/browser/10-import-preview.png",
+      "origin": "Zero-fill planning evidence run",
+      "bytes": 190972
+    },
+    {
+      "dest": "28-planning/03-issued-report.png",
+      "source": "docs/audits/syrona-zero-fill-evidence/browser/09-issued-report.png",
+      "origin": "Zero-fill planning evidence run",
+      "bytes": 198383
+    },
+    {
+      "dest": "28-planning/04-budget-pdf.png",
+      "source": "docs/audits/budget-planning-evidence/13-pdf-page-1.png",
+      "origin": "Budget planning evidence run",
+      "bytes": 308120
+    }
+  ],
+  "missing": []
+}

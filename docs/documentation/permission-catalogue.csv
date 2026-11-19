@@ -1,0 +1,227 @@
+code,name,description,module
+theatre.read,Read theatre schedule,,theatre
+theatre.reports.read,Read theatre scheduling reports,,theatre
+theatre.rooms.manage,Manage theatre rooms,,theatre
+theatre.schedule.create,Schedule theatre cases,,theatre
+theatre.schedule.reconcile,Review historical theatre reservations,,theatre
+theatre.schedule.manage,Change theatre bookings,,theatre
+platform.read,View Platform,,platform
+platform.manage,Manage Platform,,platform
+platform.settings.manage,Manage Platform Settings,,platform
+tenants.read,View Tenants,,tenants
+tenants.create,Create Tenants,,tenants
+tenants.update,Update Tenants,,tenants
+tenants.deactivate,Deactivate Tenants,,tenants
+facilities.read,View Facilities,,facilities
+facilities.create,Create Facilities,,facilities
+facilities.update,Update Facilities,,facilities
+facilities.modules.manage,Manage Facility Modules,,facilities
+facility.branding.read,View Facility Letterhead,,facilities
+facility.branding.manage,Manage Facility Letterhead,,facilities
+facilities.approve,Approve Facilities,,facilities
+facilities.deactivate,Deactivate Facilities,,facilities
+users.read,View Users,,users
+users.create,Create Users,,users
+users.update,Update Users,,users
+users.deactivate,Deactivate Users,,users
+users.invite,Invite Staff,,users
+users.invitations.read,View Staff Invitations,,users
+users.invitations.revoke,Revoke Staff Invitations,,users
+users.invitations.reissue,Reissue Staff Invitations,,users
+users.roles.manage,Manage User Roles,,users
+roles.read,View Roles,,roles
+roles.create,Create Roles,,roles
+roles.update,Update Roles,,roles
+roles.permissions.manage,Manage Role Permissions,,roles
+auth.sessions.read,View Sessions,,authentication
+auth.sessions.revoke,Revoke Sessions,,authentication
+auth.password.reset,Reset Passwords,,authentication
+auth.mfa.manage,Manage MFA,,authentication
+practitioners.read,View Practitioners,,practitioners
+practitioners.create,Create Practitioners,,practitioners
+practitioners.update,Update Practitioners,,practitioners
+practitioners.verify,Verify Practitioner Credentials,,practitioners
+patients.documents.read,Read signed patient documents,,patients
+patients.documents.upload,Upload signed patient documents,,patients
+patients.documents.release,Release patient documents to portal,,patients
+radiology.consent.verify,Verify procedure-specific consent,,radiology
+radiology.consent.exception,Authorize procedure consent exception,,radiology
+radiology.consent.policy,Manage facility radiology consent policy,,radiology
+patients.read,View Patients,,patients
+patients.create,Register Patients,,patients
+patients.update,Update Patients,,patients
+patients.deactivate,Deactivate Patients,,patients
+portal.invite,Invite Patients to the Portal,,portal
+portal.invites.manage,Revoke Portal Invitations,,portal
+portal.accounts.manage,Manage Patient Portal Accounts,,portal
+portal.audit.read,Review Portal Audit Events,,portal
+portal.settings.manage,Manage Patient Portal Settings,,portal
+interop.fhir.patient.read,Export FHIR Patient Resource,,interop
+clinical.read,View Clinical Records,,clinical
+clinical.create,Create Clinical Records,,clinical
+clinical.update,Update Clinical Records,,clinical
+appointments.read,View Appointments,,appointments
+appointments.create,Create Appointments,,appointments
+appointments.update,Update Appointments,,appointments
+appointments.cancel,Cancel Appointments,,appointments
+appointments.categories.manage,Manage appointment categories,,appointments
+maternity.read,View Maternity Records,,maternity
+maternity.create,Record Maternity Care,,maternity
+maternity.update,Update Maternity Records,,maternity
+inpatient.read,View Inpatient Records,,inpatient
+inpatient.admit,Admit Patients,,inpatient
+inpatient.discharge,Discharge Patients,,inpatient
+inpatient.wards.create,Create Wards,,inpatient
+inpatient.wards.update,Update Wards,,inpatient
+inpatient.wards.delete,Delete Wards,,inpatient
+inpatient.beds.create,Create Beds,,inpatient
+inpatient.beds.update,Update Beds,,inpatient
+inpatient.beds.delete,Delete Beds,,inpatient
+laboratory.read,View Laboratory,,laboratory
+laboratory.orders.create,Create Laboratory Orders,,laboratory
+laboratory.results.enter,Enter Laboratory Results,,laboratory
+laboratory.results.verify,Verify Laboratory Results,,laboratory
+radiology.read,View Radiology,,radiology
+pharmacy.read,View Pharmacy,,pharmacy
+pharmacy.dispense,Dispense Medicines,,pharmacy
+pharmacy.inventory.manage,Manage Pharmacy Inventory,,pharmacy
+inventory.read,View Inventory,,inventory
+inventory.manage,Manage Inventory,,inventory
+billing.read,View Billing,,billing
+billing.create,Create Bills,,billing
+billing.update,Update Bills,,billing
+billing.payments.record,Record Payments,,billing
+billing.refunds.record,Record Manual Refunds,,billing
+billing.refunds.approve,Independently Review Refund Requests,,billing
+tariffs.read,View Service Tariffs,,billing
+tariffs.manage,Manage Service Tariffs,,billing
+insurance.read,View Insurance,,insurance
+insurance.claims.create,Create Claims,,insurance
+insurance.claims.submit,Submit Claims,,insurance
+insurance.claims.manage,Manage Claims,,insurance
+insurance.sha.read,View SHA eClaims & Readiness,,insurance
+insurance.sha.eligibility.check,Check SHA Patient Eligibility,,insurance
+insurance.sha.benefits.validate,Validate SHA Service Benefits,,insurance
+insurance.sha.preauthorization.create,Create & Submit SHA Preauthorization,,insurance
+insurance.sha.claims.read,View SHA eClaims,,insurance
+insurance.sha.claims.prepare,Prepare SHA eClaims,,insurance
+insurance.sha.claims.submit,Submit SHA eClaims,,insurance
+insurance.sha.claims.resubmit,Resubmit Rejected SHA eClaims,,insurance
+insurance.sha.remittance.read,View SHA Remittances,,insurance
+insurance.sha.reconciliation.manage,Reconcile SHA Remittances,,insurance
+insurance.sha.configuration.manage,Manage SHA Payer Configuration & Rules,,insurance
+insurance.payers.read,View Private Insurer Configurations,,insurance
+insurance.payers.manage,Manage Private Insurer Configurations,,insurance
+insurance.members.read,View Insurance Memberships & Policies,,insurance
+insurance.members.manage,Manage Insurance Memberships & Policies,,insurance
+insurance.eligibility.check,Check Private Insurance Eligibility,,insurance
+insurance.benefits.validate,Validate Private Insurance Benefits & Copayments,,insurance
+insurance.mappings.manage,Manage Insurer Service Mappings & Benefit Rules,,insurance
+insurance.preauthorization.manage,Manage Private Insurance Preauthorizations,,insurance
+insurance.private.claims.prepare,Prepare & Validate Private Insurance Claims,,insurance
+insurance.private.claims.submit,Submit & Resubmit Private Insurance Claims,,insurance
+insurance.private.remittance.reconcile,Import & Reconcile Private Insurance Remittances,,insurance
+procurement.read,View Suppliers and Purchase Orders,,procurement
+procurement.create,Create Suppliers and Purchase Orders,,procurement
+procurement.update,Edit Procurement,,procurement
+procurement.delete,Cancel Procurement,,procurement
+procurement.reject,Reject Purchase Orders,,procurement
+procurement.complete,Complete Purchase Orders,,procurement
+procurement.approve,Approve Purchase Orders,,procurement
+approval_policies.read,View Approval Policies,,procurement
+approval_policies.manage,Manage Approval Policies,,procurement
+assets.read,View Fixed Assets,,assets
+assets.manage,Manage Fixed Assets,,assets
+assets.depreciate,Post Depreciation,,assets
+assets.dispose,Dispose of Fixed Assets,,assets
+assets.acquisitions.approve,Approve Asset Acquisitions,,assets
+assets.depreciation.configure,Configure Depreciation Policy,,assets
+assets.depreciation.approve,Approve and Post Depreciation,,assets
+assets.maintenance.manage,Manage Asset Maintenance,,assets
+assets.inspections.perform,Perform Asset Inspections,,assets
+assets.transfer,Transfer Fixed Assets,,assets
+assets.reports.financial,View Fixed Asset Financial Reports,,assets
+hr.read,View Human Resources,,hr
+hr.manage,Manage Human Resources,,hr
+hr.approve,Approve Leave,,hr
+payroll.read,View Payroll,,payroll
+payroll.manage,Prepare Payroll,,payroll
+payroll.approve,Approve Payroll,,payroll
+payroll.post,Post Payroll to Ledger,,payroll
+payroll.statutory.manage,Record Statutory Payroll Rules,,payroll
+reports.read,View Reports,,reports
+public_health.reports.create,Create Public Health Reports,,public_health
+reports.export,Export Reports,,reports
+audit.read,View Audit Logs,,audit
+audit.security.read,View Security Audit Logs,,audit
+system.health.read,View System Health,,system
+system.settings.manage,Manage System Settings,,system
+accounting.planning.read,View budget plans,,accounting
+accounting.planning.reset,Reset draft planning data,,accounting
+accounting.planning.manage,Manage draft budget plans,,accounting
+accounting.planning.import,Import planning workbooks,,accounting
+accounting.planning.approve,Independently approve and archive budget plans,,accounting
+accounting.planning.export,Issue and export planning reports,,accounting
+accounting.planning.audit,Read planning audit history,,accounting
+accounting.equity.read,View partner equity statements,,accounting
+accounting.equity.manage,Prepare draft partner equity statements,,accounting
+accounting.equity.partners,Manage effective-dated partner register,,accounting
+accounting.equity.review,Independently review partner equity statements,,accounting
+accounting.equity.approve,Approve reviewed partner equity statements,,accounting
+accounting.equity.export,Export full partner equity statements,,accounting
+accounting.equity.audit,Read partner equity audit history,,accounting
+accounting.read,View Accounting & Financial Statements,,accounting
+accounting.coa.manage,Manage Chart of Accounts & Periods,,accounting
+accounting.journals.post,Post General Ledger Journals & Reversals,,accounting
+accounting.periods.close,Close Financial Periods,,accounting
+accounting.expenses.request,Submit Expense Requests,,accounting
+accounting.expenses.approve,Approve & Post Expense Requests,,accounting
+accounting.assets.manage,Manage Fixed Asset Register & Depreciation,,accounting
+accounting.payables.manage,Manage Accounts Payable & Supplier Payments,,accounting
+accounting.bank.manage,Manage Bank Accounts & Reconciliation,,accounting
+accounting.reports.export,Export Accounting Reports,,accounting
+accounting.statements.prepare,Prepare Financial Statements,,accounting
+accounting.statements.review,Review Financial Statements,,accounting
+accounting.statements.approve,Approve and Close Financial Statements,,accounting
+accounting.statements.reopen,Reopen and Revise Financial Statements,,accounting
+accounting.statements.configure,Configure Financial Statement Presentation,,accounting
+bank_payments.read,View Bank Payments,,billing
+bank_payments.submit,Submit Pending Bank Transfers,,billing
+bank_payments.verify,Independently Verify Bank Evidence,,billing
+bank_payments.settle,Approve Verified Bank Settlement,,billing
+bank_payments.configure,Administer Facility Bank Accounts and Bank-only Policy,,billing
+payer_hub.global.read,View Global Payer Registry,,payer_hub
+payer_hub.global.manage,Manage Global Payer Registry,,payer_hub
+payer_hub.assign,Assign Payers to Facilities,,payer_hub
+payer_hub.production.approve,Review Payer Production Requests,,payer_hub
+payer_hub.catalogue.read,View Facility Payer Catalogue,,payer_hub
+payer_hub.facility.manage,Manage Facility Payer Activation,,payer_hub
+payer_hub.credentials.manage,Manage Payer Credential References,,payer_hub
+payer_hub.production.request,Request Payer Production Approval,,payer_hub
+payment_hub.global.read,View Global Payment Providers,,payment_hub
+payment_hub.global.manage,Manage Global Payment Providers,,payment_hub
+payment_hub.assign,Assign Payment Providers,,payment_hub
+payment_hub.production.approve,Approve Production Integration Requests,,payment_hub
+payment_hub.catalogue.read,View Facility Payment Catalogue,,payment_hub
+payment_hub.facility.manage,Manage Facility Payment Integrations,,payment_hub
+payment_hub.credentials.manage,Manage Facility Provider Credentials,,payment_hub
+payment_hub.accounts.read,View Masked Payment Accounts,,payment_hub
+payment_hub.collection.initiate,Initiate Payment Collection,,payment_hub
+payment_hub.payments.verify,Check Provider Payment Status,,payment_hub
+payment_hub.transactions.read,View Payment Transactions,,payment_hub
+payment_hub.reconciliation.manage,Reconcile Payment Transactions,,payment_hub
+payment_hub.production.request,Request Production Payment Access,,payment_hub
+payment_hub.transfers.initiate,Initiate Provider Transfers,,payment_hub
+dialysis.read,View Dialysis Unit,,dialysis
+dialysis.assessments.manage,Record Dialysis Patient Assessments,,dialysis
+dialysis.plans.authorize,Authorize Dialysis Treatment Plans,,dialysis
+dialysis.schedule.manage,Manage Dialysis Schedules & Machine Allocation,,dialysis
+dialysis.sessions.record,Record Dialysis Sessions & Consumables,,dialysis
+dialysis.machines.manage,Manage Dialysis Machines & Maintenance,,dialysis
+dialysis.adverse_events.manage,Record Dialysis Adverse Events & Follow-Up,,dialysis
+dialysis.protocols.manage,Configure Facility Dialysis Protocols,,dialysis
+clinical.icd11.read,Search ICD-11 Catalogue & Mappings,,clinical
+clinical.icd11.manage,Manage ICD-11 Sync & Mapping Reviews,,clinical
+booking.read,View Website Bookings,,website_booking
+booking.manage,Manage Website Bookings & Reminders,,website_booking
+booking.clients.manage,Manage Website Booking API Clients,,website_booking
