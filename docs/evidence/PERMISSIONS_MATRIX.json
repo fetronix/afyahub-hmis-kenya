@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-18T07:42:57.691Z",
+ "generatedAt": "2026-11-19T08:10:01.575Z",
  "generatedBy": "scripts/docs/build-permissions-matrix.ts",
  "sources": {
   "catalogue": "src/seeds/permissions.ts",
@@ -3220,9 +3220,10 @@
    "roles": [
     "SUPER_ADMIN"
    ],
-   "routeCount": 1,
+   "routeCount": 2,
    "routeExamples": [
-    "POST /api/payroll/runs/:id/post"
+    "POST /api/payroll/runs/:id/post",
+    "POST /api/payroll/runs/:id/reverse"
    ],
    "navModules": []
   },
@@ -3235,7 +3236,7 @@
     "SUPER_ADMIN",
     "FACILITY_ADMIN"
    ],
-   "routeCount": 13,
+   "routeCount": 15,
    "routeExamples": [
     "GET /api/payroll/account-settings",
     "GET /api/payroll/accounts"
@@ -3252,10 +3253,10 @@
    "roles": [
     "SUPER_ADMIN"
    ],
-   "routeCount": 4,
+   "routeCount": 5,
    "routeExamples": [
     "POST /api/payroll/form-profiles",
-    "POST /api/payroll/statutory-versions"
+    "POST /api/payroll/statutory-rulebook/install"
    ],
    "navModules": []
   },

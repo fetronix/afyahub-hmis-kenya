@@ -1,4 +1,5 @@
 import { PayrollReadinessPanel, VerifyPayrollRule } from './payroll/PayrollReadiness.tsx';
+import { PayrollPreviewPanel, PayrollRulebookPanel } from './payroll/PayrollRulebook.tsx';
 import {
   PAYROLL_ACCOUNT_PURPOSES,
   assessPayrollAccounts,
@@ -91,7 +92,7 @@ type Account = {
   isActive: boolean;
 };
 
-export type PayrollTabId = 'runs' | 'rules' | 'accounts' | 'staff' | 'history';
+export type PayrollTabId = 'runs' | 'rules' | 'preview' | 'accounts' | 'staff' | 'history';
 type TabId = PayrollTabId;
 
 export const PayrollModule: React.FC<{ initialTab?: PayrollTabId }> = ({ initialTab = 'runs' }) => {
@@ -118,6 +119,7 @@ export const PayrollModule: React.FC<{ initialTab?: PayrollTabId }> = ({ initial
 
   const [periodModal, setPeriodModal] = useState(false);
   const [ruleModal, setRuleModal] = useState(false);
+  const [reverseRunId, setReverseRunId] = useState<number | null>(null);
   const [runDetail, setRunDetail] = useState<PayrollRunDetail | null>(null);
   const [payslip, setPayslip] = useState<PayrollPayslipDetail | null>(null);
   const [calcResult, setCalcResult] = useState<{
@@ -305,6 +307,7 @@ export const PayrollModule: React.FC<{ initialTab?: PayrollTabId }> = ({ initial
           { id: 'staff', label: 'Staff pay' },
           { id: 'history', label: 'History & annual reports' },
           { id: 'rules', label: 'Statutory rules' },
+          { id: 'preview', label: 'Calculation preview' },
           { id: 'accounts', label: 'Ledger accounts' },
         ]}
       />
@@ -449,6 +452,14 @@ export const PayrollModule: React.FC<{ initialTab?: PayrollTabId }> = ({ initial
                             <Send size={14} /> Post to ledger
                           </PrimaryButton>
                         )}
+                        {period.run?.status === 'POSTED' && canPost && (
+                          <SecondaryButton
+                            disabled={saving}
+                            onClick={() => setReverseRunId(period.run!.id)}
+                          >
+                            Reverse
+                          </SecondaryButton>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -470,6 +481,16 @@ export const PayrollModule: React.FC<{ initialTab?: PayrollTabId }> = ({ initial
           )}
         </section>
       )}
+
+      {tab === 'rules' && (
+        <PayrollRulebookPanel
+          facilityId={facilityId}
+          canManageRules={canManageRules}
+          onChanged={() => void load()}
+        />
+      )}
+
+      {tab === 'preview' && <PayrollPreviewPanel facilityId={facilityId} canReadPayslips />}
 
       {tab === 'rules' && (
         <section className="space-y-3">
@@ -681,6 +702,24 @@ export const PayrollModule: React.FC<{ initialTab?: PayrollTabId }> = ({ initial
         />
       )}
 
+      {reverseRunId !== null && (
+        <ReverseRunDialog
+          saving={saving}
+          onClose={() => setReverseRunId(null)}
+          onSubmit={(reason) =>
+            void run(async () => {
+              const reversal = await api.reversePayrollRun(facilityId, reverseRunId, reason);
+              showToast(`Reversed with journal ${reversal.reversalJournalNumber}.`, {
+                tone: 'success',
+              });
+              setReverseRunId(null);
+              await load();
+              triggerRefresh();
+            })
+          }
+        />
+      )}
+
       {runDetail && (
         <Modal
           open
@@ -883,6 +922,17 @@ function PayslipView({
         </div>
       </div>
 
+      {payslip.breakdown?.proration &&
+        payslip.breakdown.proration.paidDays < payslip.breakdown.proration.totalDays && (
+          <p className="rounded border border-hair px-2 py-1 text-xs text-muted">
+            Basic salary prorated for {payslip.breakdown.proration.paidDays} of{' '}
+            {payslip.breakdown.proration.totalDays} calendar days:{' '}
+            {kes(payslip.breakdown.proration.baseSalaryCents)} of{' '}
+            {kes(payslip.breakdown.proration.fullBaseSalaryCents)}. Statutory charges are calculated
+            on the earnings actually paid.
+          </p>
+        )}
+
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
           Employer contributions
@@ -905,7 +955,8 @@ function PayslipView({
           {payslip.breakdown?.statutes?.map((statute) => (
             <li key={statute.statute} className="flex justify-between">
               <span>
-                {statute.statute} — {statute.label} (version {statute.versionId})
+                {statute.statute} — {statute.label} (version {statute.versionId},{' '}
+                {statute.effectiveFrom} → {statute.effectiveTo ?? 'open'})
               </span>
               <span className="tabular-nums">
                 employee {kes(statute.employeeCents)} · employer {kes(statute.employerCents)}
@@ -930,6 +981,57 @@ function PayslipView({
 /* ============================================================
    DIALOGS
    ============================================================ */
+
+/**
+ * Correction is a recorded act, not a deletion. The reason is required and
+ * becomes part of the reversal journal's description, so the ledger explains
+ * itself without reference to this screen.
+ */
+function ReverseRunDialog({
+  saving,
+  onClose,
+  onSubmit,
+}: {
+  saving: boolean;
+  onClose: () => void;
+  onSubmit: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState('');
+  return (
+    <Modal open onClose={onClose} title="Reverse this payroll run">
+      <form
+        className="space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit(reason.trim());
+        }}
+      >
+        <p className="text-xs text-muted">
+          A contra journal reverses the posted amounts and the run is marked REVERSED. The original
+          journal and every payslip stay in place. The period can then be recalculated into a new
+          run.
+        </p>
+        <label className="ui-field">
+          <span>Reason for the correction *</span>
+          <textarea
+            className="ui-input"
+            required
+            minLength={8}
+            rows={3}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+          />
+        </label>
+        <div className="flex justify-end gap-2">
+          <SecondaryButton onClick={onClose}>Cancel</SecondaryButton>
+          <PrimaryButton type="submit" disabled={saving || reason.trim().length < 8}>
+            {saving ? 'Reversing…' : 'Post reversal'}
+          </PrimaryButton>
+        </div>
+      </form>
+    </Modal>
+  );
+}
 
 function PeriodDialog({
   saving,
@@ -1004,10 +1106,10 @@ const emptyBand = (): {
 });
 
 const STATUTE_NOTES: Record<string, string> = {
-  PAYE: 'Progressive tax. Enter each band’s lower bound, exclusive upper bound (blank for the top band), the employee rate and any relief.',
-  NSSF: 'Exactly one band. Enter the employee and employer rate and, where the statute sets one, the cap on the amount charged.',
-  SHIF: 'Exactly one band. Enter the employee rate and the authority-defined minimum contribution. A minimum is a floor, not an additional fixed charge.',
-  AHL: 'Exactly one band. Enter the employee and employer rate.',
+  PAYE: 'Progressive tax over contiguous bands, starting at zero, with the top band open-ended. Each band charges only the income inside it; enter the rate and any relief the instrument records once.',
+  NSSF: 'Enter one band per tier — Tier I up to the lower earnings limit, Tier II from it to the upper limit. The limits are band bounds, and a contribution cap belongs in the band cap, not in the code.',
+  SHIF: 'One band is usual, but the rate applies to the whole gross. The authority-defined minimum is a floor on the charge, not an extra fixed amount, and the employer share is normally zero.',
+  AHL: 'One band over the gross monthly salary (basic plus regular cash allowances). Enter both the employee and employer rate; the employer share is never deducted from net pay.',
 };
 
 function RuleDialog({
@@ -1026,6 +1128,13 @@ function RuleDialog({
   const [authority, setAuthority] = useState('');
   const [sourceReference, setSourceReference] = useState('');
   const [notes, setNotes] = useState('');
+  // Provenance that makes a version checkable years later: the instrument's
+  // own name, where it was published, and when it was published.
+  const [ruleName, setRuleName] = useState('');
+  const [calculationMethod, setCalculationMethod] = useState('');
+  const [sourceTitle, setSourceTitle] = useState('');
+  const [sourceUrl, setSourceUrl] = useState('');
+  const [sourcePublishedOn, setSourcePublishedOn] = useState('');
   const [bands, setBands] = useState([emptyBand()]);
   const [deductions, setDeductions] = useState({
     deductNssf: true,
@@ -1086,6 +1195,12 @@ function RuleDialog({
             effectiveTo: effectiveTo || null,
             authority,
             sourceReference,
+            ruleName: ruleName || null,
+            calculationMethod: calculationMethod || null,
+            sourceTitle: sourceTitle || null,
+            sourceUrl: sourceUrl || null,
+            sourcePublishedOn: sourcePublishedOn || null,
+            currency: 'KES',
             notes: notes || null,
             bands: building,
             calculationConfig: {
@@ -1211,16 +1326,60 @@ function RuleDialog({
               onChange={(event) => setSourceReference(event.target.value)}
             />
           </label>
+          <label className="ui-field">
+            <span>Instrument / rule name</span>
+            <input
+              className="ui-input"
+              placeholder="e.g. NSSF Year 4 contribution rates"
+              value={ruleName}
+              onChange={(event) => setRuleName(event.target.value)}
+            />
+          </label>
+          <label className="ui-field">
+            <span>Calculation method</span>
+            <input
+              className="ui-input"
+              placeholder="e.g. PROGRESSIVE_MONTHLY_BANDS"
+              value={calculationMethod}
+              onChange={(event) => setCalculationMethod(event.target.value)}
+            />
+          </label>
+          <label className="ui-field">
+            <span>Source title</span>
+            <input
+              className="ui-input"
+              placeholder="Published notice, regulation or Act"
+              value={sourceTitle}
+              onChange={(event) => setSourceTitle(event.target.value)}
+            />
+          </label>
+          <label className="ui-field">
+            <span>Source URL</span>
+            <input
+              className="ui-input"
+              type="url"
+              placeholder="https://…"
+              value={sourceUrl}
+              onChange={(event) => setSourceUrl(event.target.value)}
+            />
+          </label>
+          <label className="ui-field">
+            <span>Source published on</span>
+            <input
+              className="ui-input"
+              type="date"
+              value={sourcePublishedOn}
+              onChange={(event) => setSourcePublishedOn(event.target.value)}
+            />
+          </label>
         </div>
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Bands</h3>
-            {statute === 'PAYE' && (
-              <SecondaryButton type="button" onClick={() => setBands([...bands, emptyBand()])}>
-                <Plus size={14} /> Add band
-              </SecondaryButton>
-            )}
+            <SecondaryButton type="button" onClick={() => setBands([...bands, emptyBand()])}>
+              <Plus size={14} /> Add band
+            </SecondaryButton>
           </div>
           {bands.map((band, index) => (
             <div

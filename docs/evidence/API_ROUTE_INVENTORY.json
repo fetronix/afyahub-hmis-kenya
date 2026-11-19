@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-18T07:42:57.186Z",
+ "generatedAt": "2026-11-19T08:10:00.518Z",
  "generatedBy": "scripts/docs/build-api-inventory.ts",
  "sources": {
   "runningApplication": "createApp() router tree",
@@ -7,12 +7,12 @@
   "mounts": "src/app.ts, src/routes/index.ts"
  },
  "totals": {
-  "effectiveRoutes": 759,
-  "staticRegistrations": 782,
-  "matchedToSource": 759,
+  "effectiveRoutes": 763,
+  "staticRegistrations": 786,
+  "matchedToSource": 763,
   "unmatched": [],
   "publicRoutes": 13,
-  "guardedRoutes": 674,
+  "guardedRoutes": 678,
   "prefixes": 70
  },
  "prefixCounts": [
@@ -37,6 +37,10 @@
    "routes": 35
   },
   {
+   "prefix": "payroll",
+   "routes": 29
+  },
+  {
    "prefix": "payment-hub",
    "routes": 28
   },
@@ -46,10 +50,6 @@
   },
   {
    "prefix": "inventory",
-   "routes": 25
-  },
-  {
-   "prefix": "payroll",
    "routes": 25
   },
   {
@@ -13766,7 +13766,7 @@
    "binary": false,
    "serviceCall": "workforce.getPayrollAccountSettings",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:623"
+   "source": "src/routes/workforce.routes.ts:675"
   },
   {
    "method": "PUT",
@@ -13789,7 +13789,7 @@
    "binary": false,
    "serviceCall": "workforce.savePayrollAccountSettings",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:637"
+   "source": "src/routes/workforce.routes.ts:689"
   },
   {
    "method": "GET",
@@ -13811,7 +13811,7 @@
    "binary": false,
    "serviceCall": "workforce.listPayrollAccounts",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:609"
+   "source": "src/routes/workforce.routes.ts:661"
   },
   {
    "method": "POST",
@@ -13833,7 +13833,7 @@
    "binary": false,
    "serviceCall": "workforce.createPayComponent",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:653"
+   "source": "src/routes/workforce.routes.ts:705"
   },
   {
    "method": "DELETE",
@@ -13855,7 +13855,7 @@
    "binary": false,
    "serviceCall": "workforce.deactivatePayComponent",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:667"
+   "source": "src/routes/workforce.routes.ts:719"
   },
   {
    "method": "GET",
@@ -13877,7 +13877,7 @@
    "binary": false,
    "serviceCall": "workforce.listEmployees",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:850"
+   "source": "src/routes/workforce.routes.ts:918"
   },
   {
    "method": "GET",
@@ -13899,7 +13899,7 @@
    "binary": false,
    "serviceCall": "workforce.employeeDetail",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:863"
+   "source": "src/routes/workforce.routes.ts:931"
   },
   {
    "method": "PUT",
@@ -13921,7 +13921,7 @@
    "binary": false,
    "serviceCall": "workforce.setEmployeeSalary",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:886"
+   "source": "src/routes/workforce.routes.ts:954"
   },
   {
    "method": "GET",
@@ -13943,7 +13943,7 @@
    "binary": false,
    "serviceCall": "workforce.listFormProfiles",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:803"
+   "source": "src/routes/workforce.routes.ts:871"
   },
   {
    "method": "POST",
@@ -13965,7 +13965,7 @@
    "binary": false,
    "serviceCall": "workforce.createFormProfile",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:817"
+   "source": "src/routes/workforce.routes.ts:885"
   },
   {
    "method": "GET",
@@ -13987,7 +13987,7 @@
    "binary": false,
    "serviceCall": "workforce.payrollHistory",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:916"
+   "source": "src/routes/workforce.routes.ts:984"
   },
   {
    "method": "GET",
@@ -14009,7 +14009,7 @@
    "binary": false,
    "serviceCall": "workforce.payslipDetail",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:779"
+   "source": "src/routes/workforce.routes.ts:847"
   },
   {
    "method": "GET",
@@ -14031,7 +14031,7 @@
    "binary": false,
    "serviceCall": "workforce.listPeriods",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:687"
+   "source": "src/routes/workforce.routes.ts:739"
   },
   {
    "method": "POST",
@@ -14053,7 +14053,7 @@
    "binary": false,
    "serviceCall": "workforce.createPeriod",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:701"
+   "source": "src/routes/workforce.routes.ts:753"
   },
   {
    "method": "POST",
@@ -14075,7 +14075,29 @@
    "binary": false,
    "serviceCall": "workforce.calculateRun",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:715"
+   "source": "src/routes/workforce.routes.ts:767"
+  },
+  {
+   "method": "POST",
+   "path": "/api/payroll/preview",
+   "file": "src/routes/workforce.routes.ts",
+   "permissions": [
+    "payroll.read"
+   ],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": null,
+   "querySchema": null,
+   "facilityScoped": true,
+   "binary": false,
+   "serviceCall": "workforce.previewPayroll",
+   "serviceAuthorisation": false,
+   "source": "src/routes/workforce.routes.ts:647"
   },
   {
    "method": "GET",
@@ -14097,7 +14119,7 @@
    "binary": false,
    "serviceCall": "workforce.payrollReadiness",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:930"
+   "source": "src/routes/workforce.routes.ts:998"
   },
   {
    "method": "GET",
@@ -14119,7 +14141,7 @@
    "binary": false,
    "serviceCall": "workforce.runDetail",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:731"
+   "source": "src/routes/workforce.routes.ts:783"
   },
   {
    "method": "POST",
@@ -14141,7 +14163,7 @@
    "binary": false,
    "serviceCall": "workforce.approveRun",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:747"
+   "source": "src/routes/workforce.routes.ts:799"
   },
   {
    "method": "POST",
@@ -14163,7 +14185,7 @@
    "binary": false,
    "serviceCall": "workforce.postRun",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:763"
+   "source": "src/routes/workforce.routes.ts:815"
   },
   {
    "method": "GET",
@@ -14185,7 +14207,29 @@
    "binary": false,
    "serviceCall": "workforce.payrollRunReports",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:901"
+   "source": "src/routes/workforce.routes.ts:969"
+  },
+  {
+   "method": "POST",
+   "path": "/api/payroll/runs/:id/reverse",
+   "file": "src/routes/workforce.routes.ts",
+   "permissions": [
+    "payroll.post"
+   ],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": null,
+   "querySchema": null,
+   "facilityScoped": true,
+   "binary": false,
+   "serviceCall": "workforce.reversePayrollRun",
+   "serviceAuthorisation": false,
+   "source": "src/routes/workforce.routes.ts:831"
   },
   {
    "method": "GET",
@@ -14207,7 +14251,51 @@
    "binary": false,
    "serviceCall": "workforce.statutoryFormExtract",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:831"
+   "source": "src/routes/workforce.routes.ts:899"
+  },
+  {
+   "method": "GET",
+   "path": "/api/payroll/statutory-rulebook",
+   "file": "src/routes/workforce.routes.ts",
+   "permissions": [
+    "payroll.read"
+   ],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": null,
+   "querySchema": null,
+   "facilityScoped": true,
+   "binary": false,
+   "serviceCall": "workforce.statutoryRulebook",
+   "serviceAuthorisation": false,
+   "source": "src/routes/workforce.routes.ts:612"
+  },
+  {
+   "method": "POST",
+   "path": "/api/payroll/statutory-rulebook/install",
+   "file": "src/routes/workforce.routes.ts",
+   "permissions": [
+    "payroll.statutory.manage"
+   ],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": null,
+   "querySchema": null,
+   "facilityScoped": true,
+   "binary": false,
+   "serviceCall": "workforce.installStatutoryRulebook",
+   "serviceAuthorisation": false,
+   "source": "src/routes/workforce.routes.ts:631"
   },
   {
    "method": "GET",
@@ -14295,7 +14383,7 @@
    "binary": false,
    "serviceCall": "workforce.verifyStatutoryVersion",
    "serviceAuthorisation": false,
-   "source": "src/routes/workforce.routes.ts:950"
+   "source": "src/routes/workforce.routes.ts:1018"
   },
   {
    "method": "POST",

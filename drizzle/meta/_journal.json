@@ -729,6 +729,13 @@
       "when": 1796524800000,
       "tag": "0103_fixed_asset_lifecycle",
       "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1796611200000,
+      "tag": "0104_payroll_statutory_rulebook",
+      "breakpoints": true
     }
   ]
 }

@@ -175,14 +175,29 @@ describe('payroll configuration checks, not production certification', () => {
       assessPayrollRules([version('PAYE', { calculationConfig: null })], period, today)[0].status,
     ).toBe('INCOMPLETE');
   });
-  it('detects ignored contribution-bound/relief inputs and gapped PAYE bands', () => {
-    const shif = version('SHIF');
-    shif.bands[0].upperBoundCents = 100n;
-    expect(payrollRuleIssues(shif)).toContain(
-      'Contribution bands use zero/open bounds and no tax relief; use contribution caps/minima.',
+  it('accepts contiguous contribution tiers but rejects a gap or a tax relief on a contribution', () => {
+    const tiered = version('NSSF');
+    tiered.bands = [
+      { ...tiered.bands[0], upperBoundCents: 900_000n },
+      { ...tiered.bands[0], sequence: 2, lowerBoundCents: 900_000n, upperBoundCents: null },
+    ];
+    expect(payrollRuleIssues(tiered)).toEqual([]);
+
+    const gapped = version('SHIF');
+    gapped.bands = [
+      { ...gapped.bands[0], upperBoundCents: 900_000n },
+      { ...gapped.bands[0], sequence: 2, lowerBoundCents: 1_000_000n, upperBoundCents: null },
+    ];
+    expect(payrollRuleIssues(gapped).join(' ')).toMatch(/contiguous/);
+
+    const relieved = version('NSSF');
+    relieved.bands[0].reliefCents = 100n;
+    expect(payrollRuleIssues(relieved)).toContain(
+      'A contribution band cannot carry a tax relief.',
     );
+
     const paye = version('PAYE');
     paye.bands[0].lowerBoundCents = 100n;
-    expect(payrollRuleIssues(paye).join(' ')).toMatch(/without gaps/);
+    expect(payrollRuleIssues(paye).join(' ')).toMatch(/start at zero/);
   });
 });

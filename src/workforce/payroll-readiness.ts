@@ -100,8 +100,6 @@ export function payrollRuleIssues(v: StatutoryVersion): string[] {
       'Record an explicit contribution deduction/minimum policy; legacy null policy is not ready.',
     );
   if (!v.bands.length) issues.push('Record calculation bands.');
-  if (v.statute !== 'PAYE' && v.bands.length !== 1)
-    issues.push('Contributions require exactly one band.');
   for (const b of v.bands) {
     if (
       b.lowerBoundCents < 0n ||
@@ -114,28 +112,33 @@ export function payrollRuleIssues(v: StatutoryVersion): string[] {
       issues.push('Invalid rate basis points.');
     if ([b.employeeFixedCents, b.employerFixedCents, b.reliefCents].some((n) => n < 0n))
       issues.push('Negative calculation amounts are not supported.');
-    if (
-      v.statute !== 'PAYE' &&
-      (b.lowerBoundCents !== 0n || b.upperBoundCents !== null || b.reliefCents !== 0n)
-    )
-      issues.push(
-        'Contribution bands use zero/open bounds and no tax relief; use contribution caps/minima.',
-      );
+    if (v.statute !== 'PAYE' && b.reliefCents !== 0n)
+      issues.push('A contribution band cannot carry a tax relief.');
     if (
       ['PAYE', 'SHIF'].includes(v.statute) &&
       (b.employerRateBp !== 0 || b.employerFixedCents !== 0n)
     )
       issues.push('Employer PAYE/SHIF amounts have no supported payroll posting representation.');
   }
-  if (v.statute === 'PAYE' && v.bands.length) {
-    const sorted = [...v.bands].sort((a, b) => (a.lowerBoundCents < b.lowerBoundCents ? -1 : 1));
-    if (
-      sorted[0].lowerBoundCents !== 0n ||
-      sorted.at(-1)!.upperBoundCents !== null ||
-      sorted.some((b, i) => i > 0 && sorted[i - 1].upperBoundCents !== b.lowerBoundCents)
-    )
-      issues.push('PAYE bands must cover zero through an open final band without gaps/overlap.');
+
+  /*
+   * Every version, contribution or tax, must describe a continuous slice of
+   * the base starting at zero: a gap would silently leave income untaxed or
+   * pensionable pay uncharged. A contribution may end at a finite ceiling
+   * (NSSF's upper earnings limit); PAYE may not, because all income above the
+   * last band is still taxable.
+   */
+  if (v.bands.length) {
+    const sorted = [...v.bands].sort((a, b) =>
+      a.lowerBoundCents < b.lowerBoundCents ? -1 : a.lowerBoundCents > b.lowerBoundCents ? 1 : 0,
+    );
+    if (sorted[0].lowerBoundCents !== 0n) issues.push('Bands must start at zero.');
+    if (sorted.some((b, i) => i > 0 && sorted[i - 1].upperBoundCents !== b.lowerBoundCents))
+      issues.push('Bands must be contiguous: each upper bound must equal the next lower bound.');
+    if (v.statute === 'PAYE' && sorted.at(-1)!.upperBoundCents !== null)
+      issues.push('PAYE bands must end with an open band so all income is taxed.');
   }
+
   const c = v.calculationConfig;
   if (c) {
     if (
@@ -160,6 +163,39 @@ export function payrollRuleIssues(v: StatutoryVersion): string[] {
         )
           issues.push('Unsupported contribution minimum.');
       }
+    }
+    if (v.statute === 'PAYE') {
+      const bandRelief = v.bands.some((b) => b.reliefCents > 0n);
+      const personalRelief = c.personalReliefCents;
+      if (personalRelief !== undefined && !/^\d+$/.test(personalRelief))
+        issues.push('Personal relief must be non-negative integer cents.');
+      if (bandRelief && personalRelief !== undefined && BigInt(personalRelief) > 0n)
+        issues.push(
+          'Record personal relief once: either on a band or in the PAYE calculation config, not both.',
+        );
+      if (
+        c.insuranceReliefRateBp !== undefined &&
+        (!Number.isInteger(c.insuranceReliefRateBp) ||
+          c.insuranceReliefRateBp < 0 ||
+          c.insuranceReliefRateBp > 10000)
+      )
+        issues.push('Insurance relief rate must be 0–10000 basis points.');
+      if (
+        c.insuranceReliefAnnualPremiumCapCents !== undefined &&
+        !/^\d+$/.test(c.insuranceReliefAnnualPremiumCapCents)
+      )
+        issues.push('Insurance relief premium cap must be non-negative integer cents.');
+      if (
+        c.pensionDeductionCapCents !== undefined &&
+        c.pensionDeductionCapCents !== null &&
+        !/^\d+$/.test(c.pensionDeductionCapCents)
+      )
+        issues.push('Pension deduction cap must be non-negative integer cents or null.');
+    } else if (
+      (c.personalReliefCents !== undefined && BigInt(c.personalReliefCents) > 0n) ||
+      (c.insuranceReliefRateBp ?? 0) > 0
+    ) {
+      issues.push('Only a PAYE version may carry tax reliefs.');
     }
   }
   return [...new Set(issues)];

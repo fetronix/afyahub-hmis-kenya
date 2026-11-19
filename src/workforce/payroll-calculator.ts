@@ -5,20 +5,28 @@
  * DESIGN RULES
  * ------------
  * 1. The engine contains no Kenyan statutory figures. Every rate, band,
- *    ceiling and relief arrives from a facility-configured, effective-dated
- *    version whose `sourceReference` records the authority's publication.
- *    If any of the four statutes lacks a version that covers the pay date,
- *    `calculatePayroll` throws and the run stays uncosted.
+ *    ceiling, relief and threshold arrives from a facility-configured,
+ *    effective-dated version whose `sourceReference` records the authority's
+ *    publication. If any of the four statutes lacks a version that covers the
+ *    pay date, `calculatePayroll` throws and the run stays uncosted.
  *
  * 2. All money is integer cents. A percentage is basis points (1% = 100bp),
  *    applied per band and rounded half-up to the cent. Floating point never
  *    touches an amount that reaches the ledger.
  *
  * 3. A payslip is reproducible: the returned breakdown carries the exact
- *    versions and band results used, and is stored with the payslip.
+ *    versions, tier results and reliefs used, and is stored with the payslip.
+ *
+ * 4. A contribution may be tiered (NSSF charges Tier I and Tier II on
+ *    different slices of pensionable pay). Bands are evaluated progressively
+ *    for every statute: each band charges its rate on the part of the base
+ *    that falls inside [lowerBound, upperBound). A single 0..∞ band therefore
+ *    behaves exactly like a flat percentage.
  */
 
 export type Statute = 'PAYE' | 'NSSF' | 'SHIF' | 'AHL';
+
+export type TaxResidency = 'RESIDENT' | 'NON_RESIDENT';
 
 export interface StatutoryBand {
   sequence: number;
@@ -35,14 +43,39 @@ export interface StatutoryBand {
   reliefCents: bigint;
 }
 
-/** Stored on the effective-dated version, not inferred from today's date. Null on historical versions. */
+/**
+ * Stored on the effective-dated version, not inferred from today's date.
+ *
+ * The contribution-deduction fields and the two minima predate the relief
+ * fields; a version recorded before they mattered carries only those and the
+ * engine keeps its original semantics (`null` config = historical behaviour).
+ * The relief fields are optional so an older row stays valid.
+ */
 export interface CalculationConfig {
   deductNssf: boolean;
   deductShif: boolean;
   deductAhl: boolean;
   employeeMinimumCents: string;
   employerMinimumCents: string;
+  /**
+   * PAYE only: monthly tax credit granted to resident individuals. Granted to
+   * a non-resident only if a version says so explicitly; no version ships a
+   * non-resident default.
+   */
+  personalReliefCents?: string;
+  /** PAYE only: rate applied to declared qualifying insurance premiums (1500 = 15%). */
+  insuranceReliefRateBp?: number;
+  /** PAYE only: annual statutory ceiling on the premiums that earn relief. */
+  insuranceReliefAnnualPremiumCapCents?: string;
+  /**
+   * PAYE only: monthly ceiling on qualifying pension/provident contributions
+   * deducted before tax. `null` means the version sets no ceiling.
+   */
+  pensionDeductionCapCents?: string | null;
+  /** PAYE only: whether a non-resident gets the personal relief. Default false. */
+  personalReliefForNonResidents?: boolean;
 }
+
 export interface StatutoryVersion {
   calculationConfig?: CalculationConfig | null;
   id: number;
@@ -63,6 +96,12 @@ export interface PayrollComponent {
   amountCents: bigint;
   taxable: boolean;
   statutoryExclusions?: string[];
+  /**
+   * A deduction that reduces taxable employment income (a qualifying pension
+   * or provident contribution). Capped by the PAYE version, never by the
+   * component itself.
+   */
+  taxDeductible?: boolean;
 }
 
 export interface PayrollEmployeeInput {
@@ -71,6 +110,10 @@ export interface PayrollEmployeeInput {
   fullName: string;
   baseSalaryCents: bigint;
   components: PayrollComponent[];
+  /** Defaults to resident: the KRA personal relief is granted to residents. */
+  taxResidency?: TaxResidency;
+  /** Employee-declared qualifying life/health/education premiums for the month. */
+  insurancePremiumCents?: bigint;
 }
 
 export interface BandResult {
@@ -85,11 +128,14 @@ export interface StatuteResult {
   statute: Statute;
   versionId: number;
   label: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
   taxableBaseCents: string;
   employeeCents: string;
   employerCents: string;
   reliefCents: string;
   calculationConfig?: CalculationConfig | null;
+  /** One row per band. NSSF rows are Tier I and Tier II. */
   bands: BandResult[];
 }
 
@@ -104,16 +150,30 @@ export interface PayslipResult {
   employeeId: number;
   employeeNumber: string;
   fullName: string;
+  taxResidency: TaxResidency;
   grossCents: bigint;
+  /** Gross less exempt earnings, before statutory deductions. */
+  taxableGrossCents: bigint;
   taxableCents: bigint;
   payeCents: bigint;
+  /** PAYE before any relief, so a payslip can show what relief removed. */
+  payeBeforeReliefCents: bigint;
+  personalReliefCents: bigint;
+  insuranceReliefCents: bigint;
+  qualifyingPensionCents: bigint;
   nssfEmployeeCents: bigint;
   nssfEmployerCents: bigint;
   shifCents: bigint;
   ahlEmployeeCents: bigint;
   ahlEmployerCents: bigint;
+  /** Employee-side statutory deductions in total. */
+  statutoryDeductionsCents: bigint;
   otherDeductionsCents: bigint;
   netCents: bigint;
+  /** Employer NSSF + employer AHL + any other employer charge. */
+  employerContributionsCents: bigint;
+  /** Gross + employer contributions. */
+  employerCostCents: bigint;
   lines: PayslipLine[];
   statutes: StatuteResult[];
 }
@@ -130,6 +190,8 @@ export interface PayrollTotals {
   ahlEmployerCents: bigint;
   otherDeductionsCents: bigint;
   netCents: bigint;
+  employerContributionsCents: bigint;
+  employerCostCents: bigint;
 }
 
 export class PayrollCalculationError extends Error {
@@ -158,6 +220,23 @@ export function applyRateBp(amountCents: bigint, rateBp: number): bigint {
 
 function cap(amount: bigint, limit: bigint | null): bigint {
   return limit !== null && amount > limit ? limit : amount;
+}
+
+function floor(amount: bigint, minimum: bigint): bigint {
+  return amount < minimum ? minimum : amount;
+}
+
+function centsFromConfig(value: string | undefined | null): bigint | null {
+  if (value === undefined || value === null || !/^\d+$/.test(value)) return null;
+  return BigInt(value);
+}
+
+/** Smallest non-null ceiling across the bands: a ceiling on the amount charged. */
+function totalCeiling(bands: StatutoryBand[], side: 'employee' | 'employer'): bigint | null {
+  const key = side === 'employee' ? 'employeeCapCents' : 'employerCapCents';
+  const values = bands.map((band) => band[key]).filter((value): value is bigint => value !== null);
+  if (!values.length) return null;
+  return values.reduce((lowest, value) => (value < lowest ? value : lowest));
 }
 
 export function statuteAppliesOn(version: StatutoryVersion, date: string): boolean {
@@ -203,8 +282,20 @@ export function resolveStatutoryVersions(
   return resolved;
 }
 
-/** Progressive band calculation used by PAYE. */
-function progressiveTax(taxableCents: bigint, version: StatutoryVersion): StatuteResult {
+/**
+ * Progressive band calculation.
+ *
+ * Used by PAYE (where the bands are tax rates and each band also carries the
+ * relief it grants) and by contributions (where the bands are tiers of
+ * pensionable pay and each carries a contribution rate). Each band charges
+ * only the part of the base that falls inside it, so a version with a single
+ * 0..∞ band is exactly a flat percentage of the base.
+ */
+function bandedCharge(
+  statute: Statute,
+  baseCents: bigint,
+  version: StatutoryVersion,
+): { employee: bigint; employer: bigint; relief: bigint; bands: BandResult[] } {
   const bands = [...version.bands].sort((a, b) => a.sequence - b.sequence);
   let employee = 0n;
   let employer = 0n;
@@ -212,9 +303,10 @@ function progressiveTax(taxableCents: bigint, version: StatutoryVersion): Statut
   const results: BandResult[] = [];
   for (const band of bands) {
     const lower = band.lowerBoundCents;
-    const upper = band.upperBoundCents ?? taxableCents;
-    if (taxableCents <= lower) continue;
-    const base = (upper < taxableCents ? upper : taxableCents) - lower;
+    const upper = band.upperBoundCents ?? baseCents;
+    // A band that starts at or above the base contributes nothing.
+    if (baseCents <= lower) continue;
+    const base = (upper < baseCents ? upper : baseCents) - lower;
     if (base <= 0n) continue;
     const bandEmployee = cap(
       applyRateBp(base, band.employeeRateBp) + band.employeeFixedCents,
@@ -235,65 +327,17 @@ function progressiveTax(taxableCents: bigint, version: StatutoryVersion): Statut
       reliefCents: band.reliefCents.toString(),
     });
   }
-  // Relief is a credit against the tax due, never a refund.
-  const reliefApplied = relief > employee ? employee : relief;
-  employee -= reliefApplied;
-  return {
-    statute: 'PAYE',
-    versionId: version.id,
-    label: version.label,
-    taxableBaseCents: taxableCents.toString(),
-    employeeCents: employee.toString(),
-    employerCents: employer.toString(),
-    reliefCents: reliefApplied.toString(),
-    bands: results,
-  };
-}
-
-/** Flat or capped percentage used by NSSF, SHIF and the housing levy. */
-function flatStatute(
-  statute: Statute,
-  baseCents: bigint,
-  version: StatutoryVersion,
-): StatuteResult {
-  if (version.bands.length !== 1)
-    throw new PayrollCalculationError(
-      'STATUTORY_BAND_SHAPE',
-      `${statute} must be configured with exactly one band; found ${version.bands.length}.`,
-      409,
-    );
-  const band = version.bands[0];
-  let employee = cap(
-    applyRateBp(baseCents, band.employeeRateBp) + band.employeeFixedCents,
-    band.employeeCapCents,
-  );
-  let employer = cap(
-    applyRateBp(baseCents, band.employerRateBp) + band.employerFixedCents,
-    band.employerCapCents,
-  );
-  // A floor is max(rate-based contribution, minimum), never an additive fixed fee.
-  const employeeMinimum = BigInt(version.calculationConfig?.employeeMinimumCents ?? '0');
-  const employerMinimum = BigInt(version.calculationConfig?.employerMinimumCents ?? '0');
-  if (employee < employeeMinimum) employee = employeeMinimum;
-  if (employer < employerMinimum) employer = employerMinimum;
-  return {
-    statute,
-    versionId: version.id,
-    label: version.label,
-    taxableBaseCents: baseCents.toString(),
-    employeeCents: employee.toString(),
-    employerCents: employer.toString(),
-    reliefCents: '0',
-    bands: [
-      {
-        sequence: band.sequence,
-        baseCents: baseCents.toString(),
-        employeeCents: employee.toString(),
-        employerCents: employer.toString(),
-        reliefCents: '0',
-      },
-    ],
-  };
+  // A version-level ceiling on the charge itself. For a single band this is
+  // the same rule as before; for tiers it prevents the sum exceeding the
+  // published maximum.
+  employee = cap(employee, totalCeiling(bands, 'employee'));
+  employer = cap(employer, totalCeiling(bands, 'employer'));
+  if (statute === 'PAYE') {
+    // Relief is a credit against the tax due, never a refund.
+    const applied = relief > employee ? employee : relief;
+    return { employee: employee - applied, employer, relief: applied, bands: results };
+  }
+  return { employee, employer, relief: 0n, bands: results };
 }
 
 export function computeStatute(
@@ -303,22 +347,49 @@ export function computeStatute(
 ): StatuteResult {
   if (baseCents < 0n)
     throw new PayrollCalculationError('INVALID_BASE', 'A statutory base cannot be negative.');
-  const result =
-    statute === 'PAYE'
-      ? progressiveTax(baseCents, version)
-      : flatStatute(statute, baseCents, version);
-  return { ...result, calculationConfig: version.calculationConfig ?? null };
+  const charge = bandedCharge(statute, baseCents, version);
+  const config = version.calculationConfig ?? null;
+  let employee = charge.employee;
+  let employer = charge.employer;
+  if (statute !== 'PAYE') {
+    // A floor is max(rate-based contribution, minimum), never an additive fee.
+    const employeeMinimum = centsFromConfig(config?.employeeMinimumCents) ?? 0n;
+    const employerMinimum = centsFromConfig(config?.employerMinimumCents) ?? 0n;
+    employee = floor(employee, employeeMinimum);
+    employer = floor(employer, employerMinimum);
+  }
+  return {
+    statute,
+    versionId: version.id,
+    label: version.label,
+    effectiveFrom: version.effectiveFrom,
+    effectiveTo: version.effectiveTo,
+    taxableBaseCents: baseCents.toString(),
+    employeeCents: employee.toString(),
+    employerCents: employer.toString(),
+    reliefCents: charge.relief.toString(),
+    calculationConfig: config,
+    bands: charge.bands,
+  };
 }
 
 /**
  * Cost one employee for one period.
  *
- * Gross pay is the basic salary plus recurring earnings that are effective
- * in the period. NSSF, SHIF and the housing levy are charged on gross pay;
- * PAYE is charged on taxable pay (gross less non-taxable earnings less the
- * contributions selected on the effective-dated PAYE version. Earnings may
- * be excluded from a contribution base where an authorized operator records
- * the appropriate treatment. Historical versions retain their original semantics).
+ * Order of calculation (the order the ledger and the payslip depend on):
+ *   1. gross earnings (basic + components);
+ *   2. exempt earnings removed from the taxable base;
+ *   3. NSSF, SHIF and AHL charged on their own contribution bases;
+ *   4. qualifying pension deducted, within the version's monthly ceiling;
+ *   5. taxable employment income = gross − exempt − deductible contributions;
+ *   6. PAYE bands applied progressively;
+ *   7. personal and insurance reliefs credited, PAYE floored at zero;
+ *   8. net pay = gross − employee statutory deductions − other deductions;
+ *   9. employer cost = gross + employer contributions.
+ *
+ * Employer contributions are never subtracted from employee net pay, and a
+ * deduction is never counted twice: the PAYE base subtracts exactly the three
+ * configured contributions plus the capped pension, once.
  */
 export function calculatePayslip(input: {
   employee: PayrollEmployeeInput;
@@ -328,7 +399,7 @@ export function calculatePayslip(input: {
   const { employee, versions, payDate } = input;
   if (employee.baseSalaryCents < 0n)
     throw new PayrollCalculationError('INVALID_SALARY', 'Base salary cannot be negative.');
-  const periodEnd = payDate;
+  const taxResidency: TaxResidency = employee.taxResidency ?? 'RESIDENT';
 
   const earnings = employee.components.filter((c) => c.kind === 'EARNING');
   const deductions = employee.components.filter((c) => c.kind === 'DEDUCTION');
@@ -339,6 +410,7 @@ export function calculatePayslip(input: {
     earnings
       .filter((c) => !c.statutoryExclusions?.includes(statute))
       .reduce((sum, c) => sum + c.amountCents, employee.baseSalaryCents);
+
   const nssf = computeStatute('NSSF', statutoryBase('NSSF'), versions.NSSF);
   const shif = computeStatute('SHIF', statutoryBase('SHIF'), versions.SHIF);
   const ahl = computeStatute('AHL', statutoryBase('AHL'), versions.AHL);
@@ -346,21 +418,57 @@ export function calculatePayslip(input: {
   const shifEmployee = BigInt(shif.employeeCents);
   const ahlEmployee = BigInt(ahl.employeeCents);
 
-  // Preserve historical version semantics when no config was recorded. New versions explicitly
-  // record deductible contributions, including AHL, against the authority publication.
+  // Preserve historical version semantics when no config was recorded. New
+  // versions state explicitly which contributions are deductible and which
+  // reliefs exist, against the authority publication.
   const config = versions.PAYE.calculationConfig;
-  const statutoryBeforeTax =
-    gross -
-    nonTaxable -
-    ((config?.deductNssf ?? true) ? nssfEmployee : 0n) -
-    ((config?.deductShif ?? true) ? shifEmployee : 0n) -
-    ((config?.deductAhl ?? false) ? ahlEmployee : 0n);
-  const taxable = statutoryBeforeTax > 0n ? statutoryBeforeTax : 0n;
-  const paye = computeStatute('PAYE', taxable, versions.PAYE);
-  const payeCents = BigInt(paye.employeeCents);
+  const deductibleNssf = (config?.deductNssf ?? true) ? nssfEmployee : 0n;
+  const deductibleShif = (config?.deductShif ?? true) ? shifEmployee : 0n;
+  const deductibleAhl = (config?.deductAhl ?? false) ? ahlEmployee : 0n;
+
+  const pensionCap = centsFromConfig(config?.pensionDeductionCapCents ?? null);
+  const declaredPension = deductions
+    .filter((c) => c.taxDeductible)
+    .reduce((sum, c) => sum + c.amountCents, 0n);
+  const qualifyingPension =
+    pensionCap === null ? declaredPension : cap(declaredPension, pensionCap);
+
+  const taxableGross = gross - nonTaxable;
+  const beforeContributions = taxableGross - deductibleNssf - deductibleShif - deductibleAhl;
+  const taxable = beforeContributions - qualifyingPension;
+  const taxableCents = taxable > 0n ? taxable : 0n;
+
+  const paye = computeStatute('PAYE', taxableCents, versions.PAYE);
+  const payeBeforeRelief = BigInt(paye.employeeCents) + BigInt(paye.reliefCents);
+
+  // Personal relief is granted to residents; a version may extend it to
+  // non-residents only by saying so explicitly.
+  const personalReliefConfigured = centsFromConfig(config?.personalReliefCents) ?? 0n;
+  const personalReliefEligible =
+    taxResidency === 'RESIDENT' || config?.personalReliefForNonResidents === true;
+  const personalRelief = personalReliefEligible ? personalReliefConfigured : 0n;
+
+  // Insurance relief: a percentage of declared premiums, with the statutory
+  // annual premium ceiling prorated to one month. Residents only, and never
+  // applied to SHIF — SHIF is a deduction in arriving at taxable income.
+  const premiumCapAnnual = centsFromConfig(config?.insuranceReliefAnnualPremiumCapCents);
+  const monthlyPremiumCap = premiumCapAnnual === null ? null : premiumCapAnnual / 12n;
+  const declaredPremiums = employee.insurancePremiumCents ?? 0n;
+  const qualifyingPremiums =
+    monthlyPremiumCap === null ? declaredPremiums : cap(declaredPremiums, monthlyPremiumCap);
+  const insuranceReliefRate = config?.insuranceReliefRateBp ?? 0;
+  const insuranceRelief =
+    personalReliefEligible && insuranceReliefRate > 0
+      ? applyRateBp(qualifyingPremiums, insuranceReliefRate)
+      : 0n;
+
+  const reliefTotal = personalRelief + insuranceRelief;
+  const payeCents =
+    BigInt(paye.employeeCents) > reliefTotal ? BigInt(paye.employeeCents) - reliefTotal : 0n;
 
   const otherDeductions = deductions.reduce((sum, c) => sum + c.amountCents, 0n);
-  const net = gross - nssfEmployee - shifEmployee - ahlEmployee - payeCents - otherDeductions;
+  const statutoryDeductions = nssfEmployee + shifEmployee + ahlEmployee + payeCents;
+  const net = gross - statutoryDeductions - otherDeductions;
   if (net < 0n)
     throw new PayrollCalculationError(
       'NET_PAY_NEGATIVE',
@@ -368,6 +476,12 @@ export function calculatePayslip(input: {
       409,
     );
 
+  const nssfEmployer = BigInt(nssf.employerCents);
+  const ahlEmployer = BigInt(ahl.employerCents);
+  const shifEmployer = BigInt(shif.employerCents);
+  const employerContributions = nssfEmployer + ahlEmployer + shifEmployer;
+
+  const nssfTiers = nssf.bands;
   const lines: PayslipLine[] = [
     { code: 'BASIC', name: 'Basic salary', kind: 'EARNING', amountCents: employee.baseSalaryCents },
     ...earnings.map((c) => ({
@@ -376,7 +490,12 @@ export function calculatePayslip(input: {
       kind: 'EARNING' as const,
       amountCents: c.amountCents,
     })),
-    { code: 'NSSF', name: 'NSSF (employee)', kind: 'DEDUCTION', amountCents: nssfEmployee },
+    ...nssfTiers.map((tier) => ({
+      code: `NSSF_T${tier.sequence}`,
+      name: `NSSF Tier ${tier.sequence === 1 ? 'I' : tier.sequence === 2 ? 'II' : tier.sequence}`,
+      kind: 'DEDUCTION' as const,
+      amountCents: BigInt(tier.employeeCents),
+    })),
     { code: 'SHIF', name: 'SHIF', kind: 'DEDUCTION', amountCents: shifEmployee },
     { code: 'AHL', name: 'Affordable Housing Levy', kind: 'DEDUCTION', amountCents: ahlEmployee },
     { code: 'PAYE', name: 'PAYE', kind: 'DEDUCTION', amountCents: payeCents },
@@ -386,42 +505,46 @@ export function calculatePayslip(input: {
       kind: 'DEDUCTION' as const,
       amountCents: c.amountCents,
     })),
-    {
-      code: 'NET',
-      name: 'Net pay',
-      kind: 'EARNING',
-      amountCents: net,
-    },
-    {
-      code: 'NSSF_EMPLOYER',
-      name: 'NSSF (employer)',
-      kind: 'EMPLOYER',
-      amountCents: BigInt(nssf.employerCents),
-    },
+    { code: 'NET', name: 'Net pay', kind: 'EARNING', amountCents: net },
+    ...nssfTiers.map((tier) => ({
+      code: `NSSF_EMPLOYER_T${tier.sequence}`,
+      name: `NSSF Tier ${tier.sequence === 1 ? 'I' : tier.sequence === 2 ? 'II' : tier.sequence} (employer)`,
+      kind: 'EMPLOYER' as const,
+      amountCents: BigInt(tier.employerCents),
+    })),
     {
       code: 'AHL_EMPLOYER',
       name: 'Affordable Housing Levy (employer)',
       kind: 'EMPLOYER',
-      amountCents: BigInt(ahl.employerCents),
+      amountCents: ahlEmployer,
     },
   ];
 
   // `payDate` is part of the snapshot so a stored payslip explains itself.
-  void periodEnd;
+  void payDate;
   return {
     employeeId: employee.employeeId,
     employeeNumber: employee.employeeNumber,
     fullName: employee.fullName,
+    taxResidency,
     grossCents: gross,
-    taxableCents: taxable,
+    taxableGrossCents: taxableGross,
+    taxableCents,
     payeCents,
+    payeBeforeReliefCents: payeBeforeRelief,
+    personalReliefCents: personalRelief,
+    insuranceReliefCents: insuranceRelief,
+    qualifyingPensionCents: qualifyingPension,
     nssfEmployeeCents: nssfEmployee,
-    nssfEmployerCents: BigInt(nssf.employerCents),
+    nssfEmployerCents: nssfEmployer,
     shifCents: shifEmployee,
     ahlEmployeeCents: ahlEmployee,
-    ahlEmployerCents: BigInt(ahl.employerCents),
+    ahlEmployerCents: ahlEmployer,
+    statutoryDeductionsCents: statutoryDeductions,
     otherDeductionsCents: otherDeductions,
     netCents: net,
+    employerContributionsCents: employerContributions,
+    employerCostCents: gross + employerContributions,
     lines,
     statutes: [paye, nssf, shif, ahl],
   };
@@ -459,6 +582,8 @@ export function calculatePayroll(input: {
       ahlEmployerCents: acc.ahlEmployerCents + slip.ahlEmployerCents,
       otherDeductionsCents: acc.otherDeductionsCents + slip.otherDeductionsCents,
       netCents: acc.netCents + slip.netCents,
+      employerContributionsCents: acc.employerContributionsCents + slip.employerContributionsCents,
+      employerCostCents: acc.employerCostCents + slip.employerCostCents,
     }),
     {
       employeeCount: 0,
@@ -472,6 +597,8 @@ export function calculatePayroll(input: {
       ahlEmployerCents: 0n,
       otherDeductionsCents: 0n,
       netCents: 0n,
+      employerContributionsCents: 0n,
+      employerCostCents: 0n,
     },
   );
   return { payslips, totals, versions };

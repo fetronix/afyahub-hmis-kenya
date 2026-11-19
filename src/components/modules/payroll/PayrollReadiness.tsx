@@ -117,6 +117,24 @@ export function PayrollReadinessPanel({
               <strong>Production sign-off not certified</strong>
             </div>
           </div>
+          {!!result.catalogueSuggestions?.length && (
+            <div>
+              <h3 className="font-semibold">Available in the published rule catalogue</h3>
+              <p className="text-xs text-muted">
+                Installing records a draft only. Verify each figure against the cited source and
+                activate it; the rulebook does not certify compliance.
+              </p>
+              <ul className="mt-1 space-y-1 text-sm">
+                {result.catalogueSuggestions.map((suggestion) => (
+                  <li key={suggestion.statute}>
+                    {suggestion.statute}: {suggestion.ruleKey} — {suggestion.label} (
+                    {suggestion.effectiveFrom} → {suggestion.effectiveTo ?? 'open'}).{' '}
+                    {suggestion.action}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {!!result.nextActions.length && (
             <div>
               <h3 className="font-semibold">Configure next</h3>

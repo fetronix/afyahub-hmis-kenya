@@ -13,6 +13,7 @@
  * that applies on the pay date.
  */
 
+import { journalEntries } from './financial-ledger.ts';
 import {
   pgTable,
   serial,
@@ -124,6 +125,18 @@ export const hrEmployees = pgTable(
     kraPin: text('kra_pin'),
     nssfNumber: text('nssf_number'),
     shifNumber: text('shif_number'),
+    /**
+     * Personal relief is granted to residents. 'RESIDENT' is the default
+     * because most staff are; a non-resident must be recorded explicitly so
+     * the engine does not silently grant relief that is not due.
+     */
+    taxResidency: text('tax_residency').notNull().default('RESIDENT'),
+    /** Employee-declared qualifying life/health/education premiums, monthly. */
+    insurancePremiumMonthlyCents: bigint('insurance_premium_monthly_cents', { mode: 'bigint' })
+      .notNull()
+      .default(sql`0`),
+    /** Evidence for the declared premium; relief without evidence is not granted. */
+    insuranceReliefEvidenceReference: text('insurance_relief_evidence_reference'),
     /** Optional link to an application login. Never required: not every employee signs in. */
     userId: integer('user_id').references(() => users.id),
     notes: text('notes'),
@@ -148,6 +161,11 @@ export const hrEmployees = pgTable(
       'hr_employees_exit_check',
       sql`(${table.employmentStatus} = 'EXITED') = (${table.exitDate} IS NOT NULL)`,
     ),
+    check(
+      'hr_employees_tax_residency_check',
+      sql`${table.taxResidency} IN ('RESIDENT','NON_RESIDENT')`,
+    ),
+    check('hr_employees_insurance_premium_check', sql`${table.insurancePremiumMonthlyCents} >= 0`),
   ],
 );
 
@@ -370,7 +388,16 @@ export const payrollStatutoryVersions = pgTable(
     effectiveFrom: date('effective_from').notNull(),
     effectiveTo: date('effective_to'),
     authority: text('authority').notNull(),
+    /** The published instrument's own title for the rule (e.g. "Year 4 contribution rates"). */
+    ruleName: text('rule_name'),
+    /** PROGRESSIVE_MONTHLY_BANDS_WITH_RELIEFS, TIERED_PENSION_CONTRIBUTION, ... */
+    calculationMethod: text('calculation_method'),
+    currency: text('currency').notNull().default('KES'),
     sourceReference: text('source_reference').notNull(),
+    /** Where the figures were published: title, URL and publication date. */
+    sourceTitle: text('source_title'),
+    sourceUrl: text('source_url'),
+    sourcePublishedOn: date('source_published_on'),
     verifiedOn: date('verified_on'),
     verifiedBy: integer('verified_by').references(() => users.id),
     verifiedAt: timestamp('verified_at'),
@@ -383,6 +410,12 @@ export const payrollStatutoryVersions = pgTable(
       >(),
     basis: text('basis').notNull().default('GROSS'),
     status: text('status').notNull().default('DRAFT'),
+    /*
+     * Approval and status history deliberately live in `audit_logs`, not on
+     * this row: `payroll_rule_history_guard` refuses any change to a version
+     * other than its status, so a mutable history column could never be
+     * written without weakening that guard.
+     */
     notes: text('notes'),
     createdBy: integer('created_by').references(() => users.id),
     createdAt: timestamp('created_at').notNull().defaultNow(),
@@ -486,6 +519,8 @@ export const payrollEmployeeComponents = pgTable(
     kind: text('kind').notNull(),
     amountCents: bigint('amount_cents', { mode: 'bigint' }).notNull(),
     taxable: boolean('taxable').notNull().default(true),
+    /** True when the deduction reduces taxable income (a qualifying pension). */
+    taxDeductible: boolean('tax_deductible').notNull().default(false),
     statutoryExclusions: jsonb('statutory_exclusions').$type<string[]>().notNull().default([]),
     effectiveFrom: date('effective_from').notNull(),
     effectiveTo: date('effective_to'),
@@ -623,18 +658,33 @@ export const payrollRuns = pgTable(
     postedBy: integer('posted_by').references(() => users.id),
     postedAt: timestamp('posted_at'),
     journalEntryId: integer('journal_entry_id'),
+    /** A posted run is corrected by a contra journal, never by deleting it. */
+    reversedBy: integer('reversed_by').references(() => users.id),
+    reversedAt: timestamp('reversed_at'),
+    reversalJournalEntryId: integer('reversal_journal_entry_id').references(
+      () => journalEntries.id,
+    ),
+    reversalReason: text('reversal_reason'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
   },
   (table) => [
-    uniqueIndex('payroll_runs_period_idx').on(table.periodId),
+    // One live run per period. Reversed runs are kept as history and do not
+    // occupy the slot, so a corrected payroll can be recalculated.
+    uniqueIndex('payroll_runs_period_live_idx')
+      .on(table.periodId)
+      .where(sql`${table.status} <> 'REVERSED'`),
     index('payroll_runs_facility_status_idx').on(table.facilityId, table.status),
     check(
       'payroll_runs_status_check',
-      sql`${table.status} IN ('DRAFT','CALCULATED','APPROVED','POSTED')`,
+      sql`${table.status} IN ('DRAFT','CALCULATED','APPROVED','POSTED','REVERSED')`,
     ),
     check(
       'payroll_runs_approval_check',
-      sql`(${table.status} IN ('APPROVED','POSTED')) = (${table.approvedBy} IS NOT NULL AND ${table.approvedAt} IS NOT NULL)`,
+      sql`(${table.status} IN ('APPROVED','POSTED','REVERSED')) = (${table.approvedBy} IS NOT NULL AND ${table.approvedAt} IS NOT NULL)`,
+    ),
+    check(
+      'payroll_runs_reversal_check',
+      sql`(${table.status} = 'REVERSED') = (${table.reversedBy} IS NOT NULL AND ${table.reversedAt} IS NOT NULL AND ${table.reversalJournalEntryId} IS NOT NULL)`,
     ),
     check(
       'payroll_runs_segregation_check',

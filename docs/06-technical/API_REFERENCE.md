@@ -2,7 +2,7 @@
 
 > Generated from the registered routes of the running application by `scripts/docs/build-api-reference.ts`. Every path below was walked from the Express router tree of `createApp()` and matched back to the source registration that declares it; there are no handwritten endpoints. Regenerate after any route change.
 
-Generated: 2026-11-18
+Generated: 2026-11-19
 
 **Intended audience:** integrators, frontend developers, QA engineers, security reviewers.
 
@@ -10,11 +10,11 @@ Generated: 2026-11-18
 
 | Measure | Value |
 | --- | --- |
-| Effective HTTP routes | 759 |
-| Route registrations parsed from source | 782 |
-| Routes matched to a source registration | 759 |
+| Effective HTTP routes | 763 |
+| Route registrations parsed from source | 786 |
+| Routes matched to a source registration | 763 |
 | Unauthenticated routes | 13 |
-| Routes behind a permission or administrator guard | 674 |
+| Routes behind a permission or administrator guard | 678 |
 | Path prefixes | 70 |
 
 Permissions are read from the handler chain and from router-level guards: a `requirePermission` call on the router itself applies to every route registered on it and is reported here as if it were written on each route. Where no permission appears, authorisation is either absent by design (public routes) or decided inside the service that receives the request context; the last case is marked "checked in service".
@@ -97,16 +97,16 @@ Limits are configured in `src/middleware/http-security.middleware.ts` and are ra
 
 | Prefix | Routes | Share |
 | --- | --- | --- |
-| [`/api/insurance`](#apiinsurance) | 91 | 12.0% |
-| [`/api/fixed-assets`](#apifixed-assets) | 56 | 7.4% |
+| [`/api/insurance`](#apiinsurance) | 91 | 11.9% |
+| [`/api/fixed-assets`](#apifixed-assets) | 56 | 7.3% |
 | [`/api/portal`](#apiportal) | 42 | 5.5% |
-| [`/api/accounting`](#apiaccounting) | 37 | 4.9% |
+| [`/api/accounting`](#apiaccounting) | 37 | 4.8% |
 | [`/api/budget-planning`](#apibudget-planning) | 35 | 4.6% |
+| [`/api/payroll`](#apipayroll) | 29 | 3.8% |
 | [`/api/payment-hub`](#apipayment-hub) | 28 | 3.7% |
 | [`/api/procurement`](#apiprocurement) | 25 | 3.3% |
 | [`/api/inventory`](#apiinventory) | 25 | 3.3% |
-| [`/api/payroll`](#apipayroll) | 25 | 3.3% |
-| [`/api/hr`](#apihr) | 24 | 3.2% |
+| [`/api/hr`](#apihr) | 24 | 3.1% |
 | [`/api/platform`](#apiplatform) | 21 | 2.8% |
 | [`/api/maternity`](#apimaternity) | 18 | 2.4% |
 | [`/api/dialysis`](#apidialysis) | 16 | 2.1% |
@@ -123,10 +123,10 @@ Limits are configured in `src/middleware/http-security.middleware.ts` and are ra
 | [`/api/appointments`](#apiappointments) | 10 | 1.3% |
 | [`/api/bank-payments`](#apibank-payments) | 9 | 1.2% |
 | [`/api/staff-invitations`](#apistaff-invitations) | 9 | 1.2% |
-| [`/api/facility-branding`](#apifacility-branding) | 8 | 1.1% |
-| [`/api/documents`](#apidocuments) | 8 | 1.1% |
-| [`/api/facility-tariffs`](#apifacility-tariffs) | 8 | 1.1% |
-| [`/api/purchase-orders`](#apipurchase-orders) | 8 | 1.1% |
+| [`/api/facility-branding`](#apifacility-branding) | 8 | 1.0% |
+| [`/api/documents`](#apidocuments) | 8 | 1.0% |
+| [`/api/facility-tariffs`](#apifacility-tariffs) | 8 | 1.0% |
+| [`/api/purchase-orders`](#apipurchase-orders) | 8 | 1.0% |
 | [`/api/auth`](#apiauth) | 7 | 0.9% |
 | [`/api/reporting`](#apireporting) | 7 | 0.9% |
 | [`/api/integrations`](#apiintegrations) | 7 | 0.9% |
@@ -1223,37 +1223,41 @@ Facility module gate: `registration`.
 
 ## /api/payroll
 
-25 routes.
+29 routes.
 
 5 distinct permission codes are required across this prefix: `payroll.read`, `payroll.manage`, `payroll.approve`, `payroll.statutory.manage`, `payroll.post`.
 
 | Method | Route | Purpose | Auth | Permission | Input | Scope | Handler | Source |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| GET | `/api/payroll/account-settings` | List account settings | Staff session | `payroll.read` | — | facility | `workforce.getPayrollAccountSettings` | `src/routes/workforce.routes.ts:623` |
-| PUT | `/api/payroll/account-settings` | Update an account setting | Staff session | `payroll.manage`, `payroll.approve` | — | facility | `workforce.savePayrollAccountSettings` | `src/routes/workforce.routes.ts:637` |
-| GET | `/api/payroll/accounts` | List accounts | Staff session | `payroll.read` | — | facility | `workforce.listPayrollAccounts` | `src/routes/workforce.routes.ts:609` |
-| POST | `/api/payroll/components` | Create a component | Staff session | `payroll.manage` | — | facility | `workforce.createPayComponent` | `src/routes/workforce.routes.ts:653` |
-| DELETE | `/api/payroll/components/:id` | Delete a component | Staff session | `payroll.manage` | — | facility | `workforce.deactivatePayComponent` | `src/routes/workforce.routes.ts:667` |
-| GET | `/api/payroll/employees` | List employees | Staff session | `payroll.read` | — | facility | `workforce.listEmployees` | `src/routes/workforce.routes.ts:850` |
-| GET | `/api/payroll/employees/:id` | Read an employee | Staff session | `payroll.read` | — | facility | `workforce.employeeDetail` | `src/routes/workforce.routes.ts:863` |
-| PUT | `/api/payroll/employees/:id/salary` | Update a salary | Staff session | `payroll.manage` | — | facility | `workforce.setEmployeeSalary` | `src/routes/workforce.routes.ts:886` |
-| GET | `/api/payroll/form-profiles` | Statutory form profiles and extracts. Reading a P9/P10 extract is `payroll.read`; recording which published form version the facility produces is `payroll.statutory.manage`, the same privilege that lets someone record the statutory rates th | Staff session | `payroll.read` | — | facility | `workforce.listFormProfiles` | `src/routes/workforce.routes.ts:803` |
-| POST | `/api/payroll/form-profiles` | Create a form profile | Staff session | `payroll.statutory.manage` | — | facility | `workforce.createFormProfile` | `src/routes/workforce.routes.ts:817` |
-| GET | `/api/payroll/history` | History | Staff session | `payroll.read` | — | facility | `workforce.payrollHistory` | `src/routes/workforce.routes.ts:916` |
-| GET | `/api/payroll/payslips/:id` | Read a payslip | Staff session | `payroll.read` | — | facility | `workforce.payslipDetail` | `src/routes/workforce.routes.ts:779` |
-| GET | `/api/payroll/periods` | List periods | Staff session | `payroll.read` | — | facility | `workforce.listPeriods` | `src/routes/workforce.routes.ts:687` |
-| POST | `/api/payroll/periods` | Create a period | Staff session | `payroll.manage` | — | facility | `workforce.createPeriod` | `src/routes/workforce.routes.ts:701` |
-| POST | `/api/payroll/periods/:id/calculate` | Create action on a calculate | Staff session | `payroll.manage` | — | facility | `workforce.calculateRun` | `src/routes/workforce.routes.ts:715` |
-| GET | `/api/payroll/readiness` | List readiness | Staff session | `payroll.read` | — | facility | `workforce.payrollReadiness` | `src/routes/workforce.routes.ts:930` |
-| GET | `/api/payroll/runs/:id` | Read a run | Staff session | `payroll.read` | — | facility | `workforce.runDetail` | `src/routes/workforce.routes.ts:731` |
-| POST | `/api/payroll/runs/:id/approve` | Approve: runs approve | Staff session | `payroll.approve` | — | facility | `workforce.approveRun` | `src/routes/workforce.routes.ts:747` |
-| POST | `/api/payroll/runs/:id/post` | Post: runs post | Staff session | `payroll.post` | — | facility | `workforce.postRun` | `src/routes/workforce.routes.ts:763` |
-| GET | `/api/payroll/runs/:id/reports` | Read a report | Staff session | `payroll.read` | — | facility | `workforce.payrollRunReports` | `src/routes/workforce.routes.ts:901` |
-| GET | `/api/payroll/statutory-extract` | List statutory extract | Staff session | `payroll.read` | — | facility | `workforce.statutoryFormExtract` | `src/routes/workforce.routes.ts:831` |
+| GET | `/api/payroll/account-settings` | List account settings | Staff session | `payroll.read` | — | facility | `workforce.getPayrollAccountSettings` | `src/routes/workforce.routes.ts:675` |
+| PUT | `/api/payroll/account-settings` | Update an account setting | Staff session | `payroll.manage`, `payroll.approve` | — | facility | `workforce.savePayrollAccountSettings` | `src/routes/workforce.routes.ts:689` |
+| GET | `/api/payroll/accounts` | List accounts | Staff session | `payroll.read` | — | facility | `workforce.listPayrollAccounts` | `src/routes/workforce.routes.ts:661` |
+| POST | `/api/payroll/components` | Create a component | Staff session | `payroll.manage` | — | facility | `workforce.createPayComponent` | `src/routes/workforce.routes.ts:705` |
+| DELETE | `/api/payroll/components/:id` | Delete a component | Staff session | `payroll.manage` | — | facility | `workforce.deactivatePayComponent` | `src/routes/workforce.routes.ts:719` |
+| GET | `/api/payroll/employees` | List employees | Staff session | `payroll.read` | — | facility | `workforce.listEmployees` | `src/routes/workforce.routes.ts:918` |
+| GET | `/api/payroll/employees/:id` | Read an employee | Staff session | `payroll.read` | — | facility | `workforce.employeeDetail` | `src/routes/workforce.routes.ts:931` |
+| PUT | `/api/payroll/employees/:id/salary` | Update a salary | Staff session | `payroll.manage` | — | facility | `workforce.setEmployeeSalary` | `src/routes/workforce.routes.ts:954` |
+| GET | `/api/payroll/form-profiles` | Statutory form profiles and extracts. Reading a P9/P10 extract is `payroll.read`; recording which published form version the facility produces is `payroll.statutory.manage`, the same privilege that lets someone record the statutory rates th | Staff session | `payroll.read` | — | facility | `workforce.listFormProfiles` | `src/routes/workforce.routes.ts:871` |
+| POST | `/api/payroll/form-profiles` | Create a form profile | Staff session | `payroll.statutory.manage` | — | facility | `workforce.createFormProfile` | `src/routes/workforce.routes.ts:885` |
+| GET | `/api/payroll/history` | History | Staff session | `payroll.read` | — | facility | `workforce.payrollHistory` | `src/routes/workforce.routes.ts:984` |
+| GET | `/api/payroll/payslips/:id` | Read a payslip | Staff session | `payroll.read` | — | facility | `workforce.payslipDetail` | `src/routes/workforce.routes.ts:847` |
+| GET | `/api/payroll/periods` | List periods | Staff session | `payroll.read` | — | facility | `workforce.listPeriods` | `src/routes/workforce.routes.ts:739` |
+| POST | `/api/payroll/periods` | Create a period | Staff session | `payroll.manage` | — | facility | `workforce.createPeriod` | `src/routes/workforce.routes.ts:753` |
+| POST | `/api/payroll/periods/:id/calculate` | Create action on a calculate | Staff session | `payroll.manage` | — | facility | `workforce.calculateRun` | `src/routes/workforce.routes.ts:767` |
+| POST | `/api/payroll/preview` | Preview | Staff session | `payroll.read` | — | facility | `workforce.previewPayroll` | `src/routes/workforce.routes.ts:647` |
+| GET | `/api/payroll/readiness` | List readiness | Staff session | `payroll.read` | — | facility | `workforce.payrollReadiness` | `src/routes/workforce.routes.ts:998` |
+| GET | `/api/payroll/runs/:id` | Read a run | Staff session | `payroll.read` | — | facility | `workforce.runDetail` | `src/routes/workforce.routes.ts:783` |
+| POST | `/api/payroll/runs/:id/approve` | Approve: runs approve | Staff session | `payroll.approve` | — | facility | `workforce.approveRun` | `src/routes/workforce.routes.ts:799` |
+| POST | `/api/payroll/runs/:id/post` | Post: runs post | Staff session | `payroll.post` | — | facility | `workforce.postRun` | `src/routes/workforce.routes.ts:815` |
+| GET | `/api/payroll/runs/:id/reports` | Read a report | Staff session | `payroll.read` | — | facility | `workforce.payrollRunReports` | `src/routes/workforce.routes.ts:969` |
+| POST | `/api/payroll/runs/:id/reverse` | Reverse: runs reverse | Staff session | `payroll.post` | — | facility | `workforce.reversePayrollRun` | `src/routes/workforce.routes.ts:831` |
+| GET | `/api/payroll/statutory-extract` | List statutory extract | Staff session | `payroll.read` | — | facility | `workforce.statutoryFormExtract` | `src/routes/workforce.routes.ts:899` |
+| GET | `/api/payroll/statutory-rulebook` | List statutory rulebook | Staff session | `payroll.read` | — | facility | `workforce.statutoryRulebook` | `src/routes/workforce.routes.ts:612` |
+| POST | `/api/payroll/statutory-rulebook/install` | Create an install | Staff session | `payroll.statutory.manage` | — | facility | `workforce.installStatutoryRulebook` | `src/routes/workforce.routes.ts:631` |
 | GET | `/api/payroll/statutory-versions` | List statutory versions | Staff session | `payroll.read` | — | facility | `workforce.listStatutoryVersions` | `src/routes/workforce.routes.ts:565` |
 | POST | `/api/payroll/statutory-versions` | Create a statutory version | Staff session | `payroll.statutory.manage` | — | facility | `workforce.createStatutoryVersion` | `src/routes/workforce.routes.ts:579` |
 | POST | `/api/payroll/statutory-versions/:id/status` | Create action on a status | Staff session | `payroll.statutory.manage` | — | facility | `workforce.setStatutoryVersionStatus` | `src/routes/workforce.routes.ts:593` |
-| POST | `/api/payroll/statutory-versions/:id/verify` | Verify: statutory versions verify | Staff session | `payroll.statutory.manage` | — | facility | `workforce.verifyStatutoryVersion` | `src/routes/workforce.routes.ts:950` |
+| POST | `/api/payroll/statutory-versions/:id/verify` | Verify: statutory versions verify | Staff session | `payroll.statutory.manage` | — | facility | `workforce.verifyStatutoryVersion` | `src/routes/workforce.routes.ts:1018` |
 
 ## /api/pharmacy
 

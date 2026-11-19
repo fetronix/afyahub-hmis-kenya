@@ -39,10 +39,18 @@ import {
 } from '../accounting/accounting.service.ts';
 import {
   calculatePayroll,
+  calculatePayslip,
+  resolveStatutoryVersions,
   type PayrollEmployeeInput,
   type PayslipResult,
   type StatutoryVersion,
 } from './payroll-calculator.ts';
+import {
+  PAYROLL_SOURCE_GUIDANCE,
+  RULEBOOK_STATUTES,
+  STATUTORY_RULEBOOK,
+  rulebookEntryForDate,
+} from './statutory-rulebook.ts';
 
 export type WorkforceScope = {
   tenantId: number;
@@ -390,7 +398,14 @@ const employeeSelection = {
 };
 
 function presentEmployee<T extends { baseSalaryCents: bigint }>(row: T) {
-  return { ...row, baseSalaryCents: money(row.baseSalaryCents) };
+  // Every cents column leaves the service as a decimal string: JSON has no BigInt.
+  return {
+    ...row,
+    baseSalaryCents: money(row.baseSalaryCents),
+    ...('insurancePremiumMonthlyCents' in row
+      ? { insurancePremiumMonthlyCents: money(row.insurancePremiumMonthlyCents as bigint) }
+      : {}),
+  };
 }
 
 export async function listEmployees(
@@ -594,6 +609,33 @@ function employeeFields(input: Record<string, unknown>) {
   const nssfNumber = optionalText(input.nssfNumber, 'NSSF number', 30);
   const shifNumber = optionalText(input.shifNumber, 'SHIF number', 30);
   const notes = optionalText(input.notes, 'Notes', 1000);
+  /*
+   * Tax residency decides whether the personal relief is granted. Defaulting
+   * to resident matches the payroll the facility already runs; a non-resident
+   * must be switched deliberately so relief is never granted by accident.
+   */
+  const taxResidency =
+    input.taxResidency === undefined || input.taxResidency === null || input.taxResidency === ''
+      ? 'RESIDENT'
+      : enumValue(input.taxResidency, ['RESIDENT', 'NON_RESIDENT'] as const, 'Tax residency');
+  const insurancePremiumMonthlyCents =
+    input.insurancePremiumMonthlyCents === undefined
+      ? 0n
+      : cents(input.insurancePremiumMonthlyCents, 'Declared insurance premium');
+  if (insurancePremiumMonthlyCents < 0n)
+    fail(400, 'INVALID_PREMIUM', 'A declared insurance premium cannot be negative.');
+  const insuranceReliefEvidenceReference = optionalText(
+    input.insuranceReliefEvidenceReference,
+    'Insurance relief evidence reference',
+    200,
+  );
+  // Relief is granted on declared premiums; a declaration without evidence is not evidence.
+  if (insurancePremiumMonthlyCents > 0n && !insuranceReliefEvidenceReference)
+    fail(
+      400,
+      'INSURANCE_EVIDENCE_REQUIRED',
+      'Record the evidence reference for the declared insurance premium before it can earn relief.',
+    );
   return {
     employeeNumber,
     firstName,
@@ -615,6 +657,9 @@ function employeeFields(input: Record<string, unknown>) {
     kraPin,
     nssfNumber,
     shifNumber,
+    taxResidency,
+    insurancePremiumMonthlyCents,
+    insuranceReliefEvidenceReference,
     notes,
   };
 }
@@ -653,7 +698,7 @@ export async function createEmployee(scope: WorkforceScope, input: Record<string
       'CREATE',
       `Registered employee ${row.employeeNumber} — ${row.firstName} ${row.lastName}`,
     );
-    return { ...row, baseSalaryCents: money(row.baseSalaryCents) };
+    return presentEmployee(row);
   });
 }
 
@@ -678,7 +723,7 @@ export async function updateEmployee(
       .returning();
     if (!row) fail(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found in this facility.');
     await audit(tx, scope, 'hr_employee', id, 'UPDATE', `Updated employee ${row.employeeNumber}`);
-    return { ...row, baseSalaryCents: money(row.baseSalaryCents) };
+    return presentEmployee(row);
   });
 }
 
@@ -705,7 +750,7 @@ export async function changeEmployeeStatus(
       .returning();
     if (!row) fail(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found in this facility.');
     await audit(tx, scope, 'hr_employee', id, 'STATUS_CHANGE', `Status changed to ${status}`);
-    return { ...row, baseSalaryCents: money(row.baseSalaryCents) };
+    return presentEmployee(row);
   });
 }
 
@@ -1351,8 +1396,42 @@ export async function listStatutoryVersions(scope: WorkforceScope) {
       ),
     )
     .orderBy(asc(schema.payrollStatutoryBands.sequence));
+  /*
+   * Approval audit trail. A rule row may only move between statuses, so the
+   * sequence of decisions is read back from the audit log instead of a column
+   * that could be overwritten.
+   */
+  const history = await db
+    .select({
+      resourceId: schema.auditLogs.resourceId,
+      action: schema.auditLogs.action,
+      details: schema.auditLogs.details,
+      userId: schema.auditLogs.userId,
+      createdAt: schema.auditLogs.timestamp,
+    })
+    .from(schema.auditLogs)
+    .where(
+      and(
+        eq(schema.auditLogs.tenantId, scope.tenantId),
+        eq(schema.auditLogs.facilityId, scope.facilityId),
+        eq(schema.auditLogs.resource, 'payroll_statutory_version'),
+        inArray(
+          schema.auditLogs.resourceId,
+          versions.map((version) => String(version.id)),
+        ),
+      ),
+    )
+    .orderBy(asc(schema.auditLogs.timestamp));
   return versions.map((version) => ({
     ...version,
+    statusHistory: history
+      .filter((row) => row.resourceId === String(version.id))
+      .map((row) => ({
+        action: row.action,
+        byUserId: row.userId,
+        at: row.createdAt,
+        details: row.details,
+      })),
     bands: bands
       .filter((band) => band.versionId === version.id)
       .map((band) => ({
@@ -1390,6 +1469,25 @@ export async function createStatutoryVersion(
     );
   const basis = enumValue(input.basis ?? 'GROSS', ['GROSS'] as const, 'Basis');
   const notes = optionalText(input.notes, 'Notes', 1000);
+  /*
+   * Provenance beyond the free-text citation. A facility that has to defend a
+   * payslip needs the instrument's own title, where it was published and when,
+   * not only a sentence written by whoever typed the rates.
+   */
+  const ruleName = optionalText(input.ruleName, 'Rule name', 200);
+  const calculationMethod = optionalText(input.calculationMethod, 'Calculation method', 80);
+  const currency = (
+    typeof input.currency === 'string' && input.currency.trim()
+      ? input.currency.trim().toUpperCase()
+      : 'KES'
+  ) as string;
+  if (!/^[A-Z]{3}$/.test(currency))
+    fail(400, 'INVALID_CURRENCY', 'Currency must be a three-letter ISO code.');
+  const sourceTitle = optionalText(input.sourceTitle, 'Source title', 300);
+  const sourceUrl = optionalText(input.sourceUrl, 'Source URL', 500);
+  if (sourceUrl && !/^https?:\/\/[^\s]+$/i.test(sourceUrl))
+    fail(400, 'INVALID_SOURCE_URL', 'A source URL must start with http:// or https://.');
+  const sourcePublishedOn = optionalIsoDate(input.sourcePublishedOn, 'Source publication date');
   const rawConfig = input.calculationConfig as Record<string, unknown> | undefined;
   if (
     rawConfig &&
@@ -1452,10 +1550,16 @@ export async function createStatutoryVersion(
         facilityId: scope.facilityId,
         statute,
         label,
+        ruleName,
+        calculationMethod,
+        currency,
         effectiveFrom,
         effectiveTo,
         authority,
         sourceReference,
+        sourceTitle,
+        sourceUrl,
+        sourcePublishedOn,
         basis,
         calculationConfig,
         status: 'DRAFT',
@@ -1557,6 +1661,12 @@ export async function setStatutoryVersionStatus(
           'Another active version of this statute covers the same dates. Retire it first.',
         );
     }
+    /*
+     * Only the status changes. The rule row's history — every earlier status,
+     * who verified it and when — is append-only in `audit_logs`; the database
+     * guard refuses any other column change, which is what keeps a version
+     * used by an approved run from being quietly rewritten later.
+     */
     const [row] = await tx
       .update(schema.payrollStatutoryVersions)
       .set({ status })
@@ -1568,7 +1678,9 @@ export async function setStatutoryVersionStatus(
       'payroll_statutory_version',
       id,
       status,
-      `${version.statute} ${version.label} → ${status}`,
+      status === 'ACTIVE'
+        ? `${version.statute} ${version.label} approved and activated by ${scope.actorName ?? scope.actorId}`
+        : `${version.statute} ${version.label} → ${status}`,
     );
     return row;
   });
@@ -1912,15 +2024,24 @@ async function loadStatutoryVersions(
 function breakdownOf(slip: PayslipResult) {
   return {
     grossCents: slip.grossCents.toString(),
+    taxableGrossCents: slip.taxableGrossCents.toString(),
     taxableCents: slip.taxableCents.toString(),
     payeCents: slip.payeCents.toString(),
+    payeBeforeReliefCents: slip.payeBeforeReliefCents.toString(),
+    personalReliefCents: slip.personalReliefCents.toString(),
+    insuranceReliefCents: slip.insuranceReliefCents.toString(),
+    qualifyingPensionCents: slip.qualifyingPensionCents.toString(),
     nssfEmployeeCents: slip.nssfEmployeeCents.toString(),
     nssfEmployerCents: slip.nssfEmployerCents.toString(),
     shifCents: slip.shifCents.toString(),
     ahlEmployeeCents: slip.ahlEmployeeCents.toString(),
     ahlEmployerCents: slip.ahlEmployerCents.toString(),
+    statutoryDeductionsCents: slip.statutoryDeductionsCents.toString(),
     otherDeductionsCents: slip.otherDeductionsCents.toString(),
     netCents: slip.netCents.toString(),
+    employerContributionsCents: slip.employerContributionsCents.toString(),
+    employerCostCents: slip.employerCostCents.toString(),
+    taxResidency: slip.taxResidency,
     lines: slip.lines.map((line) => ({
       code: line.code,
       name: line.name,
@@ -1949,10 +2070,20 @@ export async function calculateRun(scope: WorkforceScope, periodId: number) {
     if (period.status === 'CLOSED')
       fail(409, 'PERIOD_CLOSED', 'This payroll period is closed and cannot be recalculated.');
 
+    /*
+     * One live run per period. A reversed run is retained as history, so the
+     * period may be recalculated into a new run while the reversed one keeps
+     * its payslips, journal link and reversal evidence.
+     */
     const [existingRun] = await tx
       .select()
       .from(schema.payrollRuns)
-      .where(eq(schema.payrollRuns.periodId, period.id))
+      .where(
+        and(
+          eq(schema.payrollRuns.periodId, period.id),
+          sql`${schema.payrollRuns.status} <> 'REVERSED'`,
+        ),
+      )
       .limit(1)
       .for('update');
     if (existingRun && (existingRun.status === 'APPROVED' || existingRun.status === 'POSTED'))
@@ -1976,6 +2107,11 @@ export async function calculateRun(scope: WorkforceScope, periodId: number) {
         shifNumber: schema.hrEmployees.shifNumber,
         bankName: schema.hrEmployees.bankName,
         bankAccountMasked: schema.hrEmployees.bankAccountMasked,
+        taxResidency: schema.hrEmployees.taxResidency,
+        insurancePremiumMonthlyCents: schema.hrEmployees.insurancePremiumMonthlyCents,
+        insuranceReliefEvidenceReference: schema.hrEmployees.insuranceReliefEvidenceReference,
+        hireDate: schema.hrEmployees.hireDate,
+        exitDate: schema.hrEmployees.exitDate,
       })
       .from(schema.hrEmployees)
       .where(
@@ -2017,6 +2153,17 @@ export async function calculateRun(scope: WorkforceScope, periodId: number) {
       .filter((v) => ids.has(v.id))
       .map((v) => ({ ...v, status: 'ACTIVE' as const }));
 
+    /*
+     * A person who joins or leaves mid-period is paid for the calendar days
+     * they were employed in it. The proration is computed here, recorded on the
+     * payslip, and then treated as ordinary basic pay: every statutory charge
+     * is calculated on the amount actually earned, not on a full month the
+     * facility never owed.
+     */
+    const prorations = new Map(
+      employees.map((employee) => [employee.id, prorationOf(employee, period)]),
+    );
+
     // A payroll withheld through the calculator's own error is stored nowhere:
     // the run does not exist until every employee has been costed.
     const result = calculatePayroll({
@@ -2026,7 +2173,9 @@ export async function calculateRun(scope: WorkforceScope, periodId: number) {
         employeeId: employee.id,
         employeeNumber: employee.employeeNumber,
         fullName: `${employee.firstName} ${employee.lastName}`,
-        baseSalaryCents: employee.baseSalaryCents,
+        baseSalaryCents: prorations.get(employee.id)!.baseSalaryCents,
+        taxResidency: employee.taxResidency as 'RESIDENT' | 'NON_RESIDENT',
+        insurancePremiumCents: reliefPremium(employee),
         components: components
           .filter((component) => component.employeeId === employee.id)
           .map((component) => ({
@@ -2035,6 +2184,7 @@ export async function calculateRun(scope: WorkforceScope, periodId: number) {
             kind: component.kind as 'EARNING' | 'DEDUCTION',
             amountCents: component.amountCents,
             taxable: component.taxable,
+            taxDeductible: component.taxDeductible,
             statutoryExclusions: component.statutoryExclusions,
           })),
       })),
@@ -2152,6 +2302,17 @@ export async function calculateRun(scope: WorkforceScope, periodId: number) {
           netCents: slip.netCents,
           breakdown: {
             ...breakdownOf(slip),
+            // JSONB cannot hold BigInt; the cents leave as decimal strings.
+            proration: (() => {
+              const applied = prorations.get(slip.employeeId);
+              return applied
+                ? {
+                    ...applied,
+                    baseSalaryCents: applied.baseSalaryCents.toString(),
+                    fullBaseSalaryCents: applied.fullBaseSalaryCents.toString(),
+                  }
+                : null;
+            })(),
             sourceVerifications: versions.map((v) => ({
               versionId: v.id,
               verifiedOn: v.verifiedOn,
@@ -2451,7 +2612,7 @@ export async function postRun(scope: WorkforceScope, runId: number) {
       fail(
         409,
         'PAYROLL_RULE_SNAPSHOT_MISMATCH',
-        'The configured verified rules do not match this approved run. Do not rewrite approved history; review the payroll correction process.',
+        "The active verified rules no longer match this run's rule snapshot. Do not rewrite approved history: review the change, then recalculate the period against the rules now in force.",
       );
     const settings = await getPayrollAccountSettings(scope, connection);
     if (!settings)
@@ -3212,6 +3373,32 @@ async function payrollReadinessInside(
   );
   const versions = await loadStatutoryVersions(connection, scope);
   const rules = assessPayrollRules(versions, period, new Date().toISOString().slice(0, 10));
+  /*
+   * When a statute has no usable rule, say which published entry would cover
+   * the period. "Configuration missing" is a dead end; the administrator needs
+   * to know whether the catalogue has the rule or whether it must be recorded
+   * by hand.
+   */
+  const catalogueSuggestions = rules
+    .filter((rule) => !rule.ready)
+    .map((rule) => {
+      const entry =
+        rulebookEntryForDate(rule.statute, period.endDate) ??
+        rulebookEntryForDate(rule.statute, period.payDate);
+      return entry
+        ? {
+            statute: rule.statute,
+            ruleKey: entry.key,
+            label: entry.label,
+            effectiveFrom: entry.effectiveFrom,
+            effectiveTo: entry.effectiveTo,
+            sourceTitle: entry.sourceTitle,
+            sourceUrl: entry.sourceUrl,
+            action: `Install ${entry.key} as a draft, verify it against the cited source, then activate it.`,
+          }
+        : null;
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
   const financial = await connection
     .select({ id: schema.financialPeriods.id, status: schema.financialPeriods.status })
     .from(schema.financialPeriods)
@@ -3242,6 +3429,7 @@ async function payrollReadinessInside(
     },
     mapping,
     rules,
+    catalogueSuggestions,
     accountingPeriod,
     configurationReady,
     canCalculate: configurationReady,
@@ -3270,6 +3458,68 @@ async function payrollReadinessInside(
       'Configuration checks only, not production certification, legal verification, salary payment or statutory filing. Source verification records a responsible user attestation; synthetic policies are test-only. A rule must cover the whole period and pay date; mixed-rule periods are blocked rather than guessed.',
   };
 }
+type ProrationSource = {
+  id: number;
+  baseSalaryCents: bigint;
+  hireDate: string;
+  exitDate: string | null;
+};
+
+/** Inclusive calendar days between two ISO dates. */
+function calendarDays(from: string, to: string): number {
+  const start = Date.parse(`${from}T00:00:00Z`);
+  const end = Date.parse(`${to}T00:00:00Z`);
+  return Math.round((end - start) / 86_400_000) + 1;
+}
+
+/**
+ * Pay for the days employed inside the period.
+ *
+ * Only basic salary is prorated. Allowances and deductions are configured
+ * amounts for the period and are applied as recorded; the payslip shows the
+ * proration explicitly so the figure is explained rather than merely smaller.
+ */
+function prorationOf(
+  employee: ProrationSource,
+  period: { startDate: string; endDate: string },
+): { baseSalaryCents: bigint; paidDays: number; totalDays: number; fullBaseSalaryCents: bigint } {
+  const totalDays = calendarDays(period.startDate, period.endDate);
+  const from = employee.hireDate > period.startDate ? employee.hireDate : period.startDate;
+  const to =
+    employee.exitDate && employee.exitDate < period.endDate ? employee.exitDate : period.endDate;
+  const paidDays = Math.max(0, calendarDays(from, to));
+  const baseSalaryCents =
+    paidDays >= totalDays
+      ? employee.baseSalaryCents
+      : (employee.baseSalaryCents * BigInt(paidDays)) / BigInt(totalDays);
+  return {
+    baseSalaryCents,
+    paidDays,
+    totalDays,
+    fullBaseSalaryCents: employee.baseSalaryCents,
+  };
+}
+
+/**
+ * Relief follows evidence, not a typed number.
+ *
+ * A premium recorded without a document reference cannot earn insurance
+ * relief; the calculation stops instead of quietly granting or dropping it,
+ * because either would misstate the payslip.
+ */
+function reliefPremium(employee: {
+  insurancePremiumMonthlyCents: bigint;
+  insuranceReliefEvidenceReference: string | null;
+}): bigint {
+  if (employee.insurancePremiumMonthlyCents > 0n && !employee.insuranceReliefEvidenceReference)
+    fail(
+      409,
+      'INSURANCE_RELIEF_EVIDENCE_REQUIRED',
+      'An insurance premium is recorded without evidence. Record the document reference or clear the premium before calculating.',
+    );
+  return employee.insurancePremiumMonthlyCents;
+}
+
 function assertPayrollConfigured(readiness: Awaited<ReturnType<typeof payrollReadinessInside>>) {
   const invalid = readiness.rules.find((r) => !r.ready);
   if (invalid)
@@ -3288,6 +3538,526 @@ function assertPayrollConfigured(readiness: Awaited<ReturnType<typeof payrollRea
         .join(' '),
     );
 }
+
+/* ============================================================
+   PUBLISHED RULE CATALOGUE
+   ============================================================ */
+
+/**
+ * The published Kenyan rules this application can install, with what the
+ * facility already has. Nothing is installed until an administrator asks for
+ * it, and an installed entry is still a DRAFT until a named user verifies the
+ * source and a second decision activates it.
+ */
+export async function statutoryRulebook(scope: WorkforceScope, effectiveOn?: string) {
+  const on = effectiveOn ?? new Date().toISOString().slice(0, 10);
+  const installed = await loadStatutoryVersions(db, scope);
+  const entries = STATUTORY_RULEBOOK.map((entry) => {
+    /*
+     * A catalogue entry is "installed" when this facility already holds a
+     * version of that statute with the same label and effective start. Source
+     * text is not compared: an administrator may have corrected a citation.
+     */
+    const match = installed.find(
+      (version) =>
+        version.statute === entry.statute &&
+        version.effectiveFrom === entry.effectiveFrom &&
+        version.label === entry.label,
+    );
+    return {
+      key: entry.key,
+      statute: entry.statute,
+      label: entry.label,
+      ruleName: entry.ruleName,
+      effectiveFrom: entry.effectiveFrom,
+      effectiveTo: entry.effectiveTo,
+      authority: entry.authority,
+      calculationMethod: entry.calculationMethod,
+      currency: entry.currency,
+      basis: entry.basis,
+      sourceTitle: entry.sourceTitle,
+      sourceUrl: entry.sourceUrl,
+      sourcePublishedOn: entry.sourcePublishedOn,
+      sourceReference: entry.sourceReference,
+      citedPassage: entry.citedPassage,
+      verificationNote: entry.verificationNote,
+      notes: entry.notes,
+      appliesOnSelectedDate:
+        entry.effectiveFrom <= on && (entry.effectiveTo === null || entry.effectiveTo >= on),
+      bands: entry.bands.map((band) => ({
+        sequence: band.sequence,
+        lowerBoundCents: band.lowerBoundCents.toString(),
+        upperBoundCents: band.upperBoundCents === null ? null : band.upperBoundCents.toString(),
+        employeeRateBp: band.employeeRateBp,
+        employerRateBp: band.employerRateBp,
+        employeeCapCents: band.employeeCapCents === null ? null : band.employeeCapCents.toString(),
+        employerCapCents: band.employerCapCents === null ? null : band.employerCapCents.toString(),
+      })),
+      calculationConfig: entry.calculationConfig,
+      installedVersionId: match?.id ?? null,
+      installedStatus: match?.status ?? null,
+    };
+  });
+  return {
+    effectiveOn: on,
+    entries,
+    guidance: PAYROLL_SOURCE_GUIDANCE,
+    notice:
+      'Reference data transcribed from the cited publications. Installing copies an entry into this facility as a DRAFT; it becomes usable only after a named user verifies the source and activates it. The application does not certify legal compliance.',
+  };
+}
+
+/**
+ * Install the published rule that covers a date into this facility as a draft.
+ *
+ * Idempotent per (statute, effectiveFrom): a second call reports the existing
+ * version instead of creating a duplicate. Nothing is activated here — that
+ * stays a separate, auditable decision.
+ */
+export async function installStatutoryRulebook(
+  scope: WorkforceScope,
+  input: Record<string, unknown>,
+) {
+  const effectiveOn = input.effectiveOn
+    ? isoDate(input.effectiveOn, 'Effective on')
+    : new Date().toISOString().slice(0, 10);
+  const requested =
+    Array.isArray(input.statutes) && input.statutes.length
+      ? input.statutes.map((value) => enumValue(value, STATUTES, 'Statute'))
+      : [...RULEBOOK_STATUTES];
+
+  return db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended('payroll-statutory', ${scope.facilityId}))`,
+    );
+    const existing = await tx
+      .select({
+        id: schema.payrollStatutoryVersions.id,
+        statute: schema.payrollStatutoryVersions.statute,
+        effectiveFrom: schema.payrollStatutoryVersions.effectiveFrom,
+        status: schema.payrollStatutoryVersions.status,
+      })
+      .from(schema.payrollStatutoryVersions)
+      .where(
+        and(
+          eq(schema.payrollStatutoryVersions.tenantId, scope.tenantId),
+          eq(schema.payrollStatutoryVersions.facilityId, scope.facilityId),
+        ),
+      );
+
+    const installed: Array<{ key: string; statute: string; versionId: number }> = [];
+    const skipped: Array<{ statute: string; reason: string; versionId?: number }> = [];
+    for (const statute of requested) {
+      const entry = rulebookEntryForDate(statute, effectiveOn);
+      if (!entry) {
+        skipped.push({
+          statute,
+          reason: `No published ${statute} rule in the catalogue covers ${effectiveOn}. Record the authority's version manually.`,
+        });
+        continue;
+      }
+      const match = existing.find(
+        (row) => row.statute === statute && row.effectiveFrom === entry.effectiveFrom,
+      );
+      if (match) {
+        skipped.push({
+          statute,
+          reason: `${entry.key} is already recorded (${match.status}).`,
+          versionId: match.id,
+        });
+        continue;
+      }
+      const [version] = await tx
+        .insert(schema.payrollStatutoryVersions)
+        .values({
+          tenantId: scope.tenantId,
+          facilityId: scope.facilityId,
+          statute: entry.statute,
+          label: entry.label,
+          ruleName: entry.ruleName,
+          calculationMethod: entry.calculationMethod,
+          currency: entry.currency,
+          effectiveFrom: entry.effectiveFrom,
+          effectiveTo: entry.effectiveTo,
+          authority: entry.authority,
+          sourceReference: entry.sourceReference,
+          sourceTitle: entry.sourceTitle,
+          sourceUrl: entry.sourceUrl,
+          sourcePublishedOn: entry.sourcePublishedOn,
+          basis: entry.basis,
+          calculationConfig: entry.calculationConfig,
+          status: 'DRAFT',
+          notes: [entry.citedPassage, ...entry.notes].join('\n'),
+          createdBy: scope.actorId,
+        })
+        .returning();
+      await tx.insert(schema.payrollStatutoryBands).values(
+        entry.bands.map((band) => ({
+          versionId: version.id,
+          sequence: band.sequence,
+          lowerBoundCents: band.lowerBoundCents,
+          upperBoundCents: band.upperBoundCents,
+          employeeRateBp: band.employeeRateBp,
+          employerRateBp: band.employerRateBp,
+          employeeFixedCents: band.employeeFixedCents,
+          employerFixedCents: band.employerFixedCents,
+          employeeCapCents: band.employeeCapCents,
+          employerCapCents: band.employerCapCents,
+          reliefCents: band.reliefCents,
+        })),
+      );
+      await audit(
+        tx,
+        scope,
+        'payroll_statutory_version',
+        version.id,
+        'INSTALL',
+        `Installed ${entry.key} from ${entry.sourceTitle}; status DRAFT pending verification.`,
+      );
+      installed.push({ key: entry.key, statute, versionId: version.id });
+    }
+    return {
+      effectiveOn,
+      installed,
+      skipped,
+      nextActions: installed.length
+        ? [
+            'Verify each draft against the cited source with a named verifier, then activate it. A run cannot use an unverified or inactive version.',
+          ]
+        : [],
+    };
+  });
+}
+
+/* ============================================================
+   CALCULATION PREVIEW
+   ============================================================ */
+
+/**
+ * Cost one employee for a period without creating a run.
+ *
+ * Either an existing employee, or synthetic values an authorised user types to
+ * test a rule before activating it. The response carries the same trace a
+ * payslip stores, so a preview can be reconciled against the run that follows.
+ */
+export async function previewPayroll(scope: WorkforceScope, input: Record<string, unknown>) {
+  const payDate = input.payDate
+    ? isoDate(input.payDate, 'Pay date')
+    : new Date().toISOString().slice(0, 10);
+  const componentInput = Array.isArray(input.components) ? input.components : [];
+  if (!input.employeeId && (input.grossKes === undefined || input.grossKes === '')) {
+    fail(
+      400,
+      'PREVIEW_INPUT_REQUIRED',
+      'Select an employee or enter a synthetic gross salary to preview.',
+    );
+  }
+
+  return db.transaction(async (tx) => {
+    let employee: PayrollEmployeeInput;
+    if (input.employeeId) {
+      const employeeId = positiveId(input.employeeId, 'Employee');
+      const [row] = await tx
+        .select()
+        .from(schema.hrEmployees)
+        .where(
+          and(
+            eq(schema.hrEmployees.id, employeeId),
+            eq(schema.hrEmployees.tenantId, scope.tenantId),
+            eq(schema.hrEmployees.facilityId, scope.facilityId),
+          ),
+        )
+        .limit(1);
+      if (!row) fail(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found in this facility.');
+      const components = await tx
+        .select()
+        .from(schema.payrollEmployeeComponents)
+        .where(
+          and(
+            eq(schema.payrollEmployeeComponents.employeeId, employeeId),
+            eq(schema.payrollEmployeeComponents.isActive, true),
+            lte(schema.payrollEmployeeComponents.effectiveFrom, payDate),
+            or(
+              sql`${schema.payrollEmployeeComponents.effectiveTo} IS NULL`,
+              gte(schema.payrollEmployeeComponents.effectiveTo, payDate),
+            )!,
+          ),
+        );
+      employee = {
+        employeeId: row.id,
+        employeeNumber: row.employeeNumber,
+        fullName: `${row.firstName} ${row.lastName}`,
+        baseSalaryCents: row.baseSalaryCents,
+        taxResidency: row.taxResidency as 'RESIDENT' | 'NON_RESIDENT',
+        insurancePremiumCents: reliefPremium(row),
+        components: components.map((component) => ({
+          code: component.code,
+          name: component.name,
+          kind: component.kind as 'EARNING' | 'DEDUCTION',
+          amountCents: component.amountCents,
+          taxable: component.taxable,
+          taxDeductible: component.taxDeductible,
+          statutoryExclusions: component.statutoryExclusions,
+        })),
+      };
+    } else {
+      const grossCents = centsFromKesInput(input.grossKes, 'Gross salary');
+      const residency =
+        input.taxResidency === undefined || input.taxResidency === ''
+          ? 'RESIDENT'
+          : enumValue(input.taxResidency, ['RESIDENT', 'NON_RESIDENT'] as const, 'Tax residency');
+      const premium =
+        input.insurancePremiumKes === undefined || input.insurancePremiumKes === ''
+          ? 0n
+          : centsFromKesInput(input.insurancePremiumKes, 'Declared insurance premium');
+      employee = {
+        employeeId: 0,
+        employeeNumber: 'PREVIEW',
+        fullName: 'Synthetic preview',
+        baseSalaryCents: grossCents,
+        taxResidency: residency,
+        insurancePremiumCents: premium,
+        components: componentInput.map((raw) => {
+          const component = raw as Record<string, unknown>;
+          return {
+            code: requiredText(component.code, 'Component code', 24).toUpperCase(),
+            name: requiredText(component.name, 'Component name', 80),
+            kind: enumValue(
+              component.kind ?? 'DEDUCTION',
+              ['EARNING', 'DEDUCTION'] as const,
+              'Component kind',
+            ),
+            amountCents: centsFromKesInput(component.amountKes, 'Component amount'),
+            taxable: component.taxable === undefined ? true : component.taxable === true,
+            taxDeductible: component.taxDeductible === true,
+            statutoryExclusions: Array.isArray(component.statutoryExclusions)
+              ? (component.statutoryExclusions as string[])
+              : [],
+          };
+        }),
+      };
+    }
+
+    const versions = await loadStatutoryVersions(tx, scope);
+    let resolved: Record<string, StatutoryVersion>;
+    try {
+      resolved = resolveStatutoryVersions(versions, payDate) as Record<string, StatutoryVersion>;
+    } catch (err) {
+      const code = (err as { code?: string }).code ?? 'STATUTORY_VERSION_REQUIRED';
+      fail(
+        (err as { status?: number }).status ?? 409,
+        code,
+        (err as Error).message +
+          ' Install or record the rule that covers this pay date before previewing.',
+      );
+    }
+    const slip = calculatePayslip({ employee, versions: resolved, payDate });
+    const ruleVersions = Object.values(resolved).map((version) => ({
+      statute: version.statute,
+      versionId: version.id,
+      label: version.label,
+      effectiveFrom: version.effectiveFrom,
+      effectiveTo: version.effectiveTo,
+      authority: version.authority,
+      sourceReference: version.sourceReference,
+      status: version.status,
+    }));
+    return {
+      payDate,
+      employee: {
+        id: employee.employeeId,
+        employeeNumber: employee.employeeNumber,
+        fullName: employee.fullName,
+        taxResidency: slip.taxResidency,
+      },
+      slip: {
+        ...slip,
+        grossCents: slip.grossCents.toString(),
+        taxableGrossCents: slip.taxableGrossCents.toString(),
+        taxableCents: slip.taxableCents.toString(),
+        payeCents: slip.payeCents.toString(),
+        payeBeforeReliefCents: slip.payeBeforeReliefCents.toString(),
+        personalReliefCents: slip.personalReliefCents.toString(),
+        insuranceReliefCents: slip.insuranceReliefCents.toString(),
+        qualifyingPensionCents: slip.qualifyingPensionCents.toString(),
+        nssfEmployeeCents: slip.nssfEmployeeCents.toString(),
+        nssfEmployerCents: slip.nssfEmployerCents.toString(),
+        shifCents: slip.shifCents.toString(),
+        ahlEmployeeCents: slip.ahlEmployeeCents.toString(),
+        ahlEmployerCents: slip.ahlEmployerCents.toString(),
+        statutoryDeductionsCents: slip.statutoryDeductionsCents.toString(),
+        otherDeductionsCents: slip.otherDeductionsCents.toString(),
+        netCents: slip.netCents.toString(),
+        employerContributionsCents: slip.employerContributionsCents.toString(),
+        employerCostCents: slip.employerCostCents.toString(),
+        lines: slip.lines.map((line) => ({
+          code: line.code,
+          name: line.name,
+          kind: line.kind,
+          amountCents: line.amountCents.toString(),
+        })),
+        statutes: slip.statutes,
+      },
+      ruleVersions,
+      notice:
+        'Preview only. Nothing is written to the ledger and no payslip is stored. A run uses the rules ACTIVE on its own pay date, which may differ from these if a version is retired in between.',
+    };
+  });
+}
+
+/** KES entered by a user → integer cents, refusing fractions of a cent. */
+function centsFromKesInput(value: unknown, label: string): bigint {
+  if (value === undefined || value === null || value === '')
+    fail(400, 'INVALID_AMOUNT', `${label} is required.`);
+  const text = String(value).trim().replace(/,/g, '');
+  if (!/^\d{1,12}(\.\d{1,2})?$/.test(text))
+    fail(400, 'INVALID_AMOUNT', `${label} must be an amount in KES with at most two decimals.`);
+  const [whole, fraction = ''] = text.split('.');
+  return BigInt(whole) * 100n + BigInt((fraction + '00').slice(0, 2));
+}
+
+/* ============================================================
+   PAYROLL REVERSAL
+   ============================================================ */
+
+/**
+ * Reverse a posted run with a contra journal.
+ *
+ * The original journal, payslips and snapshot stay exactly as they were: a
+ * posted payroll is an accounting fact, and correction is a second fact that
+ * points at the first. Deleting either would destroy the audit trail the
+ * statutory extracts depend on.
+ */
+export async function reversePayrollRun(
+  scope: WorkforceScope,
+  runId: number,
+  input: Record<string, unknown>,
+) {
+  const reason = requiredText(input.reason, 'Reversal reason', 500);
+  return ledgerTransaction(async (client) => {
+    const connection = drizzle(client);
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtextextended('bank-reconciliation', $1))",
+      [scope.facilityId],
+    );
+    const locked = await client.query(
+      'SELECT id FROM payroll_runs WHERE id=$1 AND tenant_id=$2 AND facility_id=$3 FOR UPDATE',
+      [runId, scope.tenantId, scope.facilityId],
+    );
+    if (!locked.rows.length) fail(404, 'RUN_NOT_FOUND', 'Payroll run not found in this facility.');
+    const [run] = await connection
+      .select({
+        id: schema.payrollRuns.id,
+        status: schema.payrollRuns.status,
+        journalEntryId: schema.payrollRuns.journalEntryId,
+        reversalJournalEntryId: schema.payrollRuns.reversalJournalEntryId,
+        periodId: schema.payrollRuns.periodId,
+      })
+      .from(schema.payrollRuns)
+      .where(
+        and(
+          eq(schema.payrollRuns.id, runId),
+          eq(schema.payrollRuns.tenantId, scope.tenantId),
+          eq(schema.payrollRuns.facilityId, scope.facilityId),
+        ),
+      )
+      .limit(1);
+    if (!run) fail(404, 'RUN_NOT_FOUND', 'Payroll run not found in this facility.');
+    // A run is reversed at most once. Report the existing contra rather than
+    // calling the run "not posted", which would hide what already happened.
+    if (run.reversalJournalEntryId)
+      fail(409, 'RUN_ALREADY_REVERSED', 'This run has already been reversed.');
+    if (run.status !== 'POSTED' || !run.journalEntryId)
+      fail(409, 'RUN_NOT_POSTED', 'Only a posted payroll run can be reversed.');
+
+    const original = await client.query(
+      'SELECT id, journal_number, total_debit_cents FROM journal_entries WHERE id=$1 FOR UPDATE',
+      [run.journalEntryId],
+    );
+    if (!original.rows.length)
+      fail(
+        409,
+        'JOURNAL_MISSING',
+        'The posted journal could not be found; do not amend history silently.',
+      );
+
+    /*
+     * Mirror the original lines with debit and credit swapped. The accounting
+     * layer refuses to derive them silently, so the reversal states its own
+     * amounts and the balance check below proves they mirror the original.
+     */
+    const originalLines = await client.query(
+      `SELECT account_id, description, service_line, debit_cents, credit_cents
+         FROM journal_lines WHERE journal_entry_id=$1 ORDER BY id`,
+      [run.journalEntryId],
+    );
+    const reversalLines: JournalLine[] = originalLines.rows.map((line) => ({
+      accountId: Number(line.account_id),
+      debitCents: BigInt(line.credit_cents),
+      creditCents: BigInt(line.debit_cents),
+      description: `Reversal — ${line.description ?? 'payroll'}`.slice(0, 200),
+      serviceLine: line.service_line ?? null,
+    }));
+    const reversalTotal = reversalLines.reduce((sum, line) => sum + line.debitCents, 0n);
+    if (reversalTotal !== BigInt(original.rows[0].total_debit_cents))
+      fail(
+        409,
+        'REVERSAL_TOTAL_MISMATCH',
+        'The original journal lines do not add up to its recorded total. Do not reverse silently; investigate the journal.',
+      );
+
+    const reversal = await postInsideTransaction(
+      client,
+      { tenantId: scope.tenantId, facilityId: scope.facilityId, actorUserId: scope.actorId },
+      {
+        entryDate: new Date().toISOString().slice(0, 10),
+        description: `Reversal of payroll run ${runId} — ${reason}`.slice(0, 500),
+        idempotencyKey: `payroll-run-reversal:${runId}`,
+        /*
+         * A reversal is its own source. Reusing the run's PAYROLL source id
+         * would collide with the journal it reverses: the ledger allows one
+         * journal per (facility, source type, source id), which is precisely
+         * what stops a run being posted twice.
+         */
+        sourceType: 'REVERSAL',
+        sourceId: String(run.journalEntryId),
+        reversalOf: Number(run.journalEntryId),
+        reversalReason: reason,
+        lines: reversalLines,
+        totalCents: reversalTotal,
+      },
+    );
+
+    await client.query(
+      `UPDATE payroll_runs
+         SET status='REVERSED', reversed_by=$1, reversed_at=now(),
+             reversal_journal_entry_id=$2, reversal_reason=$3
+       WHERE id=$4`,
+      [scope.actorId, Number(reversal.journal.id), reason, runId],
+    );
+    await client.query(
+      `INSERT INTO audit_logs(tenant_id,facility_id,user_id,resource,resource_id,action,details)
+       VALUES($1,$2,$3,'payroll_run',$4,'REVERSE',$5)`,
+      [
+        scope.tenantId,
+        scope.facilityId,
+        String(scope.actorId),
+        String(runId),
+        `Reversed with journal ${reversal.journal.journalNumber}: ${reason}`,
+      ],
+    );
+    return {
+      runId,
+      status: 'REVERSED',
+      reversalJournalEntryId: Number(reversal.journal.id),
+      reversalJournalNumber: reversal.journal.journalNumber,
+      reason,
+      notice:
+        'The original journal and payslips are unchanged. The reversal is a separate posted journal; recalculate the period to run payroll again.',
+    };
+  });
+}
+
 export async function payrollReadiness(scope: WorkforceScope, periodId?: number) {
   return db.transaction(async (tx) => {
     let period: PayrollReadinessPeriod;

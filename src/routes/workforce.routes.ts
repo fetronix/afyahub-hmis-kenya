@@ -606,6 +606,58 @@ router.post(
   },
 );
 
+/* The published rule catalogue. Reading it needs only payroll.read: it is
+   reference material, not facility data. Installing writes DRAFT versions and
+   therefore needs the statutory-configuration permission. */
+router.get(
+  '/api/payroll/statutory-rulebook',
+  requirePermission('payroll.read'),
+  async (req: AuthRequest, res: Response) => {
+    const access = await scope(req, res, req.query.facilityId);
+    if (!access) return;
+    try {
+      res.json(
+        await workforce.statutoryRulebook(
+          access,
+          typeof req.query.effectiveOn === 'string' ? req.query.effectiveOn : undefined,
+        ),
+      );
+    } catch (err) {
+      handleError(res, err, 'GET /api/payroll/statutory-rulebook');
+    }
+  },
+);
+
+router.post(
+  '/api/payroll/statutory-rulebook/install',
+  requirePermission('payroll.statutory.manage'),
+  async (req: AuthRequest, res: Response) => {
+    const access = await scope(req, res, body(req).facilityId ?? req.query.facilityId);
+    if (!access) return;
+    try {
+      res.status(201).json(await workforce.installStatutoryRulebook(access, body(req)));
+    } catch (err) {
+      handleError(res, err, 'POST /api/payroll/statutory-rulebook/install');
+    }
+  },
+);
+
+/* Preview costs one employee and writes nothing. It needs payroll.read, not
+   payroll.manage: testing a rule is part of configuring one. */
+router.post(
+  '/api/payroll/preview',
+  requirePermission('payroll.read'),
+  async (req: AuthRequest, res: Response) => {
+    const access = await scope(req, res, body(req).facilityId ?? req.query.facilityId);
+    if (!access) return;
+    try {
+      res.json(await workforce.previewPayroll(access, body(req)));
+    } catch (err) {
+      handleError(res, err, 'POST /api/payroll/preview');
+    }
+  },
+);
+
 router.get(
   '/api/payroll/accounts',
   requirePermission('payroll.read'),
@@ -772,6 +824,22 @@ router.post(
       res.json(await workforce.postRun(access, id));
     } catch (err) {
       handleError(res, err, 'POST /api/payroll/runs/:id/post');
+    }
+  },
+);
+
+router.post(
+  '/api/payroll/runs/:id/reverse',
+  requirePermission('payroll.post'),
+  async (req: AuthRequest, res: Response) => {
+    const access = await scope(req, res, body(req).facilityId ?? req.query.facilityId);
+    if (!access) return;
+    const id = idParam(req, res, 'run');
+    if (!id) return;
+    try {
+      res.json(await workforce.reversePayrollRun(access, id, body(req)));
+    } catch (err) {
+      handleError(res, err, 'POST /api/payroll/runs/:id/reverse');
     }
   },
 );

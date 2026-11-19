@@ -180,9 +180,35 @@ describe('computeStatute', () => {
     expect(result.employeeCents).toBe('21600');
   });
 
-  it('requires SHIF to be a single band', () => {
-    const shif = version({ statute: 'SHIF', bands: [band(), band({ sequence: 2 })] });
-    expect(() => computeStatute('SHIF', 100_000n, shif)).toThrowError(/exactly one band/);
+  it('charges each band only on the slice of the base inside it', () => {
+    /*
+     * Tiered contributions are arithmetic, not a special case: a two-band
+     * version charges its first rate up to the first ceiling and its second
+     * rate above it. This is the shape NSSF Year 4 uses.
+     */
+    const tiered = version({
+      statute: 'NSSF',
+      bands: [
+        band({ upperBoundCents: 900_000n, employeeRateBp: 600 }),
+        band({
+          sequence: 2,
+          lowerBoundCents: 900_000n,
+          upperBoundCents: 10_800_000n,
+          employeeRateBp: 600,
+        }),
+      ],
+    });
+    expect(computeStatute('NSSF', 10_000_000n, tiered).employeeCents).toBe('600000');
+    // Above the top bound nothing further is charged.
+    expect(computeStatute('NSSF', 20_000_000n, tiered).employeeCents).toBe('648000');
+  });
+
+  it('leaves pay above a finite top band uncharged', () => {
+    const capped = version({
+      statute: 'NSSF',
+      bands: [band({ upperBoundCents: 900_000n, employeeRateBp: 600 })],
+    });
+    expect(computeStatute('NSSF', 5_000_000n, capped).employeeCents).toBe('54000');
   });
 
   it('refuses a negative base', () => {

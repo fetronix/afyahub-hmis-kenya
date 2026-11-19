@@ -2,7 +2,7 @@
 
 > Generated from the permission catalogue, the staff role catalogue, the facility-admin delegation set, the navigation guard and the registered API routes. Regenerate with `npx tsx scripts/docs/build-permissions-matrix.ts`.
 
-Generated: 2026-11-18
+Generated: 2026-11-19
 
 **Intended audience:** system administrators, facility administrators, auditors, integrators.
 
@@ -307,9 +307,9 @@ A permission never grants scope by itself: it allows an action, while the scope 
 | --- | --- | --- | --- | --- |
 | `payroll.approve` | Approve Payroll | SUPER_ADMIN | 2 | — |
 | `payroll.manage` | Prepare Payroll | SUPER_ADMIN, FACILITY_ADMIN | 6 | — |
-| `payroll.post` | Post Payroll to Ledger | SUPER_ADMIN | 1 | — |
-| `payroll.read` | View Payroll | SUPER_ADMIN, FACILITY_ADMIN | 13 | payroll |
-| `payroll.statutory.manage` | Record Statutory Payroll Rules | SUPER_ADMIN | 4 | — |
+| `payroll.post` | Post Payroll to Ledger | SUPER_ADMIN | 2 | — |
+| `payroll.read` | View Payroll | SUPER_ADMIN, FACILITY_ADMIN | 15 | payroll |
+| `payroll.statutory.manage` | Record Statutory Payroll Rules | SUPER_ADMIN | 5 | — |
 
 ### pharmacy
 

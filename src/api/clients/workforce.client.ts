@@ -148,6 +148,19 @@ export type PayrollStatutoryVersion = {
   id: number;
   statute: 'PAYE' | 'NSSF' | 'SHIF' | 'AHL';
   label: string;
+  /* Provenance recorded alongside the rates, so a reader can check the source. */
+  ruleName?: string | null;
+  calculationMethod?: string | null;
+  currency?: string | null;
+  sourceTitle?: string | null;
+  sourceUrl?: string | null;
+  sourcePublishedOn?: string | null;
+  statusHistory?: Array<{
+    action: string;
+    byUserId: string | null;
+    at: string;
+    details: string | null;
+  }>;
   effectiveFrom: string;
   effectiveTo: string | null;
   authority: string;
@@ -155,6 +168,96 @@ export type PayrollStatutoryVersion = {
   status: 'DRAFT' | 'ACTIVE' | 'RETIRED';
   notes: string | null;
   bands: PayrollBand[];
+};
+
+/** One published rule the catalogue can install, and whether it is installed. */
+export type PayrollRulebookEntry = {
+  key: string;
+  statute: 'PAYE' | 'NSSF' | 'SHIF' | 'AHL';
+  label: string;
+  ruleName: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  authority: string;
+  calculationMethod: string;
+  currency: string;
+  sourceTitle: string;
+  sourceUrl: string;
+  sourcePublishedOn: string | null;
+  sourceReference: string;
+  citedPassage: string;
+  verificationNote: string | null;
+  notes: string[];
+  appliesOnSelectedDate: boolean;
+  installedVersionId: number | null;
+  installedStatus: string | null;
+  bands: PayrollBand[];
+};
+
+export type PayrollRulebook = {
+  effectiveOn: string;
+  entries: PayrollRulebookEntry[];
+  guidance: Array<{ title: string; url: string }>;
+  notice: string;
+};
+
+/**
+ * A preview is deliberately shaped like a stored payslip, so the figures a
+ * user tests can be compared with the run that follows without translating
+ * between two different representations.
+ */
+export type PayrollPreview = {
+  payDate: string;
+  employee: {
+    id: number;
+    employeeNumber: string;
+    fullName: string;
+    taxResidency: string;
+  };
+  slip: {
+    grossCents: string;
+    taxableGrossCents: string;
+    taxableCents: string;
+    payeCents: string;
+    payeBeforeReliefCents: string;
+    personalReliefCents: string;
+    insuranceReliefCents: string;
+    qualifyingPensionCents: string;
+    nssfEmployeeCents: string;
+    nssfEmployerCents: string;
+    shifCents: string;
+    ahlEmployeeCents: string;
+    ahlEmployerCents: string;
+    statutoryDeductionsCents: string;
+    otherDeductionsCents: string;
+    netCents: string;
+    employerContributionsCents: string;
+    employerCostCents: string;
+    taxResidency: string;
+    lines: Array<{ code: string; name: string; kind: string; amountCents: string }>;
+    statutes: Array<{
+      statute: string;
+      versionId: number;
+      label: string;
+      effectiveFrom: string;
+      effectiveTo: string | null;
+      taxableBaseCents: string;
+      employeeCents: string;
+      employerCents: string;
+      bands: Array<Record<string, unknown>>;
+    }>;
+  };
+  ruleVersions: Array<{
+    statute: string;
+    versionId: number;
+    label: string;
+    effectiveFrom: string;
+    effectiveTo: string | null;
+    authority: string;
+    sourceReference: string;
+    status: string;
+  }>;
+  notice: string;
 };
 
 export type PayrollRunSummary = {
@@ -203,11 +306,19 @@ export type PayrollPayslipRow = {
   otherDeductionsCents: string;
   netCents: string;
   breakdown: {
+    proration?: {
+      baseSalaryCents: string;
+      fullBaseSalaryCents: string;
+      paidDays: number;
+      totalDays: number;
+    } | null;
     lines: Array<{ code: string; name: string; kind: string; amountCents: string }>;
     statutes: Array<{
       statute: string;
       versionId: number;
       label: string;
+      effectiveFrom: string;
+      effectiveTo: string | null;
       employeeCents: string;
       employerCents: string;
     }>;
@@ -392,6 +503,41 @@ export const workforceClient = {
     fetchJson<PayrollStatutoryVersion>(`${API_BASE}/payroll/statutory-versions/${id}/status`, {
       method: 'POST',
       body: JSON.stringify({ status, facilityId }),
+    }),
+
+  getPayrollRulebook: (facilityId: number, effectiveOn?: string) =>
+    fetchJson<PayrollRulebook>(
+      withFacility(
+        `/payroll/statutory-rulebook${effectiveOn ? `?effectiveOn=${encodeURIComponent(effectiveOn)}` : ''}`,
+        facilityId,
+      ),
+    ),
+  installPayrollRulebook: (facilityId: number, body: Record<string, unknown>) =>
+    fetchJson<{
+      effectiveOn: string;
+      installed: Array<{ key: string; statute: string; versionId: number }>;
+      skipped: Array<{ statute: string; reason: string; versionId?: number }>;
+      nextActions: string[];
+    }>(`${API_BASE}/payroll/statutory-rulebook/install`, {
+      method: 'POST',
+      body: JSON.stringify({ ...body, facilityId }),
+    }),
+  previewPayroll: (facilityId: number, body: Record<string, unknown>) =>
+    fetchJson<PayrollPreview>(`${API_BASE}/payroll/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ ...body, facilityId }),
+    }),
+  reversePayrollRun: (facilityId: number, runId: number, reason: string) =>
+    fetchJson<{
+      runId: number;
+      status: string;
+      reversalJournalEntryId: number;
+      reversalJournalNumber: string;
+      reason: string;
+      notice: string;
+    }>(`${API_BASE}/payroll/runs/${runId}/reverse`, {
+      method: 'POST',
+      body: JSON.stringify({ facilityId, reason }),
     }),
 
   getPayrollAccountSettings: (facilityId: number) =>
