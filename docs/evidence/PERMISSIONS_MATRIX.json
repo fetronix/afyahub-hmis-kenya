@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-19T08:10:01.575Z",
+ "generatedAt": "2026-11-19T09:51:14.949Z",
  "generatedBy": "scripts/docs/build-permissions-matrix.ts",
  "sources": {
   "catalogue": "src/seeds/permissions.ts",
@@ -9,12 +9,12 @@
   "routeUsage": "docs/evidence/API_ROUTE_INVENTORY.json"
  },
  "totals": {
-  "permissions": 221,
+  "permissions": 226,
   "roles": 10,
   "facilityModules": 25,
   "navModules": 28,
   "permissionsHeldByNoRole": 0,
-  "permissionsUsedByNoRoute": 62
+  "permissionsUsedByNoRoute": 67
  },
  "superAdminExclusions": [],
  "roles": [
@@ -203,6 +203,11 @@
     "accounting.payables.manage",
     "accounting.bank.manage",
     "accounting.reports.export",
+    "accounting.statements.prepare",
+    "accounting.statements.review",
+    "accounting.statements.approve",
+    "accounting.statements.reopen",
+    "accounting.statements.configure",
     "bank_payments.read",
     "bank_payments.submit",
     "bank_payments.verify",
@@ -1046,6 +1051,66 @@
    "routeExamples": [
     "GET /api/accounting/trial-balance.csv"
    ],
+   "navModules": []
+  },
+  {
+   "code": "accounting.statements.approve",
+   "name": "Approve and Close Financial Statements",
+   "module": "accounting",
+   "description": "Approve a reviewed statement, freeze the approved figures, close the matching financial period, and post the year-end close journal.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "accounting.statements.configure",
+   "name": "Configure Financial Statement Presentation",
+   "module": "accounting",
+   "description": "Set the financial year start month, the year-end equity account, and the presentation group of each chart account.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "accounting.statements.prepare",
+   "name": "Prepare Financial Statements",
+   "module": "accounting",
+   "description": "Generate monthly, quarterly and annual statement sets from posted journals, and record management notes on a draft.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "accounting.statements.reopen",
+   "name": "Reopen and Revise Financial Statements",
+   "module": "accounting",
+   "description": "Create a revised version of a statement, and reopen a closed financial period with a recorded reason. Approved figures are never overwritten.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
+   "navModules": []
+  },
+  {
+   "code": "accounting.statements.review",
+   "name": "Review Financial Statements",
+   "module": "accounting",
+   "description": "Send a generated statement for approval after checking its reconciliations. A reviewer cannot approve their own review.",
+   "roles": [
+    "SUPER_ADMIN"
+   ],
+   "routeCount": 0,
+   "routeExamples": [],
    "navModules": []
   },
   {
@@ -4163,6 +4228,11 @@
    "accounting.equity.audit",
    "accounting.assets.manage",
    "accounting.payables.manage",
+   "accounting.statements.prepare",
+   "accounting.statements.review",
+   "accounting.statements.approve",
+   "accounting.statements.reopen",
+   "accounting.statements.configure",
    "bank_payments.read",
    "bank_payments.submit",
    "bank_payments.verify",

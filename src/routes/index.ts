@@ -66,6 +66,7 @@ import shaEclaimsRoutes from './sha-eclaims.routes.ts';
 import privateInsuranceRoutes from './private-insurance.routes.ts';
 import claimEvidenceRoutes from '../insurance/claims/claim-evidence.routes.ts';
 import accountingRoutes from './accounting.routes.ts';
+import financialStatementRoutes from './financial-statements.routes.ts';
 import paymentHubRoutes from '../payment-hub/routes.ts';
 import bankPaymentRoutes from '../bank-payments/routes.ts';
 import payerHubRoutes from '../insurance/hub/routes.ts';
@@ -186,6 +187,12 @@ export function createApiRoutes(): Router {
   api.use('/insurance/sha', requireFacilityModule('insurance'), shaEclaimsRoutes);
   api.use('/insurance', requireFacilityModule('insurance'), privateInsuranceRoutes);
   api.use('/accounting', requireFacilityModule('accounting'), accountingRoutes);
+  /*
+   * Financial statements live under the accounting module gate: they read the
+   * same ledger, chart of accounts and periods, so a facility without
+   * accounting cannot hold statements either.
+   */
+  api.use('/financial-statements', requireFacilityModule('accounting'), financialStatementRoutes);
   api.use('/dialysis', requireFacilityModule('dialysis'), dialysisRoutes);
   api.use('/booking/admin', requireFacilityModule('website_booking'), bookingAdminRoutes);
   api.use('/integrations', requireFacilityModule('interoperability'));

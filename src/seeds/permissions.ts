@@ -1492,6 +1492,45 @@ const PERMISSIONS = [
     description:
       'Export trial balance, profit & loss, balance sheet, fixed asset, and reconciliation schedules.',
   },
+  /*
+   * Periodic statements separate the four duties that produce a signed
+   * statement. A single "accounting" grant does not imply any of them.
+   */
+  {
+    code: 'accounting.statements.prepare',
+    name: 'Prepare Financial Statements',
+    module: 'accounting',
+    description:
+      'Generate monthly, quarterly and annual statement sets from posted journals, and record management notes on a draft.',
+  },
+  {
+    code: 'accounting.statements.review',
+    name: 'Review Financial Statements',
+    module: 'accounting',
+    description:
+      'Send a generated statement for approval after checking its reconciliations. A reviewer cannot approve their own review.',
+  },
+  {
+    code: 'accounting.statements.approve',
+    name: 'Approve and Close Financial Statements',
+    module: 'accounting',
+    description:
+      'Approve a reviewed statement, freeze the approved figures, close the matching financial period, and post the year-end close journal.',
+  },
+  {
+    code: 'accounting.statements.reopen',
+    name: 'Reopen and Revise Financial Statements',
+    module: 'accounting',
+    description:
+      'Create a revised version of a statement, and reopen a closed financial period with a recorded reason. Approved figures are never overwritten.',
+  },
+  {
+    code: 'accounting.statements.configure',
+    name: 'Configure Financial Statement Presentation',
+    module: 'accounting',
+    description:
+      'Set the financial year start month, the year-end equity account, and the presentation group of each chart account.',
+  },
 
   // Facility-owned bank workflows. Grants require explicit finance provisioning.
   {

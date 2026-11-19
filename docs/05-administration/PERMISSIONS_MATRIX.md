@@ -10,12 +10,12 @@ Generated: 2026-11-19
 
 | Measure | Value |
 | --- | --- |
-| Permission codes in the catalogue | 221 |
+| Permission codes in the catalogue | 226 |
 | Seeded staff roles plus the two administrator roles | 10 |
 | Facility modules that can be switched off individually | 25 |
 | Navigation modules with a permission guard | 28 |
 | Codes held by no seeded role | 0 |
-| Codes that no registered API route requires | 62 |
+| Codes that no registered API route requires | 67 |
 
 Roles are seeded, not fixed: a facility administrator can create custom roles and grant or withhold individual codes, and `facility_role_permission_overrides` can narrow a role for one facility. The matrix therefore describes the default grants, not every possible deployment.
 
@@ -34,7 +34,7 @@ A permission never grants scope by itself: it allows an action, while the scope 
 
 | Role | Permissions granted | Source |
 | --- | --- | --- |
-| SUPER_ADMIN | 221 | `src/seeds/permissions.ts` |
+| SUPER_ADMIN | 226 | `src/seeds/permissions.ts` |
 | FACILITY_ADMIN | 75 | `src/routes/platform/tenants.routes.ts` |
 | BILLING_CLERK | 28 | `src/auth/staff-role-catalogue.ts` |
 | CLINICAL_OFFICER | 20 | `src/auth/staff-role-catalogue.ts` |
@@ -77,6 +77,11 @@ A permission never grants scope by itself: it allows an action, while the scope 
 | `accounting.planning.reset` | Reset draft planning data | SUPER_ADMIN | 3 | — |
 | `accounting.read` | View Accounting & Financial Statements | SUPER_ADMIN | 64 | accounting |
 | `accounting.reports.export` | Export Accounting Reports | SUPER_ADMIN | 1 | — |
+| `accounting.statements.approve` | Approve and Close Financial Statements | SUPER_ADMIN | 0 | — |
+| `accounting.statements.configure` | Configure Financial Statement Presentation | SUPER_ADMIN | 0 | — |
+| `accounting.statements.prepare` | Prepare Financial Statements | SUPER_ADMIN | 0 | — |
+| `accounting.statements.reopen` | Reopen and Revise Financial Statements | SUPER_ADMIN | 0 | — |
+| `accounting.statements.review` | Review Financial Statements | SUPER_ADMIN | 0 | — |
 
 ### appointments
 
@@ -452,7 +457,7 @@ A permission never grants scope by itself: it allows an action, while the scope 
 
 **Catalogue codes no seeded role holds:** none
 
-**Catalogue codes no registered route requires:** `platform.read`, `platform.manage`, `platform.settings.manage`, `tenants.read`, `tenants.create`, `tenants.update`, `tenants.deactivate`, `facilities.read`, `facilities.create`, `facilities.update`, `facilities.modules.manage`, `facilities.approve`, `facilities.deactivate`, `users.read`, `users.create`, `users.update`, `users.deactivate`, `users.roles.manage`, `roles.read`, `roles.create`, `roles.update`, `roles.permissions.manage`, `auth.sessions.read`, `auth.sessions.revoke`, `auth.password.reset`, `auth.mfa.manage`, `practitioners.read`, `practitioners.create`, `practitioners.update`, `practitioners.verify`, `patients.documents.read`, `patients.documents.release`, `radiology.consent.verify`, `radiology.consent.exception`, `radiology.consent.policy`, `patients.deactivate`, `pharmacy.inventory.manage`, `insurance.claims.submit`, `procurement.reject`, `approval_policies.read`, `approval_policies.manage`, `assets.acquisitions.approve`, `reports.export`, `system.health.read`, `accounting.planning.import`, `accounting.planning.approve`, `accounting.planning.export`, `accounting.equity.manage`, `accounting.equity.partners`, `accounting.equity.review`, `accounting.equity.approve`, `accounting.equity.export`, `accounting.equity.audit`, `accounting.assets.manage`, `accounting.payables.manage`, `bank_payments.read`, `bank_payments.submit`, `bank_payments.verify`, `bank_payments.settle`, `bank_payments.configure`, `payment_hub.accounts.read`, `payment_hub.transfers.initiate`
+**Catalogue codes no registered route requires:** `platform.read`, `platform.manage`, `platform.settings.manage`, `tenants.read`, `tenants.create`, `tenants.update`, `tenants.deactivate`, `facilities.read`, `facilities.create`, `facilities.update`, `facilities.modules.manage`, `facilities.approve`, `facilities.deactivate`, `users.read`, `users.create`, `users.update`, `users.deactivate`, `users.roles.manage`, `roles.read`, `roles.create`, `roles.update`, `roles.permissions.manage`, `auth.sessions.read`, `auth.sessions.revoke`, `auth.password.reset`, `auth.mfa.manage`, `practitioners.read`, `practitioners.create`, `practitioners.update`, `practitioners.verify`, `patients.documents.read`, `patients.documents.release`, `radiology.consent.verify`, `radiology.consent.exception`, `radiology.consent.policy`, `patients.deactivate`, `pharmacy.inventory.manage`, `insurance.claims.submit`, `procurement.reject`, `approval_policies.read`, `approval_policies.manage`, `assets.acquisitions.approve`, `reports.export`, `system.health.read`, `accounting.planning.import`, `accounting.planning.approve`, `accounting.planning.export`, `accounting.equity.manage`, `accounting.equity.partners`, `accounting.equity.review`, `accounting.equity.approve`, `accounting.equity.export`, `accounting.equity.audit`, `accounting.assets.manage`, `accounting.payables.manage`, `accounting.statements.prepare`, `accounting.statements.review`, `accounting.statements.approve`, `accounting.statements.reopen`, `accounting.statements.configure`, `bank_payments.read`, `bank_payments.submit`, `bank_payments.verify`, `bank_payments.settle`, `bank_payments.configure`, `payment_hub.accounts.read`, `payment_hub.transfers.initiate`
 
 ## Limitations
 

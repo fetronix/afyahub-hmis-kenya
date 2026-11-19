@@ -1,5 +1,5 @@
 {
- "generatedAt": "2026-11-19T08:10:00.518Z",
+ "generatedAt": "2026-11-19T09:51:14.510Z",
  "generatedBy": "scripts/docs/build-api-inventory.ts",
  "sources": {
   "runningApplication": "createApp() router tree",
@@ -7,13 +7,13 @@
   "mounts": "src/app.ts, src/routes/index.ts"
  },
  "totals": {
-  "effectiveRoutes": 763,
-  "staticRegistrations": 786,
-  "matchedToSource": 763,
+  "effectiveRoutes": 778,
+  "staticRegistrations": 801,
+  "matchedToSource": 778,
   "unmatched": [],
   "publicRoutes": 13,
   "guardedRoutes": 678,
-  "prefixes": 70
+  "prefixes": 71
  },
  "prefixCounts": [
   {
@@ -74,6 +74,10 @@
   },
   {
    "prefix": "payer-hub",
+   "routes": 15
+  },
+  {
+   "prefix": "financial-statements",
    "routes": 15
   },
   {
@@ -5473,6 +5477,336 @@
    "serviceCall": "code.safeParse",
    "serviceAuthorisation": false,
    "source": "src/routes/facility-services.routes.ts:777"
+  },
+  {
+   "method": "GET",
+   "path": "/api/financial-statements/dashboard",
+   "file": "src/routes/financial-statements.routes.ts",
+   "permissions": [],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [
+    "accounting"
+   ],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": null,
+   "querySchema": null,
+   "facilityScoped": false,
+   "binary": false,
+   "serviceCall": "dashboardScoped()",
+   "serviceAuthorisation": false,
+   "source": "src/routes/financial-statements.routes.ts:142"
+  },
+  {
+   "method": "GET",
+   "path": "/api/financial-statements/mapping",
+   "file": "src/routes/financial-statements.routes.ts",
+   "permissions": [],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [
+    "accounting"
+   ],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": null,
+   "querySchema": null,
+   "facilityScoped": false,
+   "binary": false,
+   "serviceCall": "listMappingScoped()",
+   "serviceAuthorisation": false,
+   "source": "src/routes/financial-statements.routes.ts:168"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/financial-statements/mapping",
+   "file": "src/routes/financial-statements.routes.ts",
+   "permissions": [],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [
+    "accounting"
+   ],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": "financialStatementMappingBodySchema",
+   "querySchema": null,
+   "facilityScoped": false,
+   "binary": false,
+   "serviceCall": "saveMappingScoped()",
+   "serviceAuthorisation": false,
+   "source": "src/routes/financial-statements.routes.ts:174"
+  },
+  {
+   "method": "POST",
+   "path": "/api/financial-statements/periods/reopen",
+   "file": "src/routes/financial-statements.routes.ts",
+   "permissions": [],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [
+    "accounting"
+   ],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": "reopenFinancialPeriodBodySchema",
+   "querySchema": null,
+   "facilityScoped": false,
+   "binary": false,
+   "serviceCall": "reopenPeriodScoped()",
+   "serviceAuthorisation": false,
+   "source": "src/routes/financial-statements.routes.ts:335"
+  },
+  {
+   "method": "GET",
+   "path": "/api/financial-statements/runs",
+   "file": "src/routes/financial-statements.routes.ts",
+   "permissions": [],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [
+    "accounting"
+   ],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": null,
+   "querySchema": null,
+   "facilityScoped": false,
+   "binary": false,
+   "serviceCall": "listRunsScoped()",
+   "serviceAuthorisation": false,
+   "source": "src/routes/financial-statements.routes.ts:218"
+  },
+  {
+   "method": "POST",
+   "path": "/api/financial-statements/runs",
+   "file": "src/routes/financial-statements.routes.ts",
+   "permissions": [],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [
+    "accounting"
+   ],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": "generateFinancialStatementBodySchema",
+   "querySchema": null,
+   "facilityScoped": false,
+   "binary": false,
+   "serviceCall": "notes.map",
+   "serviceAuthorisation": false,
+   "source": "src/routes/financial-statements.routes.ts:190"
+  },
+  {
+   "method": "GET",
+   "path": "/api/financial-statements/runs/:id",
+   "file": "src/routes/financial-statements.routes.ts",
+   "permissions": [],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [
+    "accounting"
+   ],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": null,
+   "querySchema": null,
+   "facilityScoped": false,
+   "binary": false,
+   "serviceCall": "getRunScoped()",
+   "serviceAuthorisation": false,
+   "source": "src/routes/financial-statements.routes.ts:233"
+  },
+  {
+   "method": "POST",
+   "path": "/api/financial-statements/runs/:id/approve",
+   "file": "src/routes/financial-statements.routes.ts",
+   "permissions": [],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [
+    "accounting"
+   ],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": "approveFinancialStatementBodySchema",
+   "querySchema": null,
+   "facilityScoped": false,
+   "binary": false,
+   "serviceCall": "approveRunScoped()",
+   "serviceAuthorisation": false,
+   "source": "src/routes/financial-statements.routes.ts:266"
+  },
+  {
+   "method": "GET",
+   "path": "/api/financial-statements/runs/:id/export",
+   "file": "src/routes/financial-statements.routes.ts",
+   "permissions": [],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [
+    "accounting"
+   ],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": null,
+   "querySchema": null,
+   "facilityScoped": false,
+   "binary": false,
+   "serviceCall": "FORMATS.has",
+   "serviceAuthorisation": false,
+   "source": "src/routes/financial-statements.routes.ts:303"
+  },
+  {
+   "method": "POST",
+   "path": "/api/financial-statements/runs/:id/notes",
+   "file": "src/routes/financial-statements.routes.ts",
+   "permissions": [],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [
+    "accounting"
+   ],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": "addStatementNoteBodySchema",
+   "querySchema": null,
+   "facilityScoped": false,
+   "binary": false,
+   "serviceCall": "addNoteScoped()",
+   "serviceAuthorisation": false,
+   "source": "src/routes/financial-statements.routes.ts:239"
+  },
+  {
+   "method": "POST",
+   "path": "/api/financial-statements/runs/:id/review",
+   "file": "src/routes/financial-statements.routes.ts",
+   "permissions": [],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [
+    "accounting"
+   ],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": "reviewFinancialStatementBodySchema",
+   "querySchema": null,
+   "facilityScoped": false,
+   "binary": false,
+   "serviceCall": "reviewRunScoped()",
+   "serviceAuthorisation": false,
+   "source": "src/routes/financial-statements.routes.ts:256"
+  },
+  {
+   "method": "POST",
+   "path": "/api/financial-statements/runs/:id/revise",
+   "file": "src/routes/financial-statements.routes.ts",
+   "permissions": [],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [
+    "accounting"
+   ],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": "reviseFinancialStatementBodySchema",
+   "querySchema": null,
+   "facilityScoped": false,
+   "binary": false,
+   "serviceCall": "reviseRunScoped()",
+   "serviceAuthorisation": false,
+   "source": "src/routes/financial-statements.routes.ts:276"
+  },
+  {
+   "method": "GET",
+   "path": "/api/financial-statements/settings",
+   "file": "src/routes/financial-statements.routes.ts",
+   "permissions": [],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [
+    "accounting"
+   ],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": null,
+   "querySchema": null,
+   "facilityScoped": false,
+   "binary": false,
+   "serviceCall": "getSettingsScoped()",
+   "serviceAuthorisation": false,
+   "source": "src/routes/financial-statements.routes.ts:148"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/financial-statements/settings",
+   "file": "src/routes/financial-statements.routes.ts",
+   "permissions": [],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [
+    "accounting"
+   ],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": "financialStatementSettingsBodySchema",
+   "querySchema": null,
+   "facilityScoped": false,
+   "binary": false,
+   "serviceCall": "saveSettingsScoped()",
+   "serviceAuthorisation": false,
+   "source": "src/routes/financial-statements.routes.ts:154"
+  },
+  {
+   "method": "POST",
+   "path": "/api/financial-statements/year-end-close",
+   "file": "src/routes/financial-statements.routes.ts",
+   "permissions": [],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [
+    "accounting"
+   ],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": "closeFinancialYearBodySchema",
+   "querySchema": null,
+   "facilityScoped": false,
+   "binary": false,
+   "serviceCall": "closeFinancialYearScoped()",
+   "serviceAuthorisation": false,
+   "source": "src/routes/financial-statements.routes.ts:324"
   },
   {
    "method": "GET",
@@ -11635,7 +11969,7 @@
    "binary": false,
    "serviceCall": null,
    "serviceAuthorisation": false,
-   "source": "src/routes/index.ts:174"
+   "source": "src/routes/index.ts:175"
   },
   {
    "method": "GET",
@@ -11659,30 +11993,6 @@
    "binary": false,
    "serviceCall": null,
    "serviceAuthorisation": false,
-   "source": "src/routes/index.ts:174"
-  },
-  {
-   "method": "POST",
-   "path": "/api/medications",
-   "file": "src/routes/index.ts",
-   "permissions": [
-    "clinical.create"
-   ],
-   "anyPermissions": [],
-   "superAdmin": false,
-   "facilityAdmin": false,
-   "moduleGates": [
-    "opd"
-   ],
-   "description": "",
-   "public": false,
-   "auth": "session",
-   "bodySchema": null,
-   "querySchema": null,
-   "facilityScoped": false,
-   "binary": false,
-   "serviceCall": null,
-   "serviceAuthorisation": false,
    "source": "src/routes/index.ts:175"
   },
   {
@@ -11707,20 +12017,20 @@
    "binary": false,
    "serviceCall": null,
    "serviceAuthorisation": false,
-   "source": "src/routes/index.ts:175"
+   "source": "src/routes/index.ts:176"
   },
   {
-   "method": "PUT",
-   "path": "/api/medications/:id/status",
+   "method": "POST",
+   "path": "/api/medications",
    "file": "src/routes/index.ts",
    "permissions": [
-    "clinical.update"
+    "clinical.create"
    ],
    "anyPermissions": [],
    "superAdmin": false,
    "facilityAdmin": false,
    "moduleGates": [
-    "pharmacy"
+    "opd"
    ],
    "description": "",
    "public": false,
@@ -11755,7 +12065,31 @@
    "binary": false,
    "serviceCall": null,
    "serviceAuthorisation": false,
-   "source": "src/routes/index.ts:176"
+   "source": "src/routes/index.ts:177"
+  },
+  {
+   "method": "PUT",
+   "path": "/api/medications/:id/status",
+   "file": "src/routes/index.ts",
+   "permissions": [
+    "clinical.update"
+   ],
+   "anyPermissions": [],
+   "superAdmin": false,
+   "facilityAdmin": false,
+   "moduleGates": [
+    "pharmacy"
+   ],
+   "description": "",
+   "public": false,
+   "auth": "session",
+   "bodySchema": null,
+   "querySchema": null,
+   "facilityScoped": false,
+   "binary": false,
+   "serviceCall": null,
+   "serviceAuthorisation": false,
+   "source": "src/routes/index.ts:177"
   },
   {
    "method": "GET",

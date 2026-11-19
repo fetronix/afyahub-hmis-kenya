@@ -736,6 +736,20 @@
       "when": 1796611200000,
       "tag": "0104_payroll_statutory_rulebook",
       "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1796697600000,
+      "tag": "0105_financial_statements",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1796784000000,
+      "tag": "0106_financial_period_reopen",
+      "breakpoints": true
     }
   ]
 }

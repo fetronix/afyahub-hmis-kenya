@@ -327,7 +327,13 @@ export interface JournalRequest {
     | 'PROCUREMENT'
     /* Phase 3 Batch B: stock receipts, consumption, write-offs, adjustments and
        count variances post their own journals under this source type. */
-    | 'INVENTORY';
+    | 'INVENTORY'
+    /*
+     * Year-end closing journals move revenue and expense balances into equity.
+     * The financial statements exclude this source from trading results, so a
+     * closed year still reports the revenue and expenses it earned and spent.
+     */
+    | 'YEAR_END_CLOSE';
   sourceId?: string;
   reversalOf?: number;
   reversalReason?: string;

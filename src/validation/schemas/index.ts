@@ -13,3 +13,4 @@ export * from './radiology.schema.ts';
 export * from './theatre.schema.ts';
 export * from './actions.schema.ts';
 export * from './accounting-write.schema.ts';
+export * from './financial-statements.schema.ts';

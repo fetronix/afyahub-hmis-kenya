@@ -131,6 +131,33 @@ describe('schema barrel: pre-extraction contract', () => {
         'supplierReturnItems',
         'supplierCreditNotes',
         'supplierCreditNoteItems',
+        // Migration 0105: the monthly and annual statement archive. A saved
+        // statement keeps the payload it was approved with, the presentation
+        // overrides a facility configures, and an append-only export history.
+        'financialStatementSettings',
+        'financialStatementAccountGroups',
+        'financialStatementRuns',
+        'financialStatementExports',
+        // Fixed-asset lifecycle (0103) and the planning domain, which were
+        // extracted from the barrel without being listed here; the list is the
+        // barrel contract and must name every export.
+        'fixedAssetDepreciationBatchItems',
+        'fixedAssetDepreciationBatches',
+        'fixedAssetDocuments',
+        'fixedAssetInspections',
+        'fixedAssetLifecycleEvents',
+        'fixedAssetMaintenanceSchedules',
+        'fixedAssetSettings',
+        'planningCategories',
+        'planningEvents',
+        'planningImportBatches',
+        'planningItems',
+        'planningMonths',
+        'planningPlans',
+        'planningReports',
+        'planningUniforms',
+        // A drizzle custom type re-exported by the barrel, not a table.
+        'customBytea',
       ].sort(),
     );
   });

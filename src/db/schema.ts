@@ -54,4 +54,6 @@ export * from './schema/facility-branding.ts';
 
 export * from './schema/bank-payments.ts';
 
+export * from './schema/financial-statements.ts';
+
 export * from './schema/planning.ts';
