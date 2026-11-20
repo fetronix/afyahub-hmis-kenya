@@ -379,7 +379,7 @@ describe('HmisProvider & App — authorized tenant/facility context initializati
       screen.getByRole('heading', { name: /Hospital Management\s+Information System/i }),
     ).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText(/username or email/i), 'dr.mwangi');
+    await user.type(screen.getByLabelText(/username or staff id/i), 'dr.mwangi');
     await user.type(screen.getByLabelText(/^password$/i), 'ValidPass#2026');
     await user.click(screen.getByRole('button', { name: /^sign in$/i }));
 

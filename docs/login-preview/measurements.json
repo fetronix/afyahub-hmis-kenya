@@ -1,0 +1,233 @@
+{
+  "1280x720": {
+    "viewport": [
+      1280,
+      720
+    ],
+    "documentWidth": 1280,
+    "bodyWidth": 1280,
+    "horizontalOverflowPx": 0,
+    "elementsOutsideViewport": 0,
+    "collisions": [],
+    "mainHeight": 720,
+    "leftPanelScrolls": false,
+    "images": [
+      {
+        "file": "syrona-medical-center-logo.png",
+        "loaded": true,
+        "rendered": 182
+      },
+      {
+        "file": "clinician-login.jpg",
+        "loaded": true,
+        "rendered": 263
+      },
+      {
+        "file": "syrona-medical-center-logo-plaque.png",
+        "loaded": true,
+        "rendered": 210
+      }
+    ],
+    "pageErrors": [
+      "WebSocket closed without opened."
+    ]
+  },
+  "1366x768": {
+    "viewport": [
+      1366,
+      768
+    ],
+    "documentWidth": 1366,
+    "bodyWidth": 1366,
+    "horizontalOverflowPx": 0,
+    "elementsOutsideViewport": 0,
+    "collisions": [],
+    "mainHeight": 768,
+    "leftPanelScrolls": false,
+    "images": [
+      {
+        "file": "syrona-medical-center-logo.png",
+        "loaded": true,
+        "rendered": 194
+      },
+      {
+        "file": "clinician-login.jpg",
+        "loaded": true,
+        "rendered": 281
+      },
+      {
+        "file": "syrona-medical-center-logo-plaque.png",
+        "loaded": true,
+        "rendered": 210
+      }
+    ],
+    "pageErrors": [
+      "WebSocket closed without opened."
+    ]
+  },
+  "1440x900": {
+    "viewport": [
+      1440,
+      900
+    ],
+    "documentWidth": 1440,
+    "bodyWidth": 1440,
+    "horizontalOverflowPx": 0,
+    "elementsOutsideViewport": 0,
+    "collisions": [],
+    "mainHeight": 900,
+    "leftPanelScrolls": false,
+    "images": [
+      {
+        "file": "syrona-medical-center-logo.png",
+        "loaded": true,
+        "rendered": 221
+      },
+      {
+        "file": "clinician-login.jpg",
+        "loaded": true,
+        "rendered": 297
+      },
+      {
+        "file": "syrona-medical-center-logo-plaque.png",
+        "loaded": true,
+        "rendered": 216
+      }
+    ],
+    "pageErrors": [
+      "WebSocket closed without opened."
+    ]
+  },
+  "1920x1080": {
+    "viewport": [
+      1920,
+      1080
+    ],
+    "documentWidth": 1920,
+    "bodyWidth": 1920,
+    "horizontalOverflowPx": 0,
+    "elementsOutsideViewport": 0,
+    "collisions": [],
+    "mainHeight": 1080,
+    "leftPanelScrolls": false,
+    "images": [
+      {
+        "file": "syrona-medical-center-logo.png",
+        "loaded": true,
+        "rendered": 221
+      },
+      {
+        "file": "clinician-login.jpg",
+        "loaded": true,
+        "rendered": 401
+      },
+      {
+        "file": "syrona-medical-center-logo-plaque.png",
+        "loaded": true,
+        "rendered": 288
+      }
+    ],
+    "pageErrors": [
+      "WebSocket closed without opened."
+    ]
+  },
+  "1024x768": {
+    "viewport": [
+      1024,
+      768
+    ],
+    "documentWidth": 1024,
+    "bodyWidth": 1024,
+    "horizontalOverflowPx": 0,
+    "elementsOutsideViewport": 0,
+    "collisions": [],
+    "mainHeight": 768,
+    "leftPanelScrolls": false,
+    "images": [
+      {
+        "file": "syrona-medical-center-logo.png",
+        "loaded": true,
+        "rendered": 194
+      },
+      {
+        "file": "clinician-login.jpg",
+        "loaded": true,
+        "rendered": 187
+      },
+      {
+        "file": "syrona-medical-center-logo-plaque.png",
+        "loaded": true,
+        "rendered": 210
+      }
+    ],
+    "pageErrors": [
+      "WebSocket closed without opened."
+    ]
+  },
+  "768x1024": {
+    "viewport": [
+      768,
+      1024
+    ],
+    "documentWidth": 768,
+    "bodyWidth": 768,
+    "horizontalOverflowPx": 0,
+    "elementsOutsideViewport": 0,
+    "collisions": [],
+    "mainHeight": 1371,
+    "leftPanelScrolls": false,
+    "images": [
+      {
+        "file": "syrona-medical-center-logo.png",
+        "loaded": true,
+        "rendered": 221
+      },
+      {
+        "file": "clinician-login.jpg",
+        "loaded": true,
+        "rendered": 317
+      },
+      {
+        "file": "syrona-medical-center-logo-plaque.png",
+        "loaded": true,
+        "rendered": 210
+      }
+    ],
+    "pageErrors": [
+      "WebSocket closed without opened."
+    ]
+  },
+  "390x844": {
+    "viewport": [
+      390,
+      844
+    ],
+    "documentWidth": 390,
+    "bodyWidth": 390,
+    "horizontalOverflowPx": 0,
+    "elementsOutsideViewport": 0,
+    "collisions": [],
+    "mainHeight": 890,
+    "leftPanelScrolls": false,
+    "images": [
+      {
+        "file": "syrona-medical-center-logo.png",
+        "loaded": true,
+        "rendered": 213
+      },
+      {
+        "file": "clinician-login.jpg",
+        "loaded": true,
+        "rendered": 0
+      },
+      {
+        "file": "syrona-medical-center-logo-plaque.png",
+        "loaded": true,
+        "rendered": 210
+      }
+    ],
+    "pageErrors": [
+      "WebSocket closed without opened."
+    ]
+  }
+}

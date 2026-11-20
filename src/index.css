@@ -42,9 +42,9 @@
 
   /* Type. One family, two weights of voice: UI sans and tabular mono. */
   --font-sans:
-    'JaliCare Inter', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    'Syrona Inter', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-display:
-    'JaliCare Inter', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    'Syrona Inter', Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono:
     ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 
@@ -360,11 +360,12 @@
 }
 
 /* ============================================================
-   JaliCare HMIS Login Portal — Reference Surface & Typography
+   Syrona Medical Center HMIS — Sign-in surface
+   Scoped to the login screen so clinical modules are untouched.
    ============================================================ */
 
 @font-face {
-  font-family: 'JaliCare Inter';
+  font-family: 'Syrona Inter';
   font-style: normal;
   font-weight: 100 900;
   font-display: swap;
@@ -372,16 +373,16 @@
 }
 
 @font-face {
-  font-family: 'JaliCare Script';
+  font-family: 'Syrona Script';
   font-style: normal;
   font-weight: 600;
   font-display: swap;
   src: url('/fonts/caveat-latin-600-normal.woff2') format('woff2');
 }
 
-.jalicare-login-page {
+.syrona-login {
   font-family:
-    'JaliCare Inter',
+    'Syrona Inter',
     Inter,
     ui-sans-serif,
     system-ui,
@@ -391,145 +392,150 @@
     'Helvetica Neue',
     Arial,
     sans-serif;
-  background:
-    radial-gradient(62% 52% at 50% 98%, rgba(190, 219, 245, 0.62) 0%, rgba(235, 245, 253, 0) 74%),
-    radial-gradient(50% 46% at 18% 12%, rgba(255, 255, 255, 0.85) 0%, rgba(241, 248, 255, 0) 70%),
-    linear-gradient(180deg, #eff6fd 0%, #f1f8fe 48%, #eaf3fc 100%);
+  background: #f8fafc;
+  color: #142143;
+  box-sizing: border-box;
 }
 
-.jalicare-script {
-  font-family: 'JaliCare Script', 'Caveat', 'Segoe Script', 'Bradley Hand', cursive;
+.syrona-login *,
+.syrona-login *::before,
+.syrona-login *::after {
+  box-sizing: border-box;
 }
 
-.jalicare-shell-shadow {
-  filter: drop-shadow(0 24px 36px rgba(13, 66, 134, 0.14))
-    drop-shadow(0 6px 16px rgba(13, 66, 134, 0.07));
+/* Navy brand panel: flat base plus two clipped accents that stay inside the
+   panel because the section itself is `overflow-hidden`. */
+.syrona-brand-panel {
+  background-color: #142143;
+  background-image:
+    radial-gradient(
+      circle 620px at 100% 0%,
+      rgba(24, 136, 181, 0.3) 0%,
+      rgba(24, 136, 181, 0.06) 44%,
+      rgba(24, 136, 181, 0) 62%
+    ),
+    radial-gradient(90% 70% at 0% 100%, rgba(24, 136, 181, 0.18) 0%, rgba(20, 33, 67, 0) 60%);
 }
 
-.jalicare-left-panel {
-  background: linear-gradient(180deg, #fbfdff 0%, #f6fbff 76%, #edf6fe 86%, #034b9b 91%);
-  border: 1px solid rgba(196, 222, 246, 0.92);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.94);
-}
-
-.jalicare-right-card {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.985) 0%,
-    rgba(249, 252, 255, 0.97) 52%,
-    rgba(241, 248, 254, 0.965) 100%
+.syrona-brand-grid {
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.045) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(
+    85% 75% at 62% 32%,
+    #000 0%,
+    rgba(0, 0, 0, 0.35) 58%,
+    transparent 100%
   );
-  border: 1px solid rgba(212, 229, 246, 0.95);
-  box-shadow:
-    -14px 0 30px -16px rgba(10, 56, 118, 0.16),
-    0 18px 40px -18px rgba(10, 56, 118, 0.14),
-    inset 0 1px 0 #ffffff;
-  backdrop-filter: blur(18px);
+  -webkit-mask-image: radial-gradient(
+    85% 75% at 62% 32%,
+    #000 0%,
+    rgba(0, 0, 0, 0.35) 58%,
+    transparent 100%
+  );
 }
 
-.jalicare-security-card {
-  background: linear-gradient(180deg, rgba(52, 136, 214, 0.54) 0%, rgba(16, 90, 170, 0.45) 100%);
-  border: 1.25px solid rgba(136, 198, 252, 0.48);
-  box-shadow:
-    0 12px 26px -6px rgba(1, 24, 64, 0.44),
-    inset 0 1px 0 rgba(255, 255, 255, 0.3);
-  backdrop-filter: blur(8px);
+.syrona-script {
+  font-family: 'Syrona Script', 'Caveat', 'Segoe Script', 'Bradley Hand', cursive;
 }
 
-.jalicare-input {
-  background: linear-gradient(180deg, #f9fcff 0%, #f6fafe 100%);
-  border: 1.25px solid #dce8f5;
-  box-shadow:
-    0 2px 6px rgba(14, 62, 125, 0.03),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+/* Module rows: translucent glass on the navy panel, no gradient fills. */
+.syrona-module {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
   transition:
-    border-color 160ms ease,
-    box-shadow 160ms ease,
-    background-color 160ms ease;
+    background-color 160ms ease,
+    border-color 160ms ease;
 }
 
-.jalicare-input:hover:not(:disabled) {
-  border-color: #c5dcf3;
+.syrona-module:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(24, 136, 181, 0.55);
 }
 
-.jalicare-input:focus {
-  background: #ffffff;
-  border-color: #078cf0;
+/* Trust card in the brand panel footer. */
+.syrona-trust {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+/* Clinician portrait: a fixed circular frame with a cyan ring, so it can never
+   reflow into the headline or the module list. */
+.syrona-portrait {
+  border: 2px solid rgba(24, 136, 181, 0.85);
   box-shadow:
-    0 0 0 3.5px rgba(7, 140, 240, 0.13),
-    0 2px 8px rgba(7, 85, 164, 0.06);
+    0 0 0 10px rgba(24, 136, 181, 0.12),
+    0 24px 48px -18px rgba(2, 10, 28, 0.75);
+}
+
+/* Form controls */
+.syrona-input {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  color: #142143;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.syrona-input::placeholder {
+  color: #94a3b8;
+}
+
+.syrona-input:hover:not(:disabled) {
+  border-color: #cbd5e1;
+}
+
+.syrona-input:focus {
+  border-color: #1888b5;
+  box-shadow: 0 0 0 3px rgba(24, 136, 181, 0.16);
   outline: none;
 }
 
-.jalicare-signin-btn {
-  background-image:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.24) 0%,
-      rgba(255, 255, 255, 0.02) 48%,
-      rgba(0, 24, 68, 0.08) 100%
-    ),
-    linear-gradient(
-      90deg,
-      #0474e0 0%,
-      #1689ec 18%,
-      #4281bd 44%,
-      #7c839c 62%,
-      #cc8352 80%,
-      #f48320 93%,
-      #ff8f1c 100%
-    );
-  border: 1px solid rgba(255, 255, 255, 0.65);
-  box-shadow:
-    -14px 12px 24px -8px rgba(7, 134, 240, 0.36),
-    14px 12px 24px -8px rgba(255, 128, 18, 0.26),
-    0 6px 14px -4px rgba(10, 68, 142, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.45);
-  text-shadow: 0 1px 1px rgba(4, 32, 74, 0.18);
+.syrona-input:disabled {
+  background: #f8fafc;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.syrona-submit {
+  background: #142143;
+  color: #ffffff;
   transition:
-    filter 160ms ease,
-    transform 120ms ease,
-    box-shadow 160ms ease;
+    background-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 120ms ease;
 }
 
-.jalicare-signin-btn:hover:not(:disabled) {
-  filter: brightness(1.035);
-  box-shadow:
-    -14px 14px 28px -7px rgba(7, 134, 240, 0.42),
-    14px 14px 28px -7px rgba(255, 128, 18, 0.32),
-    0 8px 18px -4px rgba(10, 68, 142, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+.syrona-submit:hover:not(:disabled) {
+  background: #0f1933;
 }
 
-.jalicare-signin-btn:active:not(:disabled) {
-  transform: translateY(0.5px);
+.syrona-submit:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(24, 136, 181, 0.35);
 }
 
-.jalicare-alt-btn {
-  background: linear-gradient(180deg, #ffffff 0%, #f1f8fe 100%);
-  border: 1.25px solid #dbe9f7;
-  box-shadow:
-    0 6px 16px -4px rgba(14, 66, 134, 0.08),
-    inset 0 1px 0 #ffffff;
-  transition:
-    border-color 160ms ease,
-    box-shadow 160ms ease,
-    background 160ms ease;
+.syrona-submit:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
-.jalicare-alt-btn:hover:not(:disabled) {
-  background: linear-gradient(180deg, #ffffff 0%, #eaf4fe 100%);
-  border-color: #bdd8f3;
-  box-shadow:
-    0 8px 18px -4px rgba(14, 66, 134, 0.12),
-    inset 0 1px 0 #ffffff;
+.syrona-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.syrona-dropdown {
+  box-shadow: 0 16px 32px -12px rgba(20, 33, 67, 0.28);
 }
 
 /* Reference-aligned facility dashboard shell, scoped so clinical modules keep their existing styles. */
 .dashboard-header,
 .dashboard-sidebar,
 .hospital-dashboard {
-  font-family: 'JaliCare Inter', Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: 'Syrona Inter', Inter, ui-sans-serif, system-ui, sans-serif;
 }
 .brand-mark {
   background: linear-gradient(145deg, #0767e9, #044ba9);
