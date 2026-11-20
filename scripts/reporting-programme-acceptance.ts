@@ -134,8 +134,8 @@ try {
     eventsEnabled: true,
   });
   await page.goto(base, { waitUntil: 'networkidle2' });
-  await page.type('input[placeholder="Username or Email"]', f.full.username);
-  await page.type('input[placeholder="Password"]', f.password);
+  await page.type('input[name="identifier"]', f.full.username);
+  await page.type('input[name="password"]', f.password);
   await page.click('button[type="submit"]');
   await page.waitForSelector('aside');
   const token = await page.evaluate(() => localStorage.getItem('syrona_session_token'));

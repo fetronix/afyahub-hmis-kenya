@@ -161,9 +161,9 @@ try {
   await page.setViewport({ width: 1440, height: 900 });
   async function login(target, username, password) {
     await target.goto(base, { waitUntil: 'networkidle2' });
-    await target.waitForSelector('input[placeholder="Username or Email"]');
-    await target.type('input[placeholder="Username or Email"]', username);
-    await target.type('input[placeholder="Password"]', password);
+    await target.waitForSelector('input[name="identifier"]');
+    await target.type('input[name="identifier"]', username);
+    await target.type('input[name="password"]', password);
     await target.click('button[type="submit"]');
     await target.waitForSelector('aside button[title="Inventory & Batches"]', { timeout: 30000 });
     await target.click('aside button[title="Inventory & Batches"]');

@@ -172,8 +172,8 @@ try {
   await page.setViewport({ width: 1440, height: 900 });
   phase = 'login';
   await page.goto(base, { waitUntil: 'networkidle2' });
-  await page.type('input[placeholder="Username or Email"]', username);
-  await page.type('input[placeholder="Password"]', password);
+  await page.type('input[name="identifier"]', username);
+  await page.type('input[name="password"]', password);
   await page.click('button[type="submit"]');
   await page.waitForFunction(
     () => document.querySelector('aside')?.innerText.includes('Outpatient Services'),

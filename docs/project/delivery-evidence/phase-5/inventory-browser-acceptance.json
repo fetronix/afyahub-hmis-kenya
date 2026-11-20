@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-11-10T08:08:16.373Z",
+  "generatedAt": "2026-11-20T06:45:28.611Z",
   "baseUrl": "http://127.0.0.1:3000",
-  "database": "syrona_synth",
+  "database": "syrona_synthetic_test",
   "username": "synthetic.inventory",
   "assertions": {
     "passed": 17,
@@ -61,7 +61,7 @@
     {
       "name": "A physical count can be opened from the UI",
       "passed": true,
-      "detail": "COUNT-BROWSER-MWAER666"
+      "detail": "COUNT-BROWSER-MWOM77XJ"
     },
     {
       "name": "Store transfers view opens",
@@ -71,7 +71,7 @@
     {
       "name": "A store transfer can be recorded from the UI",
       "passed": true,
-      "detail": "TRF-BROWSER-MWAER8U2"
+      "detail": "TRF-BROWSER-MWOM7AH4"
     },
     {
       "name": "Reorder and valuation view opens",

@@ -293,8 +293,8 @@ try {
   page.on('pageerror', (e) => errors.push(e instanceof Error ? e.name : 'Unknown page error'));
   page.on('dialog', (d) => void d.accept());
   await page.goto(base, { waitUntil: 'networkidle2' });
-  await page.type('input[placeholder="Username or Email"]', accounts.admin.name);
-  await page.type('input[placeholder="Password"]', password);
+  await page.type('input[name="identifier"]', accounts.admin.name);
+  await page.type('input[name="password"]', password);
   await page.click('button[type="submit"]');
   await page.waitForSelector('aside');
   await idle(page);

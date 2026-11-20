@@ -303,9 +303,9 @@ try {
     await page.setViewport({ width: 1440, height: 900 });
     page.on('pageerror', (e) => errors.push(e.name));
     await page.goto(base, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForSelector('input[placeholder="Username or Email"]');
-    await page.type('input[placeholder="Username or Email"]', username);
-    await page.type('input[placeholder="Password"]', password);
+    await page.waitForSelector('input[name="identifier"]');
+    await page.type('input[name="identifier"]', username);
+    await page.type('input[name="password"]', password);
     await page.click('button[type="submit"]');
     await page.waitForSelector('aside nav', { timeout: 30000 });
     return page;

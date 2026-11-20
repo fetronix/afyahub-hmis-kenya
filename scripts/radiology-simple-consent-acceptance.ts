@@ -243,8 +243,8 @@ try {
         failedRequests.push(new URL(r.url()).pathname + ':' + r.status());
     });
     await page.goto(base, { waitUntil: 'networkidle2' });
-    await page.type('input[placeholder="Username or Email"]', username);
-    await page.type('input[placeholder="Password"]', f.password);
+    await page.type('input[name="identifier"]', username);
+    await page.type('input[name="password"]', f.password);
     const response = page.waitForResponse(
       (r) => r.url().endsWith('/api/auth/login') && r.request().method() === 'POST',
     );

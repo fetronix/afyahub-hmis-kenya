@@ -207,9 +207,9 @@ try {
         });
     });
     await page.goto(base, { waitUntil: 'networkidle2' });
-    await page.waitForSelector('input[placeholder="Username or Email"]');
-    await page.type('input[placeholder="Username or Email"]', users[kind]);
-    await page.type('input[placeholder="Password"]', password);
+    await page.waitForSelector('input[name="identifier"]');
+    await page.type('input[name="identifier"]', users[kind]);
+    await page.type('input[name="password"]', password);
     await page.click('button[type="submit"]');
     await page.waitForFunction(
       () => document.querySelector('aside')?.innerText.includes('Accounting & Finance'),

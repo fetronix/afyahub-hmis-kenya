@@ -107,8 +107,8 @@ const removeRow = async (description) => {
 };
 try {
   await page.goto(base, { waitUntil: 'networkidle2' });
-  await page.type('input[placeholder="Username or Email"]', config.username);
-  await page.type('input[placeholder="Password"]', config.password);
+  await page.type('input[name="identifier"]', config.username);
+  await page.type('input[name="password"]', config.password);
   await page.click('button[type="submit"]');
   await page.waitForSelector('aside nav');
   check(true, 'Real authenticated browser login');

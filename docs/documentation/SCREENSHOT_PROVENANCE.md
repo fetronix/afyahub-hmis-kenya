@@ -13,52 +13,52 @@ and the amounts are invented test figures.
 
 | Documentation file | Source capture | Origin run | Bytes |
 | --- | --- | --- | --- |
-| `01-platform/01-login-screen.png` | `docs/project/delivery-evidence/phase-5/01-login.png` | Phase 5 delivery evidence run | 776545 |
-| `01-platform/02-mobile-shell.png` | `docs/audits/accounting-workspace-evidence/10-mobile-dashboard.png` | Accounting workspace evidence run (mobile viewport) | 46960 |
-| `02-dashboard/01-dashboard-desktop.png` | `docs/dashboard/screenshots/desktop-synthetic.png` | Dashboard responsive-evidence run | 329722 |
-| `02-dashboard/02-notifications.png` | `docs/dashboard/screenshots/refinement-desktop-notifications-synthetic.png` | Dashboard notifications refinement run | 344312 |
-| `02-dashboard/03-operational-overview.png` | `docs/dashboard/screenshots/refinement-desktop-operations-synthetic.png` | Dashboard operations refinement run | 197908 |
-| `02-dashboard/04-dashboard-mobile.png` | `docs/dashboard/screenshots/mobile-synthetic.png` | Dashboard mobile capture | 132251 |
-| `02-dashboard/05-dashboard-tablet.png` | `docs/dashboard/screenshots/tablet-synthetic.png` | Dashboard tablet capture | 285698 |
-| `03-patient-management/01-patient-management.png` | `docs/ui/screenshots/registration-desktop-synthetic.png` | Presentation-readiness responsive run | 225416 |
-| `03-patient-management/02-patient-management-mobile.png` | `docs/ui/screenshots/registration-small-mobile-synthetic.png` | Presentation-readiness responsive run | 31668 |
+| `01-platform/01-login-screen.png` | live capture via `scripts/documentation/capture-syrona-screenshots.mjs` | Documentation capture run, 2026-11-20 | 339684 |
+| `01-platform/02-mobile-shell.png` | live capture via `scripts/documentation/capture-syrona-screenshots.mjs` | Documentation capture run, 2026-11-20 | 124827 |
+| `02-dashboard/01-dashboard-desktop.png` | `docs/dashboard/screenshots/refinement-desktop-synthetic.png` | Verification run re-executed 2026-11-20 | 309193 |
+| `02-dashboard/02-notifications.png` | `docs/dashboard/screenshots/refinement-desktop-notifications-synthetic.png` | Verification run re-executed 2026-11-20 | 345982 |
+| `02-dashboard/03-operational-overview.png` | `docs/dashboard/screenshots/refinement-desktop-operations-synthetic.png` | Verification run re-executed 2026-11-20 | 196786 |
+| `02-dashboard/04-dashboard-mobile.png` | `docs/dashboard/screenshots/refinement-mobile-synthetic.png` | Verification run re-executed 2026-11-20 | 121129 |
+| `02-dashboard/05-dashboard-tablet.png` | `docs/dashboard/screenshots/refinement-tablet-synthetic.png` | Verification run re-executed 2026-11-20 | 285247 |
+| `03-patient-management/01-patient-management.png` | `docs/ui/screenshots/registration-desktop-synthetic.png` | Verification run re-executed 2026-11-20 | 224048 |
+| `03-patient-management/02-patient-management-mobile.png` | `docs/ui/screenshots/registration-small-mobile-synthetic.png` | Verification run re-executed 2026-11-20 | 30647 |
 | `03-patient-management/03-patient-document.png` | `docs/audits/clinical-documents-evidence/01-patient-consent-preview.png` | Clinical-documents evidence run | 196859 |
 | `03-patient-management/04-document-audit.png` | `docs/audits/clinical-documents-evidence/02-patient-document-audit.png` | Clinical-documents evidence run | 239100 |
 | `03-patient-management/05-portal-documents.png` | `docs/audits/clinical-documents-evidence/03-patient-portal-own-documents.png` | Clinical-documents evidence run | 104332 |
 | `03-patient-management/06-portal-medical-record.png` | `docs/audits/portal-medical-record-evidence/01-portal-medical-record-section.png` | Portal medical-record evidence run | 194922 |
-| `04-reception/01-appointment-queue.png` | `docs/ui/screenshots/reception-desktop-synthetic.png` | Presentation-readiness responsive run | 198312 |
-| `04-reception/02-appointment-modal-mobile.png` | `docs/ui/screenshots/appointment-modal-small-mobile-synthetic.png` | Presentation-readiness responsive run | 30930 |
-| `05-outpatient/01-outpatient-workspace.png` | `docs/ui/screenshots/specialty-desktop-synthetic.png` | Presentation-readiness responsive run | 169607 |
-| `05-outpatient/02-encounter-doctor-a.png` | `docs/audits/responsible-doctor-evidence/01-doctor-a-default.png` | Responsible-doctor evidence run | 71317 |
-| `05-outpatient/03-records-search.png` | `docs/audits/responsible-doctor-evidence/03-records-search-selection.png` | Responsible-doctor evidence run | 114860 |
-| `10-laboratory/01-laboratory-workspace.png` | `docs/ui/screenshots/laboratory-desktop-synthetic.png` | Presentation-readiness responsive run | 145032 |
-| `10-laboratory/02-laboratory-tablet.png` | `docs/ui/screenshots/laboratory-tablet-synthetic.png` | Presentation-readiness responsive run | 145071 |
-| `11-radiology/01-radiology-workspace.png` | `docs/ui/screenshots/radiology-desktop-synthetic.png` | Presentation-readiness responsive run | 188611 |
+| `04-reception/01-appointment-queue.png` | `docs/ui/screenshots/reception-desktop-synthetic.png` | Verification run re-executed 2026-11-20 | 201449 |
+| `04-reception/02-appointment-modal-mobile.png` | `docs/ui/screenshots/appointment-modal-small-mobile-synthetic.png` | Verification run re-executed 2026-11-20 | 34204 |
+| `05-outpatient/01-outpatient-workspace.png` | `docs/ui/screenshots/specialty-desktop-synthetic.png` | Verification run re-executed 2026-11-20 | 168963 |
+| `05-outpatient/02-encounter-doctor-a.png` | live capture via `scripts/documentation/capture-syrona-screenshots.mjs` | Documentation capture run, 2026-11-20 | 211683 |
+| `05-outpatient/03-records-search.png` | live capture via `scripts/documentation/capture-syrona-screenshots.mjs` | Documentation capture run, 2026-11-20 | 209043 |
+| `10-laboratory/01-laboratory-workspace.png` | `docs/ui/screenshots/laboratory-desktop-synthetic.png` | Verification run re-executed 2026-11-20 | 143730 |
+| `10-laboratory/02-laboratory-tablet.png` | `docs/ui/screenshots/laboratory-tablet-synthetic.png` | Verification run re-executed 2026-11-20 | 144309 |
+| `11-radiology/01-radiology-workspace.png` | `docs/ui/screenshots/radiology-desktop-synthetic.png` | Verification run re-executed 2026-11-20 | 198281 |
 | `11-radiology/02-radiology-consent-verified.png` | `docs/audits/radiology-consent-evidence/01-radiology-verified.png` | Radiology consent evidence run | 110237 |
 | `11-radiology/03-report-portal-release.png` | `docs/audits/radiology-consent-evidence/03-portal-release.png` | Radiology consent evidence run | 34634 |
 | `11-radiology/04-consent-mobile.png` | `docs/audits/radiology-consent-evidence/04-mobile-consent.png` | Radiology consent evidence run | 104954 |
 | `11-radiology/05-verified-consent.png` | `docs/audits/presentation-readiness-evidence/04-radiology-verified-consent.png` | Presentation-readiness evidence run | 227491 |
-| `15-human-resources/01-hr-overview.png` | `docs/project/delivery-evidence/phase-5/02-human-resources-overview.png` | Phase 5 delivery evidence run | 176449 |
-| `15-human-resources/02-employees.png` | `docs/project/delivery-evidence/phase-5/03-hr-tab-1-employees.png` | Phase 5 delivery evidence run | 176449 |
-| `15-human-resources/03-attendance-roster.png` | `docs/project/delivery-evidence/phase-5/03-hr-tab-3-attendance-roster.png` | Phase 5 delivery evidence run | 183997 |
-| `15-human-resources/04-employee-record.png` | `docs/project/delivery-evidence/phase-5/04-hr-employee-record.png` | Phase 5 delivery evidence run | 170332 |
-| `16-payroll/01-salary-components.png` | `docs/audits/payroll-evidence/03-salary-components.png` | Payroll evidence run | 195358 |
-| `16-payroll/02-calculated-review.png` | `docs/audits/payroll-evidence/04-calculated-review.png` | Payroll evidence run | 173588 |
-| `16-payroll/03-finalised-run.png` | `docs/audits/payroll-evidence/05-finalized-payroll.png` | Payroll evidence run | 161521 |
-| `16-payroll/04-payslip.png` | `docs/audits/payroll-evidence/07-individual-payslip.png` | Payroll evidence run | 170524 |
-| `16-payroll/05-ledger-mapping.png` | `docs/audits/payroll-readiness-evidence/09-ledger-mapping.png` | Payroll readiness evidence run | 197868 |
-| `16-payroll/06-statutory-rules.png` | `docs/project/delivery-evidence/phase-5/06-payroll-statutory-rules.png` | Phase 5 delivery evidence run | 191867 |
-| `17-billing/01-billing-workspace.png` | `docs/ui/screenshots/billing-desktop-synthetic.png` | Presentation-readiness responsive run | 242201 |
-| `17-billing/02-billing-mobile.png` | `docs/ui/screenshots/billing-small-mobile-synthetic.png` | Presentation-readiness responsive run | 33209 |
-| `18-accounting/01-accounting-dashboard.png` | `docs/audits/accounting-workspace-evidence/01-accounting-dashboard.png` | Accounting workspace evidence run | 210712 |
-| `18-accounting/02-chart-of-accounts.png` | `docs/audits/accounting-workspace-evidence/02-chart-of-accounts.png` | Accounting workspace evidence run | 220564 |
-| `18-accounting/03-financial-periods.png` | `docs/audits/accounting-workspace-evidence/03-financial-periods.png` | Accounting workspace evidence run | 191006 |
-| `18-accounting/04-journal-entries.png` | `docs/audits/accounting-workspace-evidence/04-journal-entries.png` | Accounting workspace evidence run | 220881 |
-| `18-accounting/05-income-statement.png` | `docs/audits/accounting-workspace-evidence/05-income-statement.png` | Accounting workspace evidence run | 171937 |
-| `18-accounting/06-billing-settlement.png` | `docs/audits/accounting-workspace-evidence/06-billing-settlement.png` | Accounting workspace evidence run | 177641 |
-| `18-accounting/07-expenses-payables.png` | `docs/audits/accounting-workspace-evidence/07-expenses-payables.png` | Accounting workspace evidence run | 175183 |
-| `18-accounting/08-payroll-mapping.png` | `docs/audits/accounting-workspace-evidence/08-payroll-mapping-blockers.png` | Accounting workspace evidence run | 217550 |
-| `18-accounting/09-banking-workspace.png` | `docs/audits/accounting-workspace-evidence/09-existing-banking-workspace.png` | Accounting workspace evidence run | 145276 |
+| `15-human-resources/01-hr-overview.png` | `docs/project/delivery-evidence/phase-5/02-human-resources-overview.png` | Verification run re-executed 2026-11-20 | 221766 |
+| `15-human-resources/02-employees.png` | `docs/project/delivery-evidence/phase-5/03-hr-tab-1-employees.png` | Verification run re-executed 2026-11-20 | 221766 |
+| `15-human-resources/03-attendance-roster.png` | `docs/project/delivery-evidence/phase-5/03-hr-tab-3-attendance-roster.png` | Verification run re-executed 2026-11-20 | 231681 |
+| `15-human-resources/04-employee-record.png` | `docs/project/delivery-evidence/phase-5/04-hr-employee-record.png` | Verification run re-executed 2026-11-20 | 224651 |
+| `16-payroll/01-salary-components.png` | live capture via `scripts/documentation/capture-syrona-screenshots.mjs` | Documentation capture run, 2026-11-20 | 305733 |
+| `16-payroll/02-calculated-review.png` | live capture via `scripts/documentation/capture-syrona-screenshots.mjs` | Documentation capture run, 2026-11-20 | 291712 |
+| `16-payroll/03-finalised-run.png` | live capture via `scripts/documentation/capture-syrona-screenshots.mjs` | Documentation capture run, 2026-11-20 | 310563 |
+| `16-payroll/04-payslip.png` | `docs/project/delivery-evidence/phase-5/10-payslip.png` | Verification run re-executed 2026-11-20 | 221475 |
+| `16-payroll/05-ledger-mapping.png` | live capture via `scripts/documentation/capture-syrona-screenshots.mjs` | Documentation capture run, 2026-11-20 | 312017 |
+| `16-payroll/06-statutory-rules.png` | `docs/project/delivery-evidence/phase-5/06-payroll-statutory-rules.png` | Verification run re-executed 2026-11-20 | 249435 |
+| `17-billing/01-billing-workspace.png` | `docs/ui/screenshots/billing-desktop-synthetic.png` | Verification run re-executed 2026-11-20 | 240725 |
+| `17-billing/02-billing-mobile.png` | `docs/ui/screenshots/billing-small-mobile-synthetic.png` | Verification run re-executed 2026-11-20 | 32496 |
+| `18-accounting/01-accounting-dashboard.png` | live capture via `scripts/documentation/capture-syrona-screenshots.mjs` | Documentation capture run, 2026-11-20 | 265466 |
+| `18-accounting/02-chart-of-accounts.png` | live capture via `scripts/documentation/capture-syrona-screenshots.mjs` | Documentation capture run, 2026-11-20 | 292459 |
+| `18-accounting/03-financial-periods.png` | live capture via `scripts/documentation/capture-syrona-screenshots.mjs` | Documentation capture run, 2026-11-20 | 292467 |
+| `18-accounting/04-journal-entries.png` | live capture via `scripts/documentation/capture-syrona-screenshots.mjs` | Documentation capture run, 2026-11-20 | 234314 |
+| `18-accounting/05-income-statement.png` | live capture via `scripts/documentation/capture-syrona-screenshots.mjs` | Documentation capture run, 2026-11-20 | 266856 |
+| `18-accounting/06-billing-settlement.png` | live capture via `scripts/documentation/capture-syrona-screenshots.mjs` | Documentation capture run, 2026-11-20 | 220411 |
+| `18-accounting/07-expenses-payables.png` | live capture via `scripts/documentation/capture-syrona-screenshots.mjs` | Documentation capture run, 2026-11-20 | 232680 |
+| `18-accounting/08-payroll-mapping.png` | live capture via `scripts/documentation/capture-syrona-screenshots.mjs` | Documentation capture run, 2026-11-20 | 251183 |
+| `18-accounting/09-banking-workspace.png` | live capture via `scripts/documentation/capture-syrona-screenshots.mjs` | Documentation capture run, 2026-11-20 | 229383 |
 | `18-accounting/10-read-only-permission.png` | `docs/audits/accounting-workspace-evidence/12-read-only-permissions.png` | Accounting workspace evidence run | 147100 |
 | `19-partners-equity/01-dashboard.png` | `docs/testing/financial-system/screenshots/17-partners-equity/01-partners-equity-dashboard.png` | Financial-system verification run, partners equity | 236410 |
 | `19-partners-equity/02-filtered-dashboard.png` | `docs/testing/financial-system/screenshots/17-partners-equity/02-partners-equity-filtered-dashboard.png` | Financial-system verification run, partners equity | 243327 |
@@ -69,37 +69,37 @@ and the amounts are invented test figures.
 | `19-partners-equity/07-changes-in-equity.png` | `docs/testing/financial-system/screenshots/17-partners-equity/07-changes-in-equity-annual.png` | Financial-system verification run, partners equity | 342417 |
 | `19-partners-equity/08-reconciliation.png` | `docs/testing/financial-system/screenshots/17-partners-equity/08-reconciliation-after-reversal.png` | Financial-system verification run, partners equity | 262419 |
 | `19-partners-equity/09-access-required.png` | `docs/audits/partner-equity-visibility-evidence/01-access-required.png` | Partner equity visibility evidence run | 177577 |
-| `20-fixed-assets/01-register.png` | `docs/project/delivery-evidence/phase-5/11-fixed-assets-register.png` | Phase 5 delivery evidence run | 179114 |
-| `20-fixed-assets/02-asset-detail.png` | `docs/project/delivery-evidence/phase-5/12-fixed-asset-detail.png` | Phase 5 delivery evidence run | 178088 |
-| `20-fixed-assets/03-categories.png` | `docs/project/delivery-evidence/phase-5/13-fixed-assets-categories.png` | Phase 5 delivery evidence run | 158091 |
-| `20-fixed-assets/04-maintenance.png` | `docs/project/delivery-evidence/phase-5/14-fixed-assets-maintenance.png` | Phase 5 delivery evidence run | 152427 |
-| `20-fixed-assets/05-depreciation-preview.png` | `docs/project/delivery-evidence/phase-5/16-fixed-assets-depreciation-preview.png` | Phase 5 delivery evidence run | 192943 |
-| `22-procurement/01-overview.png` | `docs/project/delivery-evidence/phase-5/17-procurement-overview.png` | Phase 5 delivery evidence run | 234464 |
-| `22-procurement/02-requisition-form.png` | `docs/project/delivery-evidence/phase-5/19-procurement-requisition-form.png` | Phase 5 delivery evidence run | 191180 |
-| `22-procurement/03-requisition-saved.png` | `docs/project/delivery-evidence/phase-5/20-procurement-requisition-saved.png` | Phase 5 delivery evidence run | 208267 |
-| `22-procurement/04-receiving.png` | `docs/project/delivery-evidence/phase-5/21-procurement-receiving.png` | Phase 5 delivery evidence run | 207650 |
-| `21-inventory/01-inventory-workspace.png` | `docs/ui/screenshots/inventory-desktop-synthetic.png` | Presentation-readiness responsive run | 201371 |
-| `21-inventory/02-adjustment-posted.png` | `docs/project/delivery-evidence/phase-5/24-inventory-adjustment-posted.png` | Phase 5 delivery evidence run | 175461 |
-| `21-inventory/03-transfer.png` | `docs/project/delivery-evidence/phase-5/26-inventory-transfer.png` | Phase 5 delivery evidence run | 202319 |
-| `21-inventory/04-valuation.png` | `docs/project/delivery-evidence/phase-5/27-inventory-reorder-valuation.png` | Phase 5 delivery evidence run | 179415 |
+| `20-fixed-assets/01-register.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 198453 |
+| `20-fixed-assets/02-asset-detail.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 209571 |
+| `20-fixed-assets/03-categories.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 173129 |
+| `20-fixed-assets/04-maintenance.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 172069 |
+| `20-fixed-assets/05-depreciation-preview.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 208959 |
+| `22-procurement/01-overview.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 155425 |
+| `22-procurement/02-requisition-form.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 135017 |
+| `22-procurement/03-requisition-saved.png` | `docs/project/delivery-evidence/phase-5/20-procurement-requisition-saved.png` | Verification run re-executed 2026-11-20 | 132329 |
+| `22-procurement/04-receiving.png` | `docs/project/delivery-evidence/phase-5/21-procurement-receiving.png` | Verification run re-executed 2026-11-20 | 153799 |
+| `21-inventory/01-inventory-workspace.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 231613 |
+| `21-inventory/02-adjustment-posted.png` | `docs/project/delivery-evidence/phase-5/24-inventory-adjustment-posted.png` | Verification run re-executed 2026-11-20 | 166125 |
+| `21-inventory/03-transfer.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 165160 |
+| `21-inventory/04-valuation.png` | `docs/project/delivery-evidence/phase-5/27-inventory-reorder-valuation.png` | Verification run re-executed 2026-11-20 | 175515 |
 | `21-inventory/05-stock-movements-report.png` | `docs/audits/reporting-programme-batch-1-evidence/05-branded-pdf-first-page.png` | Reporting programme batch 1 evidence run (stock movement report PDF) | 154230 |
-| `23-insurance/01-sha-eclaims.png` | `docs/ui/screenshots/sha-eclaims-desktop-synthetic.png` | Presentation-readiness responsive run | 215417 |
-| `24-private-insurance/01-private-insurance.png` | `docs/ui/screenshots/private-insurance-desktop-synthetic.png` | Presentation-readiness responsive run | 197175 |
-| `25-reporting/01-catalogue.png` | `docs/audits/presentation-readiness-evidence/06-reporting-centre-catalogue.png` | Presentation-readiness evidence run | 208750 |
-| `25-reporting/02-report-results.png` | `docs/audits/presentation-readiness-evidence/07b-reporting-centre-returned-rows.png` | Presentation-readiness evidence run | 81344 |
-| `25-reporting/03-movement-workbench.png` | `docs/audits/reporting-programme-batch-1-evidence/01-movement-workbench.png` | Reporting programme batch 1 evidence run | 256936 |
-| `25-reporting/04-movement-rows.png` | `docs/audits/reporting-programme-batch-1-evidence/02-actual-movement-rows.png` | Reporting programme batch 1 evidence run | 38586 |
-| `25-reporting/05-empty-result.png` | `docs/audits/reporting-programme-batch-1-evidence/03-empty-result.png` | Reporting programme batch 1 evidence run | 251212 |
+| `23-insurance/01-sha-eclaims.png` | `docs/ui/screenshots/sha-eclaims-desktop-synthetic.png` | Verification run re-executed 2026-11-20 | 214349 |
+| `24-private-insurance/01-private-insurance.png` | `docs/ui/screenshots/private-insurance-desktop-synthetic.png` | Verification run re-executed 2026-11-20 | 195238 |
+| `25-reporting/01-catalogue.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 287722 |
+| `25-reporting/02-report-results.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 287722 |
+| `25-reporting/03-movement-workbench.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 250287 |
+| `25-reporting/04-movement-rows.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 96302 |
+| `25-reporting/05-empty-result.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 238910 |
 | `25-reporting/06-exported-pdf.png` | `docs/audits/reporting-programme-batch-1-evidence/05-branded-pdf-first-page.png` | Reporting programme batch 1 evidence run | 154230 |
 | `25-reporting/07-clinical-document-report.png` | `docs/audits/presentation-readiness-evidence/08-reporting-centre-clinical-document.png` | Presentation-readiness evidence run | 256849 |
-| `26-configuration/01-configuration.png` | `docs/ui/screenshots/settings-desktop-synthetic.png` | Presentation-readiness responsive run | 176178 |
-| `26-configuration/02-platform-administration.png` | `docs/ui/screenshots/platform-administration-desktop-synthetic.png` | Presentation-readiness responsive run | 183148 |
-| `26-configuration/03-letterhead-version.png` | `docs/audits/clinical-documents-evidence/05-letterhead-active-version.png` | Clinical-documents evidence run | 220478 |
-| `27-audit/01-audit-trail.png` | `docs/ui/screenshots/audit-desktop-synthetic.png` | Presentation-readiness responsive run | 201441 |
-| `27-audit/02-audit-events.png` | `docs/audits/syrona-zero-fill-evidence/browser/08-audit.png` | Zero-fill planning evidence run | 202496 |
-| `28-planning/01-planning-dashboard.png` | `docs/audits/syrona-zero-fill-evidence/browser/01-dashboard.png` | Zero-fill planning evidence run | 201887 |
-| `28-planning/02-import-preview.png` | `docs/audits/syrona-zero-fill-evidence/browser/10-import-preview.png` | Zero-fill planning evidence run | 190972 |
-| `28-planning/03-issued-report.png` | `docs/audits/syrona-zero-fill-evidence/browser/09-issued-report.png` | Zero-fill planning evidence run | 198383 |
+| `26-configuration/01-configuration.png` | `docs/ui/screenshots/settings-desktop-synthetic.png` | Verification run re-executed 2026-11-20 | 174838 |
+| `26-configuration/02-platform-administration.png` | `docs/ui/screenshots/platform-administration-desktop-synthetic.png` | Verification run re-executed 2026-11-20 | 174216 |
+| `26-configuration/03-letterhead-version.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 220487 |
+| `27-audit/01-audit-trail.png` | `docs/ui/screenshots/audit-desktop-synthetic.png` | Verification run re-executed 2026-11-20 | 199828 |
+| `27-audit/02-audit-events.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 245727 |
+| `28-planning/01-planning-dashboard.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 224925 |
+| `28-planning/02-import-preview.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 197575 |
+| `28-planning/03-issued-report.png` | `scripts/documentation/capture-syrona-screenshots.mjs` (live capture) | Documentation capture run, 2026-11-20 | 230377 |
 | `28-planning/04-budget-pdf.png` | `docs/audits/budget-planning-evidence/13-pdf-page-1.png` | Budget planning evidence run | 308120 |
 
 ## Modules with no capture available

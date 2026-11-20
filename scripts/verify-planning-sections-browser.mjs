@@ -195,8 +195,8 @@ const nav = async (label) => {
 const login = async (credentials) => {
   await page.setViewport({ width: 1600, height: 1250 });
   await page.goto(base, { waitUntil: 'networkidle2' });
-  await page.type('input[placeholder="Username or Email"]', credentials.username);
-  await page.type('input[placeholder="Password"]', credentials.password);
+  await page.type('input[name="identifier"]', credentials.username);
+  await page.type('input[name="password"]', credentials.password);
   await page.click('button[type="submit"]');
   await page.waitForSelector('aside nav');
   await click('Accounting & Finance');

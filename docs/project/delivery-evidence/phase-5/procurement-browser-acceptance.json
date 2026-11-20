@@ -1,11 +1,11 @@
 {
-  "generatedAt": "2026-11-10T08:08:32.329Z",
+  "generatedAt": "2026-11-20T06:45:38.570Z",
   "baseUrl": "http://127.0.0.1:3000",
-  "database": "syrona_synth",
+  "database": "syrona_synthetic_test",
   "username": "synthetic.procurement.approver",
   "assertions": {
-    "passed": 13,
-    "failed": 0
+    "passed": 12,
+    "failed": 1
   },
   "results": [
     {
@@ -60,7 +60,7 @@
     },
     {
       "name": "Received notes show their invoice state",
-      "passed": true,
+      "passed": false,
       "detail": ""
     },
     {

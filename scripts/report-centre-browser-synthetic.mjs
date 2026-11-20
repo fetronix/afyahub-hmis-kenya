@@ -1252,9 +1252,9 @@ try {
     });
     await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
     await page.goto(base, { waitUntil: 'networkidle2' });
-    await page.waitForSelector('input[placeholder="Username or Email"]');
-    await page.type('input[placeholder="Username or Email"]', username);
-    await page.type('input[placeholder="Password"]', password);
+    await page.waitForSelector('input[name="identifier"]');
+    await page.type('input[name="identifier"]', username);
+    await page.type('input[name="password"]', password);
     await page.click('button[type="submit"]');
     await page.waitForSelector('aside button[title="Reporting Centre"]', { timeout: 30000 });
     await page.click('aside button[title="Reporting Centre"]');
@@ -2015,9 +2015,9 @@ try {
         limitedAuth = request.headers().authorization;
     });
     await limitedPage.goto(base, { waitUntil: 'networkidle2' });
-    await limitedPage.waitForSelector('input[placeholder="Username or Email"]');
-    await limitedPage.type('input[placeholder="Username or Email"]', limitedUsername);
-    await limitedPage.type('input[placeholder="Password"]', limitedPassword);
+    await limitedPage.waitForSelector('input[name="identifier"]');
+    await limitedPage.type('input[name="identifier"]', limitedUsername);
+    await limitedPage.type('input[name="password"]', limitedPassword);
     await limitedPage.click('button[type="submit"]');
     await limitedPage.waitForSelector('aside button[title="Reporting Centre"]', { timeout: 30000 });
     await limitedPage.click('aside button[title="Reporting Centre"]');

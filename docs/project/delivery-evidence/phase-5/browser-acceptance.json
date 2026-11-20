@@ -1,5 +1,5 @@
 {
-  "capturedAt": "2026-11-10T01:12:08.967Z",
+  "capturedAt": "2026-11-20T06:45:10.974Z",
   "baseUrl": "http://127.0.0.1",
   "databaseClass": "synthetic",
   "assertions": [
@@ -101,7 +101,7 @@
     {
       "name": "Payroll run history lists a computed run",
       "passed": true,
-      "detail": "2 rows"
+      "detail": "3 rows"
     },
     {
       "name": "Run detail shows payslip totals and posting state",

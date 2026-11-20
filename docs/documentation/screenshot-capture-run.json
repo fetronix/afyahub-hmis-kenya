@@ -1,0 +1,84 @@
+{
+ "when": "2026-11-20T06:36:33.323Z",
+ "base": "http://127.0.0.1:3000",
+ "captured": 19,
+ "failed": [],
+ "results": [
+  {
+   "path": "20-fixed-assets/01-register.png",
+   "status": "captured"
+  },
+  {
+   "path": "20-fixed-assets/02-asset-detail.png",
+   "status": "captured"
+  },
+  {
+   "path": "20-fixed-assets/03-categories.png",
+   "status": "captured"
+  },
+  {
+   "path": "20-fixed-assets/04-maintenance.png",
+   "status": "captured"
+  },
+  {
+   "path": "20-fixed-assets/05-depreciation-preview.png",
+   "status": "captured"
+  },
+  {
+   "path": "22-procurement/01-overview.png",
+   "status": "captured"
+  },
+  {
+   "path": "22-procurement/02-requisition-form.png",
+   "status": "captured"
+  },
+  {
+   "path": "21-inventory/01-inventory-workspace.png",
+   "status": "captured"
+  },
+  {
+   "path": "21-inventory/03-transfer.png",
+   "status": "captured"
+  },
+  {
+   "path": "25-reporting/01-catalogue.png",
+   "status": "captured"
+  },
+  {
+   "path": "25-reporting/02-report-results.png",
+   "status": "captured"
+  },
+  {
+   "path": "25-reporting/03-movement-workbench.png",
+   "status": "captured"
+  },
+  {
+   "path": "25-reporting/04-movement-rows.png",
+   "status": "captured"
+  },
+  {
+   "path": "25-reporting/05-empty-result.png",
+   "status": "captured"
+  },
+  {
+   "path": "28-planning/01-planning-dashboard.png",
+   "status": "captured"
+  },
+  {
+   "path": "28-planning/02-import-preview.png",
+   "status": "captured"
+  },
+  {
+   "path": "28-planning/03-issued-report.png",
+   "status": "captured"
+  },
+  {
+   "path": "27-audit/02-audit-events.png",
+   "status": "captured"
+  },
+  {
+   "path": "26-configuration/03-letterhead-version.png",
+   "status": "captured"
+  }
+ ]
+}
