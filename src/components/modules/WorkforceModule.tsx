@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   Users,
   UserPlus,
@@ -850,10 +850,15 @@ export const WorkforceModule: React.FC = () => {
             {
               name: 'departmentId',
               label: 'Department',
+              type: 'select',
+              placeholder: 'Unassigned',
               options: departments.map((department) => ({
                 value: String(department.id),
-                label: department.name,
+                label: department.isActive ? department.name : `${department.name} (inactive)`,
               })),
+              hint: departments.length
+                ? undefined
+                : 'No departments recorded yet. Create one under Departments to attach this designation to a department.',
             },
             { name: 'grade', label: 'Grade' },
           ]}
@@ -1208,6 +1213,10 @@ type FieldSpec = {
   type?: 'text' | 'number' | 'date' | 'time' | 'textarea' | 'select';
   required?: boolean;
   step?: string;
+  /* Label for the empty choice of a select; without it the empty choice reads "Select…". */
+  placeholder?: string;
+  /* Optional helper line under the control, e.g. what to do when a select has no options. */
+  hint?: string;
   options?: Array<{ value: string; label: string }>;
 };
 
@@ -1230,6 +1239,8 @@ function SimpleFormDialog({
     [fields],
   );
   const [values, setValues] = useState<Record<string, string>>(initial);
+  /* React's useId keeps control ids unique when a dialog is mounted more than once. */
+  const idPrefix = `simple-field-${useId().replace(/:/g, '')}`;
   return (
     <Modal open onClose={onClose} title={title}>
       <form
@@ -1244,51 +1255,63 @@ function SimpleFormDialog({
           onSubmit(payload);
         }}
       >
-        {fields.map((field) => (
-          <label className="ui-field" key={field.name}>
-            <span>
-              {field.label}
-              {field.required ? ' *' : ''}
-            </span>
-            {field.type === 'select' ? (
-              <select
-                className="ui-select"
-                required={field.required}
-                value={values[field.name] ?? ''}
-                onChange={(event) =>
-                  setValues((current) => ({ ...current, [field.name]: event.target.value }))
-                }
-              >
-                <option value="">Select…</option>
-                {field.options?.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            ) : field.type === 'textarea' ? (
-              <textarea
-                className="ui-input"
-                rows={3}
-                value={values[field.name] ?? ''}
-                onChange={(event) =>
-                  setValues((current) => ({ ...current, [field.name]: event.target.value }))
-                }
-              />
-            ) : (
-              <input
-                className="ui-input"
-                type={field.type ?? 'text'}
-                step={field.step}
-                required={field.required}
-                value={values[field.name] ?? ''}
-                onChange={(event) =>
-                  setValues((current) => ({ ...current, [field.name]: event.target.value }))
-                }
-              />
-            )}
-          </label>
-        ))}
+        {fields.map((field) => {
+          const controlId = `${idPrefix}-${field.name}`;
+          const hintId = `${controlId}-hint`;
+          const describedBy = field.hint ? hintId : undefined;
+          const set = (event: { target: { value: string } }) =>
+            setValues((current) => ({ ...current, [field.name]: event.target.value }));
+          return (
+            <div className="ui-form-field" key={field.name}>
+              <label htmlFor={controlId}>
+                {field.label}
+                {field.required ? ' *' : ''}
+              </label>
+              {field.type === 'select' ? (
+                <select
+                  id={controlId}
+                  className="ui-select"
+                  required={field.required}
+                  aria-describedby={describedBy}
+                  value={values[field.name] ?? ''}
+                  onChange={set}
+                >
+                  <option value="">{field.placeholder ?? 'Select…'}</option>
+                  {field.options?.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              ) : field.type === 'textarea' ? (
+                <textarea
+                  id={controlId}
+                  className="ui-input"
+                  rows={3}
+                  aria-describedby={describedBy}
+                  value={values[field.name] ?? ''}
+                  onChange={set}
+                />
+              ) : (
+                <input
+                  id={controlId}
+                  className="ui-input"
+                  type={field.type ?? 'text'}
+                  step={field.step}
+                  required={field.required}
+                  aria-describedby={describedBy}
+                  value={values[field.name] ?? ''}
+                  onChange={set}
+                />
+              )}
+              {field.hint ? (
+                <p id={hintId} className="ui-field-hint">
+                  {field.hint}
+                </p>
+              ) : null}
+            </div>
+          );
+        })}
         <div className="flex justify-end gap-2">
           <SecondaryButton onClick={onClose}>Cancel</SecondaryButton>
           <PrimaryButton type="submit" disabled={saving}>
