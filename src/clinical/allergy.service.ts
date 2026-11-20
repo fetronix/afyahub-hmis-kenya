@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Patient allergies
  *
  * A prescribing system that cannot answer "is this patient allergic to

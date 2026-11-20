@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Backward-Compatible Frontend API Client Facade
+ * Syrona Medical Center HMIS — Backward-Compatible Frontend API Client Facade
  *
  * Domain clients live under `src/api/clients/`:
  *   - `http.ts` — shared session token storage, `ApiError`, and hardened `fetchJson`

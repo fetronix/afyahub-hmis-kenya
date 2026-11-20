@@ -174,7 +174,7 @@ export const Header: React.FC = () => {
 
   const department =
     currentUser?.department ||
-    'JaliCare HMIS';
+    'Syrona Medical Center HMIS';
 
   const professionalId =
     currentUser?.license ||
@@ -296,7 +296,7 @@ export const Header: React.FC = () => {
           )}
         </button>
 
-        {/* JaliCare Brand */}
+        {/* Syrona Medical Center Brand */}
 
         <div className="flex items-center gap-2.5">
           <div
@@ -353,7 +353,7 @@ export const Header: React.FC = () => {
                   whitespace-nowrap
                 "
               >
-                JaliCare
+                Syrona Medical Center
               </span>
 
               <span

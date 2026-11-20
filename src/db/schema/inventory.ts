@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Schema: Inventory items and batches, dispensing, suppliers, purchase orders
  *
  * Extracted from `../schema.ts`, which re-exports every table defined here so

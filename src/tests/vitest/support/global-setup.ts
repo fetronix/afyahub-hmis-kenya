@@ -19,9 +19,9 @@ export default async function setup(): Promise<void> {
   const pool = new Pool({
     host,
     port,
-    database: process.env.SQL_DB_NAME ?? 'jalicare_test',
-    user: process.env.SQL_ADMIN_USER ?? 'jalicare_test',
-    password: process.env.SQL_ADMIN_PASSWORD ?? 'jalicare_test',
+    database: process.env.SQL_DB_NAME ?? 'syrona_test',
+    user: process.env.SQL_ADMIN_USER ?? 'syrona_test',
+    password: process.env.SQL_ADMIN_PASSWORD ?? 'syrona_test',
     connectionTimeoutMillis: 3_000,
     max: 2,
   });
@@ -37,14 +37,14 @@ export default async function setup(): Promise<void> {
     await pool.end().catch(() => undefined);
   }
 
-  process.env.JALICARE_DB_AVAILABLE = available ? '1' : '0';
+  process.env.SYRONA_DB_AVAILABLE = available ? '1' : '0';
 
   if (!available) {
-    const required = process.env.JALICARE_REQUIRE_DB === '1';
+    const required = process.env.SYRONA_REQUIRE_DB === '1';
 
     console.info(
       required
-        ? `[vitest] PostgreSQL NOT reachable at ${host}:${port} — JALICARE_REQUIRE_DB=1, database specs will FAIL.`
+        ? `[vitest] PostgreSQL NOT reachable at ${host}:${port} — SYRONA_REQUIRE_DB=1, database specs will FAIL.`
         : `[vitest] PostgreSQL not reachable at ${host}:${port} — database specs will be skipped.`,
     );
   }

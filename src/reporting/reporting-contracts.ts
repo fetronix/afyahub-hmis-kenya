@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Reporting contracts: stay statistics and occupancy arithmetic.
  *
  * Deliberately free of database imports so the numbers a facility is

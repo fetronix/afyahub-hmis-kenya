@@ -5,7 +5,7 @@
 | Document | TECHNOLOGY_STACK |
 | Version | 1.0 |
 | Last reviewed | 2026-11-18 |
-| Applies to | JaliCare HMIS 0.1.0, commit `9d7274c` |
+| Applies to | Syrona Medical Center HMIS 0.1.0, commit `9d7274c` |
 | Audience | Engineers, architects, security reviewers |
 | Status | Verified against `package.json`, `tsconfig.json`, `vite.config.ts` and CI |
 

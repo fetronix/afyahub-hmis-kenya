@@ -1,7 +1,7 @@
 import { requireFacilityIntegrationAdministrator } from '../integrations/hub/facility-authorization.ts';
 import { shaPolicyGuard } from '../insurance/hub/guards.ts';
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * SHA eClaims, Eligibility, Benefits, Preauthorization & Remittance Routes
  *
  * Mounted at `/api/insurance/sha` behind `requireAuth`, `requireAuthorization`,

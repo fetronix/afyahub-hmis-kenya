@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Billing Engine
  *
  * Converts completed clinical activity into invoice line items using

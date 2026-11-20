@@ -1,6 +1,6 @@
 # Architecture overview
 
-How JaliCare is put together, and why. The [README](../../README.md) covers
+How Syrona Medical Center is put together, and why. The [README](../../README.md) covers
 installation; this covers structure.
 
 ---

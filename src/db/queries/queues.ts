@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Queries: Patient queues, token allocation, and appointments
  *
  * Extracted from `../queries.ts`, which re-exports every function here so that

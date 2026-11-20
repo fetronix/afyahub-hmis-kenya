@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — delegated approval authority (migration 0078).
+ * Syrona Medical Center HMIS — delegated approval authority (migration 0078).
  *
  * A policy is a threshold, not a range: it applies to amounts at or above
  * `min_amount_cents`. Evaluation picks the highest matching threshold, so a

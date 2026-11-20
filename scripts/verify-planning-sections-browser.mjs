@@ -154,7 +154,7 @@ const shot = async (name, dialog = false) => {
 const query = async (search) =>
   page.evaluate(
     async ({ basePath, search }) => {
-      const token = localStorage.getItem('jalicare_session_token');
+      const token = localStorage.getItem('syrona_session_token');
       const r = await fetch(
         basePath + '?' + new URLSearchParams({ search, all: 'true', year: '2026' }),
         { headers: token ? { Authorization: 'Bearer ' + token } : {} },
@@ -490,7 +490,7 @@ try {
   );
   await search('');
   const audit = await page.evaluate(async (planId) => {
-    const token = localStorage.getItem('jalicare_session_token');
+    const token = localStorage.getItem('syrona_session_token');
     const r = await fetch('/api/budget-planning/audit?planId=' + planId, {
       headers: token ? { Authorization: 'Bearer ' + token } : {},
     });

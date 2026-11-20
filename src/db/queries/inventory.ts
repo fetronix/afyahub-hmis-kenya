@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Queries: Inventory, dispensing, suppliers, and purchase orders
  *
  * Re-exported by `../queries.ts` so existing imports keep working. Purchase

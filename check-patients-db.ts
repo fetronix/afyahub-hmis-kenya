@@ -8,7 +8,7 @@ async function checkDatabase() {
     const users = await db.select().from(schema.users);
 
     console.log("\n==============================================");
-    console.log(" JaliCare DATABASE CHECK");
+    console.log(" Syrona Medical Center DATABASE CHECK");
     console.log("==============================================\n");
 
     console.log("TENANTS:");

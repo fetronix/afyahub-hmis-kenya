@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Phase 5 workforce and payroll browser acceptance.
+ * Syrona Medical Center HMIS — Phase 5 workforce and payroll browser acceptance.
  *
  * Drives the real application in Chromium: signs in through the login form,
  * opens Human Resources and Payroll from the sidebar, walks every tab, opens a

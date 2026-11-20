@@ -5,7 +5,7 @@
 | Document | USER_ROLES_AND_PERSONAS |
 | Version | 1.0 |
 | Last reviewed | 2026-11-18 |
-| Applies to | JaliCare HMIS 0.1.0, commit `9d7274c` |
+| Applies to | Syrona Medical Center HMIS 0.1.0, commit `9d7274c` |
 | Audience | Administrators, trainers, implementation teams |
 | Status | Verified against `src/seeds/permissions.ts`, `src/auth/staff-role-catalogue.ts` and `src/components/Sidebar.tsx` |
 

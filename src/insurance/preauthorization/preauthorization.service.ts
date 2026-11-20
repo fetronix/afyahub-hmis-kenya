@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Private Insurance Preauthorization Workflow Service
+ * Syrona Medical Center HMIS — Private Insurance Preauthorization Workflow Service
  *
  * Manages draft creation, clinical indication & diagnosis capture, multi-item
  * requested services, supporting attachments, submission through a supported

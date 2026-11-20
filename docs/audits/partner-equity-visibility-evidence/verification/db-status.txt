@@ -1,4 +1,4 @@
-> jalicare-hmis@0.1.0 db:status:all
+> syrona-hmis@0.1.0 db:status:all
 > node scripts/run-script.mjs migration-status --expect-all
 
 [run-script] migration-status: build/scripts/migration-status.js (node)

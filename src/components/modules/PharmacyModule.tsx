@@ -55,7 +55,7 @@ export const PharmacyModule: React.FC = () => {
   const [checkingPending, setCheckingPending] = useState(false);
   const storageKey =
     authenticatedUser?.id && currentFacility?.id
-      ? `jalicare:pharmacy:pending:${authenticatedUser.id}:${currentFacility.id}`
+      ? `syrona:pharmacy:pending:${authenticatedUser.id}:${currentFacility.id}`
       : null;
   const activeScope =
     authenticatedUser?.id && currentTenant?.id && currentFacility?.id

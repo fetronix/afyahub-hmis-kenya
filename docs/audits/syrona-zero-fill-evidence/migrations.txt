@@ -1,8 +1,8 @@
 
 ==============================================
-JaliCare HMIS — migration runner
+Syrona Medical Center HMIS — migration runner
 ==============================================
-Target   : jalicare_test@127.0.0.1:55439/syrona_zero_fill_final_synthetic_test
+Target   : syrona_test@127.0.0.1:55439/syrona_zero_fill_final_synthetic_test
 Folder   : /home/user/afyahub-hmis-kenya/drizzle
 Journal  : /home/user/afyahub-hmis-kenya/drizzle/meta/_journal.json
 Mode     : APPLY

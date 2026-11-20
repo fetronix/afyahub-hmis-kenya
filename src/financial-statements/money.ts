@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — exact money handling for the financial statements.
+ * Syrona Medical Center HMIS — exact money handling for the financial statements.
  *
  * The ledger stores integer cents in `bigint` columns. Statements must never
  * lose a cent to floating point, and a payload stored in `jsonb` cannot hold a

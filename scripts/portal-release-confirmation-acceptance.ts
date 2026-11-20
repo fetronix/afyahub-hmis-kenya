@@ -353,7 +353,7 @@ try {
     const response = await fetch(`/api/patient-documents/patients/${target.patient}/${target.id}/release`, {
       method: 'POST',
       headers: {
-        Authorization: 'Bearer ' + localStorage.getItem('jalicare_session_token'),
+        Authorization: 'Bearer ' + localStorage.getItem('syrona_session_token'),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -427,7 +427,7 @@ try {
       const response = await fetch(`/api/patient-documents/patients/${target.patient}/releases`, {
         method: 'POST',
         headers: {
-          Authorization: 'Bearer ' + localStorage.getItem('jalicare_session_token'),
+          Authorization: 'Bearer ' + localStorage.getItem('syrona_session_token'),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -479,7 +479,7 @@ try {
         {
           method: 'POST',
           headers: {
-            Authorization: 'Bearer ' + localStorage.getItem('jalicare_session_token'),
+            Authorization: 'Bearer ' + localStorage.getItem('syrona_session_token'),
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
@@ -515,7 +515,7 @@ try {
       const response = await fetch(`/api/patient-documents/patients/${target.patient}/releases`, {
         method: 'POST',
         headers: {
-          Authorization: 'Bearer ' + localStorage.getItem('jalicare_session_token'),
+          Authorization: 'Bearer ' + localStorage.getItem('syrona_session_token'),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -582,7 +582,7 @@ try {
   /* 10. Released originals are readable, unreleased ones are not. */
   const releasedFile = await patient.evaluate(async (id) => {
     const response = await fetch(`/api/portal/documents/${id}/file?download=1`, {
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('jalicare_portal_token') },
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('syrona_portal_token') },
     });
     return { status: response.status, bytes: (await response.arrayBuffer()).byteLength };
   }, generalA);
@@ -592,7 +592,7 @@ try {
   );
   const unreleasedFile = await patient.evaluate(async (id) => {
     const response = await fetch(`/api/portal/documents/${id}/file?download=1`, {
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('jalicare_portal_token') },
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('syrona_portal_token') },
     });
     return response.status;
   }, generalF);

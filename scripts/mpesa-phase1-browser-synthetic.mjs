@@ -146,7 +146,7 @@ try {
     )
   ).rows[0].id;
 
-  tempDir = await mkdtemp(path.join(os.tmpdir(), 'jalicare-mpesa-synthetic-tls-'));
+  tempDir = await mkdtemp(path.join(os.tmpdir(), 'syrona-mpesa-synthetic-tls-'));
   const keyFile = path.join(tempDir, 'key.pem'),
     certFile = path.join(tempDir, 'cert.pem');
   execFileSync(
@@ -469,7 +469,7 @@ try {
       { cause: error },
     );
   }
-  const storageName = `jalicare:mpesa:pending:${user}:${facility}`;
+  const storageName = `syrona:mpesa:pending:${user}:${facility}`;
   const saved = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)), storageName);
   check(
     saved &&

@@ -65,7 +65,7 @@ async function startServer() {
   app.get('/api/health', (req, res) => {
     res.json({
       status: 'healthy',
-      system: 'JaliCare Kenya HMIS',
+      system: 'Syrona Medical Center Kenya HMIS',
       dhaReadiness: 'Level 4 / Level 5 Compliant Architecture',
       timestamp: new Date().toISOString(),
     });
@@ -1865,7 +1865,7 @@ app.get(
     '0.0.0.0',
     () => {
       console.log(
-        `JaliCare HMIS server running on http://0.0.0.0:${PORT}`
+        `Syrona Medical Center HMIS server running on http://0.0.0.0:${PORT}`
       );
     }
   );

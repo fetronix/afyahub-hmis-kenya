@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — the invoice gate every insurance claim must pass.
+ * Syrona Medical Center HMIS — the invoice gate every insurance claim must pass.
  *
  * WHY THIS EXISTS
  * A claim is a statement to a payer about money the facility says it is owed.

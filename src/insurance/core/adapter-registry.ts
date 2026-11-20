@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Common Payer Adapter Interface & Registry
+ * Syrona Medical Center HMIS — Common Payer Adapter Interface & Registry
  *
  * Every external insurer or third-party aggregator implements this
  * contract. Unsupported or unconfigured operations return an explicit

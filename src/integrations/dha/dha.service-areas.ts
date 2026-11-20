@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * DHA / AfyaConnect — service area mapping
  *
  * WHY THIS FILE EXISTS

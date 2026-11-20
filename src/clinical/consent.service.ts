@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Patient consent
  *
  * `patient_consents` has existed since migration 0002 with columns for

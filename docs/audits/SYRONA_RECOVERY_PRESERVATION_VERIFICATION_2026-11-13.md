@@ -1,4 +1,4 @@
-# JaliCare HMIS — Recovery, Preservation and Verification Baseline
+# Syrona Medical Center HMIS — Recovery, Preservation and Verification Baseline
 
 **Date:** 2026-11-13 (captured 08:07:12Z, finished 08:25Z)
 **Branch:** `arena/e088f11d-afyahub-hmis-kenya`
@@ -15,7 +15,7 @@ report.
 
 ### 1.1 What was preserved, and where
 
-`/home/user/jalicare-preservation-2026-11-13/` — outside the repository, inside the workspace.
+`/home/user/syrona-preservation-2026-11-13/` — outside the repository, inside the workspace.
 
 | Artifact | Contents | Size | SHA-256 |
 | --- | --- | --- | --- |
@@ -375,16 +375,16 @@ can be provisioned safely**, and was:
 | --- | --- |
 | Source of binaries | `embedded-postgres@16.15.0-beta.19` from the npm registry (`@embedded-postgres/linux-x64`) — installed into **`/home/user/pgtool`**, a throwaway prefix, so the repository's dependency tree stayed exactly as locked |
 | Version | `postgres (PostgreSQL) 16.15` — matches the `postgres:16` service used by CI |
-| Cluster | `initdb -U jalicare_test --auth=trust`, data dir `/home/user/pgtest16` — **outside the repository** |
+| Cluster | `initdb -U syrona_test --auth=trust`, data dir `/home/user/pgtest16` — **outside the repository** |
 | Network | `listen_addresses=127.0.0.1`, port **55432**, unix socket `/tmp` — loopback only, no external exposure |
-| Databases | `jalicare_migrate_test`, `jalicare_synthetic_test`, `jalicare_test2` — all disposable, all created for this task |
+| Databases | `syrona_migrate_test`, `syrona_synthetic_test`, `syrona_test2` — all disposable, all created for this task |
 | Safety | `fsync=off`, `full_page_writes=off` (throwaway cluster). **No production database was touched**; none exists or was contacted. |
 | Dependency discipline | `package.json` / `package-lock.json` SHA-256 verified identical before and after (\`861f96ba…\`, \`bfd2371e…\`). A first attempt with `npm install --no-save` re-resolved 95 packages; it was reverted with `npm ci` so the tree matches the lock exactly (drizzle-kit 0.31.11, drizzle-orm 0.45.3, vitest 5.0.5, pg 8.23.1). |
 
 ### 6.2 Migrations applied to a disposable database
 
 ```
-SQL_DB_NAME=jalicare_migrate_test npx drizzle-kit migrate
+SQL_DB_NAME=syrona_migrate_test npx drizzle-kit migrate
 → [✓] migrations applied successfully!
 
 journal rows applied ........... 90
@@ -415,7 +415,7 @@ else. The one thing that is *not* automatically safe is the published test that 
 
 ### 6.4 Test results with PostgreSQL available
 
-Full suite, `JALICARE_REQUIRE_DB=1`, one disposable database, 7 min 16 s:
+Full suite, `SYRONA_REQUIRE_DB=1`, one disposable database, 7 min 16 s:
 
 ```
 Test Files  6 failed | 199 passed | 13 skipped (works out to 728 suites)
@@ -424,7 +424,7 @@ Test Files  6 failed | 199 passed | 13 skipped (works out to 728 suites)
 
 The 13 "skipped" were one file, `report-centre-diagnoses.db.spec.ts`, which refuses to run without
 an independently attested cluster identifier. Supplying it
-(`JALICARE_TEST_PG_SYSTEM_IDENTIFIER=7707565714601635529`, read from `pg_control_system()`) makes
+(`SYRONA_TEST_PG_SYSTEM_IDENTIFIER=7707565714601635529`, read from `pg_control_system()`) makes
 that file **13/13 pass**. So the effective totals are **2,666 passed / 7 failed / 0 skipped**.
 
 **The 7 failures, all explained:**
@@ -518,7 +518,7 @@ other feature. Three steps, in order:
 | Step | Work | Done when |
 | --- | --- | --- |
 | 1 | Extend `contractWithReviewedAdditions` for the 0088 columns (§5.3) | the 4 schema-contract tests pass; the fixture is untouched |
-| 2 | Make the three published tests consistent with the unpublished work (§6.6): journal-length comparison, and finalize-before-claim in the two published specs | full suite green with `JALICARE_REQUIRE_DB=1` |
+| 2 | Make the three published tests consistent with the unpublished work (§6.6): journal-length comparison, and finalize-before-claim in the two published specs | full suite green with `SYRONA_REQUIRE_DB=1` |
 | 3 | Decide 0089's fate before publishing: either finish the wiring (export from `schema.ts`, add `letterheadId` to `billing.ts`, align `serial`/identity and the index name) or split the migration out of the commit | the journal, the schema modules and `billing.ts` agree |
 
 Then, and only then, the P0 document work from the requirements assessment (letterhead → receipt →
@@ -566,7 +566,7 @@ collapsed onto one line). Both remain strict supersets of their published blobs 
 | `operations-status.db.spec.ts` | **7 / 7 pass** |
 | `inpatient-bed-billing.db.spec.ts` | **36 / 36 pass** |
 | `pharmacy-inventory-billing.db.spec.ts` | **19 / 19 pass** |
-| Full suite, `JALICARE_REQUIRE_DB=1` | **2,673 passed of 2,673, 287 files, 469 s, exit 0** |
+| Full suite, `SYRONA_REQUIRE_DB=1` | **2,673 passed of 2,673, 287 files, 469 s, exit 0** |
 | `npm run typecheck` | exit 0, no output |
 | `npm run lint` | 0 errors, 102 warnings (unchanged baseline) |
 | `npm run format:check` | clean |
@@ -600,7 +600,7 @@ is one of the eight and is *created* by this commit, not modified; the other sev
 (`schema-contract.ts`, `operations-status`, `inpatient-bed-billing`, `pharmacy-inventory-billing`,
 `billing.ts`, `schema.ts`, `schema-extraction.spec.ts`) are the remaining modifications.
 
-The preservation archive at `/home/user/jalicare-preservation-2026-11-13/` is no longer the only
+The preservation archive at `/home/user/syrona-preservation-2026-11-13/` is no longer the only
 durable copy of the unpublished work, but it is retained: it costs 38 MB, it is outside the
 repository, and it is the rollback of record for this pass.
 
@@ -643,23 +643,23 @@ repository, and it is the rollback of record for this pass.
 # 1. PostgreSQL 16.15, isolated (outside the repo)
 npm install --prefix /home/user/pgtool embedded-postgres@16.15.0-beta.19
 PGBIN=/home/user/pgtool/node_modules/@embedded-postgres/linux-x64/native/bin
-"$PGBIN/initdb" -D /home/user/pgtest16 -U jalicare_test --auth=trust -E UTF8 --locale=C
+"$PGBIN/initdb" -D /home/user/pgtest16 -U syrona_test --auth=trust -E UTF8 --locale=C
 "$PGBIN/pg_ctl" -D /home/user/pgtest16 -l /tmp/pg16.log \
   -o "-p 55432 -c listen_addresses=127.0.0.1 -c unix_socket_directories=/tmp -c fsync=off" -w start
-node -e "…CREATE DATABASE jalicare_synthetic_test…"     # no psql is shipped by the npm package
+node -e "…CREATE DATABASE syrona_synthetic_test…"     # no psql is shipped by the npm package
 
 # 2. Exact dependencies (manifest hashes must not change)
 npm ci
 
 # 3. Migrate a disposable database
-SQL_HOST=127.0.0.1 SQL_PORT=55432 SQL_DB_NAME=jalicare_synthetic_test \
-SQL_ADMIN_USER=jalicare_test SQL_ADMIN_PASSWORD=jalicare_test \
+SQL_HOST=127.0.0.1 SQL_PORT=55432 SQL_DB_NAME=syrona_synthetic_test \
+SQL_ADMIN_USER=syrona_test SQL_ADMIN_PASSWORD=syrona_test \
 npx drizzle-kit migrate
 
 # 4. Run the suite as CI does
-SQL_HOST=127.0.0.1 SQL_PORT=55432 SQL_DB_NAME=jalicare_synthetic_test \
-SQL_ADMIN_USER=jalicare_test SQL_ADMIN_PASSWORD=jalicare_test \
-JALICARE_REQUIRE_DB=1 JALICARE_TEST_PG_SYSTEM_IDENTIFIER=<from pg_control_system()> \
+SQL_HOST=127.0.0.1 SQL_PORT=55432 SQL_DB_NAME=syrona_synthetic_test \
+SQL_ADMIN_USER=syrona_test SQL_ADMIN_PASSWORD=syrona_test \
+SYRONA_REQUIRE_DB=1 SYRONA_TEST_PG_SYSTEM_IDENTIFIER=<from pg_control_system()> \
 npx vitest run
 ```
 

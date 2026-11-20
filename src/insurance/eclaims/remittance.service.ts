@@ -1,10 +1,10 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * SHA & Insurance Remittance Advices and Financial Reconciliation Service
  *
  * Supports FHIR R4 `PaymentNotice` (Kenya eClaims IG T-06) and authorized
  * remittance advice entry, reconciling remitted funds against SHA eClaims
- * and JaliCare invoices with decimal-safe integer-cents math. Receipt matching
+ * and Syrona Medical Center invoices with decimal-safe integer-cents math. Receipt matching
  * requires a separately recorded, evidenced billing payment; this service does not post one.
  */
 
@@ -947,7 +947,7 @@ export async function syncFacilityHieRemittances(
 
 /**
  * Workflow 9b (Step 2 of DHA HIE Remittances): Calls `Get Claims Paid by Remittance`
- * using the remittance's `bank_reference` and matches lines to local JaliCare SHA eClaims.
+ * using the remittance's `bank_reference` and matches lines to local Syrona Medical Center SHA eClaims.
  */
 export async function fetchRemittanceClaimBreakdown(
   scope: InsuranceActorScope,

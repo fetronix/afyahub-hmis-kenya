@@ -2,7 +2,7 @@
 
 These are V8 coverage measurements from clean committed checkouts on Node
 22.22.3 and a newly created, migrated PostgreSQL 16.2 database containing only
-synthetic test data. `JALICARE_REQUIRE_DB=1` prevented database suites from
+synthetic test data. `SYRONA_REQUIRE_DB=1` prevented database suites from
 silently skipping. No real patient, insurer, SHA, DHA or bank service was used.
 The historical migration chain was applied only to new disposable test databases.
 
@@ -58,7 +58,7 @@ payment or a working external connection.
 
 Run `npm run test:docker` from a clean checkout, or use `npm run test:coverage`
 (or the equivalent `npm test`) with an independently created disposable test
-database, the required test environment, and `JALICARE_REQUIRE_DB=1`. See the
+database, the required test environment, and `SYRONA_REQUIRE_DB=1`. See the
 README's Testing section for the bootstrap and isolation requirements. Without
 a database, DB specs can skip and the full-suite ratchet can fail.
 

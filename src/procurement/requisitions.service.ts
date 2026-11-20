@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — purchase requisitions.
+ * Syrona Medical Center HMIS — purchase requisitions.
  *
  * A requisition is the department's request; a purchase order is the
  * authorized commitment. They are separate records on purpose:

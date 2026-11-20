@@ -50,7 +50,7 @@ export function SandboxCollectionForm({
     permissions.includes('billing.read'),
   );
   const canVerify = permissions.includes('payment_hub.payments.verify');
-  const storageName = allowed ? `jalicare:mpesa:pending:${userId}:${facilityId}` : null;
+  const storageName = allowed ? `syrona:mpesa:pending:${userId}:${facilityId}` : null;
   const version = useRef(0);
   const [integrations, setIntegrations] = useState<CollectionIntegration[]>([]);
   const [integrationCursor, setIntegrationCursor] = useState<number | null>(null);

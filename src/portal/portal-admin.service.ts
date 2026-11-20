@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Patient portal — facility administration
  *
  * Everything here is scoped to the caller's facility. A facility

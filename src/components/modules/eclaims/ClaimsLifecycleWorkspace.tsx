@@ -155,7 +155,7 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
   const handlePrepare = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedInvoiceId) {
-      showToast('Select a JaliCare invoice first.', 'warning');
+      showToast('Select a Syrona Medical Center invoice first.', 'warning');
       return;
     }
     if (
@@ -367,25 +367,25 @@ export const ClaimsLifecycleWorkspace: React.FC<Props> = ({
           <div>
             <span className="eyebrow text-brand-700">Kenya eClaims FHIR T-01 / T-04 / T-05</span>
             <h3 className="text-base font-bold text-navy-900">
-              Assemble SHA eClaim Package from JaliCare Clinical & Billing Records
+              Assemble SHA eClaim Package from Syrona Medical Center Clinical & Billing Records
             </h3>
             <p className="text-xs text-slate-600 mt-0.5">
               Pulls invoice lines, OPD/IPD encounters, lab, radiology, pharmacy dispensations, and
               approved service mappings into an audited eClaim snapshot without altering the
-              underlying JaliCare invoice.
+              underlying Syrona Medical Center invoice.
             </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
-              <label className="field-label">JaliCare Invoice</label>
+              <label className="field-label">Syrona Medical Center Invoice</label>
               <select
                 value={selectedInvoiceId}
                 onChange={(e) => setSelectedInvoiceId(e.target.value ? Number(e.target.value) : '')}
                 className="field-input"
                 required
               >
-                <option value="">— Select JaliCare Invoice —</option>
+                <option value="">— Select Syrona Medical Center Invoice —</option>
                 {invoices.map((inv) => {
                   const pat = patients.find((p) => p.id === inv.patientId);
                   const patLabel = pat

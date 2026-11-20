@@ -115,7 +115,7 @@ export const RefundRequestWorkflow: React.FC<{
 }) => {
   const { showToast, refreshKey } = useHmis();
   const scope = `${facilityId}:${invoiceId}`;
-  const storageKey = canRequest ? `jalicare:refund-request:pending:${userId}:${facilityId}` : null;
+  const storageKey = canRequest ? `syrona:refund-request:pending:${userId}:${facilityId}` : null;
   const [storageState, setStorageState] = useState<{
     key: string | null;
     pending: PendingRefund | null;

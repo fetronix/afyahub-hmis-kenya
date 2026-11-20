@@ -1,4 +1,4 @@
-# JaliCare HMIS / AfyaHub Kenya — Master Completion Register
+# Syrona Medical Center HMIS / AfyaHub Kenya — Master Completion Register
 
 ## 1. Authority, baseline and executive assessment
 
@@ -113,7 +113,7 @@ No `.env`/deployment credentials were loaded or sought, historical sensitive arc
 | ------ | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | S01    | Current user brief                                                 | Master System Completion Assessment: sections 1–12; audit topics are not proof of original contract scope; current instruction                                                         |
 | S02    | docs/audits/SYRONA_REQUIREMENTS_GAP_ASSESSMENT_2026-11-13.md       | §2 requirements 1–24; secondary reconstruction of a supplied list, not original notes; secondary client requirements                                                                   |
-| S03    | docs/audits/JALICARE_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md  | §4 SY01–SY18; module matrices and §11 recommendations; secondary client requirements and engineering assessment                                                                        |
+| S03    | docs/audits/SYRONA_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md  | §4 SY01–SY18; module matrices and §11 recommendations; secondary client requirements and engineering assessment                                                                        |
 | S04    | docs/audits/REPORTING_PROGRAMME_CURRENT_MATRIX.json                | 144 current catalogue entries, compared with source catalogue and engine definitions; engineering inventory; client inclusion not signed                                               |
 | S05    | docs/audits/REPORTING_PROGRAMME_BATCH_1_ACCEPTANCE.md              | Bounded recorded register, limitations and actual native download evidence; historical synthetic acceptance                                                                            |
 | S06    | docs/audits/CLINICAL_DOCUMENTS_FINAL_ACCEPTANCE.md                 | Signed files/portal/procedure consent/letterhead acceptance and remaining gaps; historical synthetic acceptance                                                                        |
@@ -121,10 +121,10 @@ No `.env`/deployment credentials were loaded or sought, historical sensitive arc
 | S08    | docs/audits/SYRONA_ZERO_FILL_CRUD_IMPLEMENTATION.md                | Subsequent explicit ZERO_FILL direction, 241 source rows, separate source-row identity and nonproduction acceptance; secondary instruction and historical synthetic acceptance         |
 | S09    | docs/audits/ANNUAL_FINANCIAL_BUDGET.md                             | 75-line 13-department scenario, safe formulas, January profit, optional fees and actual separation; secondary supplied scenario and historical synthetic acceptance                    |
 | S10    | docs/audits/PARTNER_EQUITY_FINAL_ACCEPTANCE.md                     | 84-cell screenshot fixture; provisional formulas, no residual; live identity blocked; secondary supplied screenshot and historical synthetic acceptance                                |
-| S11    | docs/audits/JALICARE_BANK_PAYMENTS_IMPLEMENTATION_2026-10-27.md    | Manual declaration, independent verification/settlement; provider limitations; historical synthetic acceptance                                                                         |
-| S12    | docs/audits/JALICARE_PAYROLL_CONFIGURATION_READINESS_2026-10-27.md | Effective-dated statutory versions, configured chart, test-only readiness; historical synthetic acceptance and external policy dependencies                                            |
+| S11    | docs/audits/SYRONA_BANK_PAYMENTS_IMPLEMENTATION_2026-10-27.md    | Manual declaration, independent verification/settlement; provider limitations; historical synthetic acceptance                                                                         |
+| S12    | docs/audits/SYRONA_PAYROLL_CONFIGURATION_READINESS_2026-10-27.md | Effective-dated statutory versions, configured chart, test-only readiness; historical synthetic acceptance and external policy dependencies                                            |
 | S13    | docs/project/completion-phases/MASTER-COMPLETION-REGISTER.md       | Internal engineering phases; not the client three-phase contract; superseded engineering register                                                                                      |
-| S14    | docs/audits/JALICARE_PHASE_1A_SECURITY_INVESTIGATION.md            | Historical exposure and findings; current fixes must be reconciled, not assumed absent; historical security investigation                                                              |
+| S14    | docs/audits/SYRONA_PHASE_1A_SECURITY_INVESTIGATION.md            | Historical exposure and findings; current fixes must be reconciled, not assumed absent; historical security investigation                                                              |
 | S15    | docs/security/DATA-EXPOSURE.md                                     | Owner-led incident response remains required; do not retrieve sensitive historical objects; historical security governance                                                             |
 | S16    | docs/audits/SYRONA_PRODUCTION_DEPLOYMENT_GATE.md                   | HOLD, target/permission/backup/currency/letterhead and migration approval gates; production governance, not evidence of deployment                                                     |
 | S17    | docs/integrations/mpesa-phase-1-readiness-2026-11-06.md            | Mocked Daraja requests; callback settlement unavailable, manual/posted accounting separate; historical synthetic acceptance                                                            |
@@ -135,7 +135,7 @@ No `.env`/deployment credentials were loaded or sought, historical sensitive arc
 | S22    | docs/branding/facility-letterheads.md                              | Existing versioned upload/layout/explicit activation/history; no separate stamp authority; implementation specification                                                                |
 | S23    | reportfidelis.md                                                   | Earlier cross-module achievements/gaps; superseded where later source differs; engineering report                                                                                      |
 | S24    | docs/dha-audit/DHA_REQUIREMENT_TRACEABILITY.md                     | Technical/regulatory self-assessment; not regulator approval or proven client scope; technical recommendation                                                                          |
-| S25    | docs/audits/JALICARE_COMPLETE_SYSTEM_AUDIT.md                      | §C.1 emergency/custody/safety crosswalk and §G platform/professional verification; older leads checked against current source; engineering scope leads, not signed client requirements |
+| S25    | docs/audits/SYRONA_COMPLETE_SYSTEM_AUDIT.md                      | §C.1 emergency/custody/safety crosswalk and §G platform/professional verification; older leads checked against current source; engineering scope leads, not signed client requirements |
 | S26    | docs/project/completion-phases/PHASE-1-4-OUTSTANDING-REGISTER.md   | Remaining clinical eMAR, code provenance and legacy missing-value risks; old findings may now be fixed; engineering outstanding register, not current acceptance                       |
 | S27    | docs/dha-audit/SECURITY_PRIVACY_GAP_REGISTER.md                    | ODPC/DPIA/retention and subject-access organizational evidence; historical assessment not legal determination; technical/organizational recommendation                                 |
 
@@ -754,7 +754,7 @@ Every entry has the required provenance, priority/status, current-layer evidence
 - **Provenance:** EXPLICIT_CLIENT_SECONDARY; S02: §2 requirements 1–24; secondary reconstruction of a supplied list, not original notes; S03: §4 SY01–SY18; module matrices and §11 recommendations
 - **Priority / status:** High / **NOT IMPLEMENTED**. **Roadmap phase:** 2.
 - **Current implementation:** SpecialtyModule states old dental forms were local examples and now provides navigation; generic adjustments are not procedure-linked consumption.
-- **Inspected layer paths:** UI: `src/components/modules/SpecialtyModule.tsx`; API: `src/routes/domains/encounters.routes.ts`; businessRules: `src/components/modules/SpecialtyModule.tsx`; persistence: `src/db/schema/clinical.ts`; permissions: `src/auth/authorization.middleware.ts`; tests: `docs/audits/JALICARE_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md`.
+- **Inspected layer paths:** UI: `src/components/modules/SpecialtyModule.tsx`; API: `src/routes/domains/encounters.routes.ts`; businessRules: `src/components/modules/SpecialtyModule.tsx`; persistence: `src/db/schema/clinical.ts`; permissions: `src/auth/authorization.middleware.ts`; tests: `docs/audits/SYRONA_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md`.
 - **Missing functionality / defect:** No adequate dental clinical record→consumables→stock→charge workflow.
 - **Required task:** Confirm included dental charts/procedures/packs and implement persisted approved chain.
 - **Dependencies / blockers:** D03, D06, D08.
@@ -768,7 +768,7 @@ Every entry has the required provenance, priority/status, current-layer evidence
 - **Provenance:** ASSESSMENT_SCOPE_UNCONFIRMED; S03: §4 SY01–SY18; module matrices and §11 recommendations
 - **Priority / status:** Medium / **NOT IMPLEMENTED**. **Roadmap phase:** 2.
 - **Current implementation:** Optical/ENT tabs are honest navigation, not saved specialist records.
-- **Inspected layer paths:** UI: `src/components/modules/SpecialtyModule.tsx`; API: `src/routes/domains/encounters.routes.ts`; businessRules: `src/components/modules/SpecialtyModule.tsx`; persistence: `src/db/schema/clinical.ts`; permissions: `src/auth/authorization.middleware.ts`; tests: `docs/audits/JALICARE_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md`.
+- **Inspected layer paths:** UI: `src/components/modules/SpecialtyModule.tsx`; API: `src/routes/domains/encounters.routes.ts`; businessRules: `src/components/modules/SpecialtyModule.tsx`; persistence: `src/db/schema/clinical.ts`; permissions: `src/auth/authorization.middleware.ts`; tests: `docs/audits/SYRONA_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md`.
 - **Missing functionality / defect:** No adequate structured specialty note/exam workflow; not automatically a mandatory client requirement.
 - **Required task:** Client confirms included specialties; implement or contractually defer identified records.
 - **Dependencies / blockers:** D03, D06.
@@ -1951,7 +1951,7 @@ Every entry has the required provenance, priority/status, current-layer evidence
 - **Provenance:** ASSESSMENT_SCOPE_UNCONFIRMED; S25: §C.1 emergency/custody/safety crosswalk and §G platform/professional verification; older leads checked against current source
 - **Priority / status:** Medium / **NOT IMPLEMENTED**. **Roadmap phase:** 2.
 - **Current implementation:** No dedicated ambulance lifecycle UI/API/schema found; an insurer ambulance benefit code is not dispatch.
-- **Inspected layer paths:** UI: `src/components/modules/SpecialtyModule.tsx`; API: `src/routes/domains/encounters.routes.ts`; businessRules: `src/components/modules/SpecialtyModule.tsx`; persistence: `src/db/schema/clinical.ts`; permissions: `src/auth/authorization.middleware.ts`; tests: `docs/audits/JALICARE_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md`.
+- **Inspected layer paths:** UI: `src/components/modules/SpecialtyModule.tsx`; API: `src/routes/domains/encounters.routes.ts`; businessRules: `src/components/modules/SpecialtyModule.tsx`; persistence: `src/db/schema/clinical.ts`; permissions: `src/auth/authorization.middleware.ts`; tests: `docs/audits/SYRONA_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md`.
 - **Missing functionality / defect:** Vehicle/crew/dispatch/patient transfer/custody/charge workflow missing; inclusion unknown.
 - **Required task:** Client explicitly includes/excludes; obtain approved dispatch/care requirements before implementation.
 - **Dependencies / blockers:** D03, D06.
@@ -1965,7 +1965,7 @@ Every entry has the required provenance, priority/status, current-layer evidence
 - **Provenance:** ASSESSMENT_SCOPE_UNCONFIRMED; S25: §C.1 emergency/custody/safety crosswalk and §G platform/professional verification; older leads checked against current source
 - **Priority / status:** Medium / **NOT IMPLEMENTED**. **Roadmap phase:** 2.
 - **Current implementation:** Inpatient deceased discharge context exists; no dedicated mortuary custody lifecycle found.
-- **Inspected layer paths:** UI: `src/components/modules/SpecialtyModule.tsx`; API: `src/routes/domains/encounters.routes.ts`; businessRules: `src/components/modules/SpecialtyModule.tsx`; persistence: `src/db/schema/clinical.ts`; permissions: `src/auth/authorization.middleware.ts`; tests: `docs/audits/JALICARE_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md`.
+- **Inspected layer paths:** UI: `src/components/modules/SpecialtyModule.tsx`; API: `src/routes/domains/encounters.routes.ts`; businessRules: `src/components/modules/SpecialtyModule.tsx`; persistence: `src/db/schema/clinical.ts`; permissions: `src/auth/authorization.middleware.ts`; tests: `docs/audits/SYRONA_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md`.
 - **Missing functionality / defect:** Deceased disposition is not body identity/custody/release/retention workflow.
 - **Required task:** Confirm inclusion and lawful custody/release roles; implement approved traceability without leaking sensitive records.
 - **Dependencies / blockers:** D03, D05, D06.
@@ -1979,7 +1979,7 @@ Every entry has the required provenance, priority/status, current-layer evidence
 - **Provenance:** ASSESSMENT_SCOPE_UNCONFIRMED; S25: §C.1 emergency/custody/safety crosswalk and §G platform/professional verification; older leads checked against current source
 - **Priority / status:** High / **NOT IMPLEMENTED**. **Roadmap phase:** 2.
 - **Current implementation:** Generic lab/inventory exist; no dedicated blood-product/transfusion chain found in current schema/routes.
-- **Inspected layer paths:** UI: `src/components/modules/SpecialtyModule.tsx`; API: `src/routes/domains/encounters.routes.ts`; businessRules: `src/components/modules/SpecialtyModule.tsx`; persistence: `src/db/schema/clinical.ts`; permissions: `src/auth/authorization.middleware.ts`; tests: `docs/audits/JALICARE_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md`.
+- **Inspected layer paths:** UI: `src/components/modules/SpecialtyModule.tsx`; API: `src/routes/domains/encounters.routes.ts`; businessRules: `src/components/modules/SpecialtyModule.tsx`; persistence: `src/db/schema/clinical.ts`; permissions: `src/auth/authorization.middleware.ts`; tests: `docs/audits/SYRONA_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md`.
 - **Missing functionality / defect:** Compatibility, product custody, recipient verification and reaction/recall clinical controls absent as dedicated product.
 - **Required task:** Client confirms scope; design and implement only approved specialist transfusion protocols.
 - **Dependencies / blockers:** D03, D06.
@@ -3656,5 +3656,5 @@ A first _unverified evidence boundary_ is not asserted to be a broken implementa
 - Use only COMPLETE/PARTIAL/NOT IMPLEMENTED/DEFECTIVE/BLOCKED/UNVERIFIED on requirement rows. Reporting classification labels are a second, requested output classification, not competing requirement statuses.
 - Close only the explicitly scoped acceptance contract, with named source/fixture, executed evidence, revision and owner. Do not infer facility/provider/regulatory acceptance from a test count, menu, source hash, internal register or synthetically approved record.
 - A client-approved exclusion/deferment changes contracted scope; it must retain original requirement/provenance and decision, not delete the row. Optional OPT-001 is not a completion blocker absent separate approval.
-- Follow `JALICARE_MASTER_COMPLETION_ROADMAP.md`. It groups whole workflows/dependencies, not artificial one-screen batches; source/report semantics and preserved historical equity/planning/ledger remain distinct.
+- Follow `SYRONA_MASTER_COMPLETION_ROADMAP.md`. It groups whole workflows/dependencies, not artificial one-screen batches; source/report semantics and preserved historical equity/planning/ledger remain distinct.
 - No production data access or feature work was authorized/performed. Future production inspection/deployment requires separate secure owner authorization. An audit report push is not acceptance or deployment.

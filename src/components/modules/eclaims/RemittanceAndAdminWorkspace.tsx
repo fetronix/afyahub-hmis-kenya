@@ -314,7 +314,7 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
         isPhcZeroTariff,
         requiresPreauth: mapRequiresPreauth,
       });
-      showToast('Saved SHA service code mapping (JaliCare tariff preserved intact).', 'success');
+      showToast('Saved SHA service code mapping (Syrona Medical Center tariff preserved intact).', 'success');
       setLocalCode('');
       setLocalDescription('');
       setPayerServiceCode('');
@@ -954,15 +954,15 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
             <div>
               <span className="eyebrow text-brand-700">Tariff Crosswalk</span>
               <h4 className="text-sm font-bold text-navy-900">
-                Map JaliCare Service Tariff → SHA Intervention Code
+                Map Syrona Medical Center Service Tariff → SHA Intervention Code
               </h4>
               <p className="text-xs text-slate-600">
                 Maps local price-list items to SHA codes and reimbursement schedules without
-                modifying JaliCare&apos;s cash/private tariff.
+                modifying Syrona Medical Center&apos;s cash/private tariff.
               </p>
             </div>
             <div>
-              <label className="field-label">Link JaliCare Facility Tariff</label>
+              <label className="field-label">Link Syrona Medical Center Facility Tariff</label>
               <select
                 value={mapTariffId}
                 onChange={(e) => {
@@ -977,7 +977,7 @@ export const RemittanceAndAdminWorkspace: React.FC<Props> = ({
                 }}
                 className="field-input"
               >
-                <option value="">— Select JaliCare Tariff —</option>
+                <option value="">— Select Syrona Medical Center Tariff —</option>
                 {facilityTariffs.map((t) => (
                   <option key={t.id} value={t.id}>
                     [{t.code}] {t.description} (Cash: KES {t.fee})

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — facility operations status.
+ * Syrona Medical Center HMIS — facility operations status.
  *
  * WHY THIS EXISTS
  * Batch 9 found that a claim whose dispatch outcome was unknown had no way out.

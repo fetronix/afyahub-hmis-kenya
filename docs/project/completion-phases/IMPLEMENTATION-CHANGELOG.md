@@ -643,7 +643,7 @@ drill PASSED
   duration         3295ms
 ```
 
-Independent CLI restore into `jalicare_restore_cli` produced `tenants=2,
+Independent CLI restore into `syrona_restore_cli` produced `tenants=2,
 facilities=1`, matching the source exactly.
 
 ### Limitations recorded
@@ -702,6 +702,6 @@ retried until green:
 
 1. `api-domain-clients.spec.ts` — a genuine Batch 1 gap, fixed (above).
 2. `report-centre-diagnoses.db.spec.ts` — not a code failure. It refuses to create
-   fixtures unless `JALICARE_TEST_PG_SYSTEM_IDENTIFIER` matches the cluster's real
+   fixtures unless `SYRONA_TEST_PG_SYSTEM_IDENTIFIER` matches the cluster's real
    system identifier, which is a deliberate guard against running destructive
    fixtures on a cluster nobody has vouched for. Supplied, and all 13 tests passed.

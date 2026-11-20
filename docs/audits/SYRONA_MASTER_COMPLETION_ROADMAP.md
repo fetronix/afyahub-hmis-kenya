@@ -1,10 +1,10 @@
-# JaliCare HMIS / AfyaHub Kenya — Master Completion Roadmap
+# Syrona Medical Center HMIS / AfyaHub Kenya — Master Completion Roadmap
 
 ## Decision and use
 
 **Assessment baseline:** `d5098ab36241fb5d82043ae6b2beccdfa2da0161`, branch `arena/e088f11d-afyahub-hmis-kenya`. Assessment/documentation only. No implementation, production access, migration, grant or deployment was authorized or performed.
 
-`JALICARE_MASTER_COMPLETION_REGISTER.{md,json}` is the authoritative working requirement/status/evidence register at this baseline. This roadmap is its execution order, **not another completion claim or a replacement Reporting Centre programme**. Original signed Syrona scope/workbooks/meeting notes are absent; D01/D02 are real scope holds. Requirements labeled unconfirmed/recommendation/optional must be approved before becoming mandatory client work.
+`SYRONA_MASTER_COMPLETION_REGISTER.{md,json}` is the authoritative working requirement/status/evidence register at this baseline. This roadmap is its execution order, **not another completion claim or a replacement Reporting Centre programme**. Original signed Syrona scope/workbooks/meeting notes are absent; D01/D02 are real scope holds. Requirements labeled unconfirmed/recommendation/optional must be approved before becoming mandatory client work.
 
 ### Scheduling principles
 
@@ -219,6 +219,6 @@ No password, API secret, patient data or original medical document should be sup
 
 ## Final declaration gate
 
-JaliCare may honestly be declared complete **against Syrona's requirements** only when the original agreed scope is authenticated, every included acceptance contract and cross-module chain is verified at the same candidate revision, required client/provider/host approvals exist, and critical security, release, financial integrity, restore and deployment gaps are closed. Formally signed exclusions/deferments remain recorded. The following are never substitutes: menu count, test count, old “complete” label, mock approval, workbook-looking grid, recorded transfer/reference, balanced journal alone, local disease tally, or Git push.
+Syrona Medical Center may honestly be declared complete **against Syrona's requirements** only when the original agreed scope is authenticated, every included acceptance contract and cross-module chain is verified at the same candidate revision, required client/provider/host approvals exist, and critical security, release, financial integrity, restore and deployment gaps are closed. Formally signed exclusions/deferments remain recorded. The following are never substitutes: menu count, test count, old “complete” label, mock approval, workbook-looking grid, recorded transfer/reference, balanced journal alone, local disease tally, or Git push.
 
 No time estimate or invented completion percentage is assigned before the missing scope/policy/provider inputs are resolved.

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Professional credential verification service
  *
  * One place decides what a verification result means, what gets written,

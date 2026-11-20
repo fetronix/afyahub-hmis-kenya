@@ -1,4 +1,4 @@
-# JALICARE HMIS — bank-only payments assessment and implementation plan
+# SYRONA MEDICAL CENTER HMIS — bank-only payments assessment and implementation plan
 
 Date: 27 October 2026. **Assessment only; implementation is not authorized or performed.**
 

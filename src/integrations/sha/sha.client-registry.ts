@@ -6,7 +6,7 @@ import type { ShaGatewayContext } from './sha.context.ts';
 import type { ClientRegistrySearchRequest, ClientRegistrySearchResult } from './sha.types.ts';
 
 /**
- * Maps internal JaliCare identifier enumerations to exact DHA HIE Client Registry /
+ * Maps internal Syrona Medical Center identifier enumerations to exact DHA HIE Client Registry /
  * Eligibility query parameter values (`ClientRegistry ID`, `National ID`, `Birth Notification`,
  * `Birth Certificate`, `Alien ID`, `Refugee ID`, `Mandate Number`).
  */

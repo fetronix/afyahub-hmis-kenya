@@ -1,4 +1,4 @@
-# JaliCare HMIS — production image
+# Syrona Medical Center HMIS — production image
 #
 # WHAT THIS IMAGE IS
 #   A single Node process serving the API and the built React SPA
@@ -100,8 +100,8 @@ COPY --from=build /app/tsconfig.json ./tsconfig.json
 # The application does not need write access to its own code. Node needs a
 # writable /tmp; everything else stays owned by root and read-only to the
 # runtime user, so a compromised process cannot rewrite the server bundle.
-RUN mkdir -p /app/uploads /tmp/jalicare \
- && chown -R node:node /app/uploads /tmp/jalicare \
+RUN mkdir -p /app/uploads /tmp/syrona \
+ && chown -R node:node /app/uploads /tmp/syrona \
  && chmod -R a-w /app/build /app/dist /app/drizzle
 
 USER node

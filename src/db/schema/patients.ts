@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Schema: Patients, their identifiers, consent, and record-access trail
  *
  * Extracted from `../schema.ts`, which re-exports every table defined here so
@@ -409,7 +409,7 @@ export const patientFacilities = pgTable(
    19. PATIENT ACCOUNTS
    ============================================================
 
-   Connects a patient clinical identity to a JaliCare user.
+   Connects a patient clinical identity to a Syrona Medical Center user.
 
    Authentication credentials remain in users.
 

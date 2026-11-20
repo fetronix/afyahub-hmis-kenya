@@ -11,7 +11,7 @@ records them as incomplete rather than complete.
 | Verified published head  | `d729178c4d4541af47201909b9c2c0c20218d38a` (`d729178`, "Add inventory stock control: ledger, adjustments, counts, transfers")   |
 | Phase 5 commits          | `f8a670a` workforce · `b036a86` fixed assets · `fff9bfb` UI/payslip · `070a0d4` procurement chain · `d729178` inventory control |
 | Migrations               | 78 committed (`0000`–`0077`); `0077_inventory_control` is the last committed migration                                          |
-| Verification environment | Embedded PostgreSQL 18.6 on `127.0.0.1:55432`, database `jalicare_synthetic_test`, all 78 migrations applied                    |
+| Verification environment | Embedded PostgreSQL 18.6 on `127.0.0.1:55432`, database `syrona_synthetic_test`, all 78 migrations applied                    |
 | Report date              | 10 November 2026                                                                                                                |
 
 Nothing in this report was produced with real patient, staff or financial data. Every database

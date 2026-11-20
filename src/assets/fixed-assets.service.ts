@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — fixed-asset service.
+ * Syrona Medical Center HMIS — fixed-asset service.
  *
  * SCOPE AND SAFETY RULES
  * ----------------------

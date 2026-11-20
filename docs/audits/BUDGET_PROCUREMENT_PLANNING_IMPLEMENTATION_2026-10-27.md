@@ -163,7 +163,7 @@ The browser’s only HTTP error responses were the expected unauthenticated init
 Use a newly created **local, disposable synthetic test database**, set the usual `SQL_*` environment variables, apply the normal migration runner, then run:
 
 ```sh
-JALICARE_REQUIRE_DB=1 npx vitest run \
+SYRONA_REQUIRE_DB=1 npx vitest run \
   src/tests/budget-planning.spec.ts \
   src/tests/budget-planning.db.spec.ts \
   src/tests/vitest/accounting-workspace-ui.spec.tsx \

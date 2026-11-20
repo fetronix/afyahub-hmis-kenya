@@ -1,7 +1,7 @@
 -- Verified outgoing evidence for bank refunds; still no provider money movement.
 ALTER TABLE billing_refunds ADD COLUMN IF NOT EXISTS bank_statement_transaction_id integer UNIQUE REFERENCES bank_transactions(id);
 --> statement-breakpoint
-CREATE FUNCTION jalicare_bank_refund_evidence_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE FUNCTION syrona_bank_refund_evidence_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE original bank_payment_records%ROWTYPE;
 BEGIN
   SELECT b.* INTO original FROM bank_payment_records b WHERE b.billing_payment_id=NEW.payment_id AND b.status='SETTLED';
@@ -23,27 +23,27 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
-CREATE TRIGGER bank_refund_evidence_guard BEFORE INSERT ON billing_refunds FOR EACH ROW EXECUTE FUNCTION jalicare_bank_refund_evidence_guard();
+CREATE TRIGGER bank_refund_evidence_guard BEFORE INSERT ON billing_refunds FOR EACH ROW EXECUTE FUNCTION syrona_bank_refund_evidence_guard();
 --> statement-breakpoint
-CREATE FUNCTION jalicare_bank_policy_serialize() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE FUNCTION syrona_bank_policy_serialize() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   PERFORM pg_advisory_xact_lock(hashtextextended('bank-channel-policy',NEW.facility_id));
   IF TG_OP IN ('UPDATE','DELETE') THEN RAISE EXCEPTION 'Bank-only policy changes require a separately approved channel rollout' USING ERRCODE='23514'; END IF;
   RETURN NEW;
 END $$;
-CREATE TRIGGER bank_policy_serialize BEFORE INSERT OR UPDATE OR DELETE ON facility_bank_payment_policies FOR EACH ROW EXECUTE FUNCTION jalicare_bank_policy_serialize();
+CREATE TRIGGER bank_policy_serialize BEFORE INSERT OR UPDATE OR DELETE ON facility_bank_payment_policies FOR EACH ROW EXECUTE FUNCTION syrona_bank_policy_serialize();
 --> statement-breakpoint
 -- The receipt INSERT guard and policy activation share one lock. Preserve all evidence checks from 0091.
-CREATE FUNCTION jalicare_bank_receipt_policy_lock() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE FUNCTION syrona_bank_receipt_policy_lock() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE f integer;
 BEGIN
   SELECT facility_id INTO f FROM billing_invoices WHERE id=NEW.invoice_id;
   PERFORM pg_advisory_xact_lock(hashtextextended('bank-channel-policy',f));
   RETURN NEW;
 END $$;
-CREATE TRIGGER a_bank_receipt_policy_lock BEFORE INSERT ON billing_payments FOR EACH ROW EXECUTE FUNCTION jalicare_bank_receipt_policy_lock();
+CREATE TRIGGER a_bank_receipt_policy_lock BEFORE INSERT ON billing_payments FOR EACH ROW EXECUTE FUNCTION syrona_bank_receipt_policy_lock();
 --> statement-breakpoint
-CREATE FUNCTION jalicare_refund_statement_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE FUNCTION syrona_refund_statement_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF EXISTS(SELECT 1 FROM billing_refunds r WHERE r.bank_statement_transaction_id=OLD.id) THEN
     IF (NEW.bank_account_id,NEW.statement_import_id,NEW.tenant_id,NEW.facility_id,NEW.direction,NEW.amount_kes,NEW.reference_number,NEW.transaction_date,NEW.origin_classification)
@@ -56,9 +56,9 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
-CREATE TRIGGER refund_statement_immutable BEFORE UPDATE ON bank_transactions FOR EACH ROW EXECUTE FUNCTION jalicare_refund_statement_immutable();
+CREATE TRIGGER refund_statement_immutable BEFORE UPDATE ON bank_transactions FOR EACH ROW EXECUTE FUNCTION syrona_refund_statement_immutable();
 --> statement-breakpoint
-CREATE FUNCTION jalicare_bank_receipt_committed() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE FUNCTION syrona_bank_receipt_committed() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF NEW.bank_payment_record_id IS NOT NULL AND NOT EXISTS (
     SELECT 1 FROM bank_payment_records b WHERE b.id=NEW.bank_payment_record_id
@@ -67,11 +67,11 @@ BEGIN
   RETURN NULL;
 END $$;
 CREATE CONSTRAINT TRIGGER bank_receipt_committed AFTER INSERT ON billing_payments
-  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION jalicare_bank_receipt_committed();
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION syrona_bank_receipt_committed();
 
 --> statement-breakpoint
 -- Preserve every original refund guard. Extend eligibility ONLY for an evidenced, patient-attributed bank receipt.
-CREATE OR REPLACE FUNCTION "jalicare_refund_guard"() RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION "syrona_refund_guard"() RETURNS trigger AS $$
 DECLARE
   original_amount numeric(10,2);
   original_method text;
@@ -118,7 +118,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 --> statement-breakpoint
-CREATE FUNCTION jalicare_bank_actor_scope_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE FUNCTION syrona_bank_actor_scope_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF TG_OP='INSERT' THEN
     IF NEW.status<>'PENDING' OR NEW.statement_transaction_id IS NOT NULL OR NEW.verified_by_user_id IS NOT NULL OR NEW.approved_by_user_id IS NOT NULL OR NEW.billing_payment_id IS NOT NULL THEN
@@ -137,4 +137,4 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
-CREATE TRIGGER bank_actor_scope_guard BEFORE INSERT OR UPDATE ON bank_payment_records FOR EACH ROW EXECUTE FUNCTION jalicare_bank_actor_scope_guard();
+CREATE TRIGGER bank_actor_scope_guard BEFORE INSERT OR UPDATE ON bank_payment_records FOR EACH ROW EXECUTE FUNCTION syrona_bank_actor_scope_guard();

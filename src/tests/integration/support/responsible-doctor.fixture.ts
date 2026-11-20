@@ -8,7 +8,7 @@ export async function assertDoctorScratch() {
   if (
     process.env.SQL_HOST !== '127.0.0.1' ||
     process.env.SQL_DB_NAME !== 'clinical_documents_synthetic_test' ||
-    !/^\d{1,20}$/.test(process.env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER ?? '') ||
+    !/^\d{1,20}$/.test(process.env.SYRONA_TEST_PG_SYSTEM_IDENTIFIER ?? '') ||
     !process.env.CLINICAL_TEST_PG_DATA_DIRECTORY
   )
     throw Error('Explicit independently attested disposable clinical database required');
@@ -20,7 +20,7 @@ export async function assertDoctorScratch() {
   if (
     row.name !== process.env.SQL_DB_NAME ||
     !['127.0.0.1', '127.0.0.1/32'].includes(row.address) ||
-    row.cluster !== process.env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER ||
+    row.cluster !== process.env.SYRONA_TEST_PG_SYSTEM_IDENTIFIER ||
     row.directory !== process.env.CLINICAL_TEST_PG_DATA_DIRECTORY
   )
     throw Error('Disposable clinical cluster identity mismatch');

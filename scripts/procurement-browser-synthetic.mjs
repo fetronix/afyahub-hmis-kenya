@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — procurement browser acceptance (synthetic).
+ * Syrona Medical Center HMIS — procurement browser acceptance (synthetic).
  *
  * Signs in through the real login form as a synthetic procurement approver,
  * opens Procurement from the sidebar and walks the three tabs: suppliers and
@@ -7,7 +7,7 @@
  * and submits a requisition through the UI so the write path is proven in the
  * browser, not only through the API.
  *
- *   LD_LIBRARY_PATH=/tmp/al2023-check/lib SQL_DB_NAME=jalicare_synth \
+ *   LD_LIBRARY_PATH=/tmp/al2023-check/lib SQL_DB_NAME=syrona_synth \
  *   BROWSER_SMOKE_SYNTHETIC=YES BASE_URL=http://127.0.0.1:3000 \
  *   CHROME_EXECUTABLE_PATH=/tmp/chromium \
  *   SYNTH_PROCUREMENT_APPROVER_PASSWORD=... \

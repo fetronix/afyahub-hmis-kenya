@@ -1,5 +1,5 @@
 
-> jalicare-hmis@0.1.0 build:server
+> syrona-hmis@0.1.0 build:server
 > node scripts/build-server.mjs
 
 

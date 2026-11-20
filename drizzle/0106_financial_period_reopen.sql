@@ -1,5 +1,5 @@
 /*
- * JaliCare HMIS — authorised reopening of a closed financial period.
+ * Syrona Medical Center HMIS — authorised reopening of a closed financial period.
  *
  * 0027 made a closed period immutable: no UPDATE at all is permitted once the
  * status leaves OPEN. That is the right default — a period that is silently
@@ -24,7 +24,7 @@
  * is_local = true), so it cannot leak into a later statement.
  */
 
-CREATE OR REPLACE FUNCTION "jalicare_financial_period_guard"() RETURNS trigger AS $$
+CREATE OR REPLACE FUNCTION "syrona_financial_period_guard"() RETURNS trigger AS $$
 DECLARE
   reopening_period text := current_setting('jcare.period_reopen', true);
 BEGIN

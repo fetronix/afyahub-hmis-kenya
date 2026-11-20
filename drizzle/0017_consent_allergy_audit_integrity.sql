@@ -28,7 +28,7 @@
 -- 1. Append-only audit log
 -- ------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION jalicare_audit_is_append_only()
+CREATE OR REPLACE FUNCTION syrona_audit_is_append_only()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
@@ -44,14 +44,14 @@ DROP TRIGGER IF EXISTS audit_logs_append_only ON audit_logs;--> statement-breakp
 CREATE TRIGGER audit_logs_append_only
   BEFORE UPDATE OR DELETE ON audit_logs
   FOR EACH ROW
-  EXECUTE FUNCTION jalicare_audit_is_append_only();--> statement-breakpoint
+  EXECUTE FUNCTION syrona_audit_is_append_only();--> statement-breakpoint
 
 DROP TRIGGER IF EXISTS audit_logs_no_truncate ON audit_logs;--> statement-breakpoint
 
 CREATE TRIGGER audit_logs_no_truncate
   BEFORE TRUNCATE ON audit_logs
   FOR EACH STATEMENT
-  EXECUTE FUNCTION jalicare_audit_is_append_only();--> statement-breakpoint
+  EXECUTE FUNCTION syrona_audit_is_append_only();--> statement-breakpoint
 
 -- A table trigger does not stop TRUNCATE, which is why the statement
 -- trigger above exists as well. Revoking the privileges is belt and

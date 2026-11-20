@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * JaliCare HMIS — restore drill.
+ * Syrona Medical Center HMIS — restore drill.
  *
  *   npm run db:restore:drill
  *

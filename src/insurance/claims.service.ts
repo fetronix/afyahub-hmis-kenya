@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Insurance claims workflow
  *
  * A claim is a request to a payer for a specific set of charges. This

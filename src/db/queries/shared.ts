@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Queries: Helpers used by more than one query module
  *
  * Extracted from `../queries.ts`. The SQL, the scope checks and the transaction

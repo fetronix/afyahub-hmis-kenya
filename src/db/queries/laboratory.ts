@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Queries: Laboratory orders, results, verification, radiology, and batch ordering
  *
  * Extracted from `../queries.ts`, which re-exports every function here so that

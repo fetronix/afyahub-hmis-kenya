@@ -89,7 +89,7 @@ Evidence: [results.json](responsible-doctor-evidence/results.json), [verificatio
 
 ## Reproduction and demo
 
-Provision a **new disposable cluster only**, independently obtain its cluster identifier from that new cluster's control file and its absolute data directory, and apply the repository migrations only there. Set loopback `SQL_*`, `JALICARE_REQUIRE_DB=1`, `JALICARE_TEST_PG_SYSTEM_IDENTIFIER` and `CLINICAL_TEST_PG_DATA_DIRECTORY`. Do not copy a deployment `.env` or use an existing facility database.
+Provision a **new disposable cluster only**, independently obtain its cluster identifier from that new cluster's control file and its absolute data directory, and apply the repository migrations only there. Set loopback `SQL_*`, `SYRONA_REQUIRE_DB=1`, `SYRONA_TEST_PG_SYSTEM_IDENTIFIER` and `CLINICAL_TEST_PG_DATA_DIRECTORY`. Do not copy a deployment `.env` or use an existing facility database.
 
 ```sh
 npm ci

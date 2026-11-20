@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Bootstrap Platform Administrator
  *
  * Creates the initial platform-level SUPER_ADMIN.
@@ -34,7 +34,7 @@ const ADMIN_EMAIL = process.env.ADMIN_EMAIL?.trim().toLowerCase();
 
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
-const ADMIN_FULL_NAME = process.env.ADMIN_FULL_NAME?.trim() || 'JaliCare Platform Administrator';
+const ADMIN_FULL_NAME = process.env.ADMIN_FULL_NAME?.trim() || 'Syrona Medical Center Platform Administrator';
 
 const ADMIN_PHONE = process.env.ADMIN_PHONE?.trim() || null;
 
@@ -93,7 +93,7 @@ function generateUserUid(): string {
 async function bootstrapAdmin(): Promise<void> {
   console.log('');
   console.log('==============================================');
-  console.log('JaliCare HMIS - Platform Admin Bootstrap');
+  console.log('Syrona Medical Center HMIS - Platform Admin Bootstrap');
   console.log('==============================================');
 
   validateEnvironment();

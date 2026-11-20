@@ -8,7 +8,7 @@ export async function assertReportingScratch(pool: Pool) {
   if (
     process.env.SQL_HOST !== '127.0.0.1' ||
     process.env.SQL_DB_NAME !== 'reporting_programme_synthetic_test' ||
-    !/^\d{1,20}$/.test(process.env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER ?? '') ||
+    !/^\d{1,20}$/.test(process.env.SYRONA_TEST_PG_SYSTEM_IDENTIFIER ?? '') ||
     !process.env.REPORTING_TEST_PG_DATA_DIRECTORY
   )
     throw Error('Explicit independently attested disposable reporting cluster required');
@@ -20,7 +20,7 @@ export async function assertReportingScratch(pool: Pool) {
   if (
     row.db !== process.env.SQL_DB_NAME ||
     (row.address !== '127.0.0.1/32' && row.address !== '127.0.0.1') ||
-    row.cluster !== process.env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER ||
+    row.cluster !== process.env.SYRONA_TEST_PG_SYSTEM_IDENTIFIER ||
     row.directory !== process.env.REPORTING_TEST_PG_DATA_DIRECTORY
   )
     throw Error('Disposable reporting cluster identity mismatch');

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * DHA / AfyaConnect — readiness report
  *
  * Answers, in one place, the questions an administrator actually asks:

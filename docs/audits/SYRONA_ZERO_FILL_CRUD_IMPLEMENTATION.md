@@ -141,7 +141,7 @@ Stationery defaults comprise **1,190 dashes + 997 missing cells** (991 monthly b
 | Check                                         | Result                                                           |
 | --------------------------------------------- | ---------------------------------------------------------------- |
 | Targeted planning, source, CSV and UI suites  | **64 passed, 0 failed, 0 skipped; 5 suites**                     |
-| Included database workflows                   | **25 passed**, with `JALICARE_REQUIRE_DB=1`                      |
+| Included database workflows                   | **25 passed**, with `SYRONA_REQUIRE_DB=1`                      |
 | Authenticated production-build browser smoke  | **27 checks passed**, no runtime errors                          |
 | Browser HTTP errors                           | Only expected session 401 and deliberately invalid-price 400     |
 | Typecheck                                     | **PASS** — `npm run typecheck`                                   |
@@ -170,7 +170,7 @@ Evidence directory: [`syrona-zero-fill-evidence/`](syrona-zero-fill-evidence/)
 Targeted test command (set **only an explicitly disposable local test database** and supply the official CSV directory):
 
 ```sh
-JALICARE_REQUIRE_DB=1 SYRONA_SOURCE_DIR=/path/to/official-csvs npx vitest run \
+SYRONA_REQUIRE_DB=1 SYRONA_SOURCE_DIR=/path/to/official-csvs npx vitest run \
   src/tests/budget-planning.spec.ts \
   src/tests/budget-planning.db.spec.ts \
   src/tests/syrona-reconciliation.spec.ts \

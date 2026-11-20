@@ -157,7 +157,7 @@ Two failures, both diagnosed:
 Two integration suites could not start on a fresh database, for reasons unrelated to the redesign, and their fixtures were corrected without weakening any gate:
 
 - `report-centre-operational.db.spec.ts` uploaded a consent as an actor with no `DOCTOR` role, and then recorded a consent decision without opening the document. The real gates require both. The fixture now grants the actor the tenant's `DOCTOR` role and reads the original document through `readPatientDocument` before deciding — it exercises the gates instead of tripping them.
-- The programme suites require an independently attested cluster. The disposable cluster's `pg_control_system()` identifier was supplied through `JALICARE_TEST_PG_SYSTEM_IDENTIFIER` and a second database (`reporting_programme_synthetic_test`) was migrated for the movements suite. No attestation check was bypassed.
+- The programme suites require an independently attested cluster. The disposable cluster's `pg_control_system()` identifier was supplied through `SYRONA_TEST_PG_SYSTEM_IDENTIFIER` and a second database (`reporting_programme_synthetic_test`) was migrated for the movements suite. No attestation check was bypassed.
 
 ## 8. Limitations and what is not claimed
 

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Charges raised by the clinical screens
  *
  * The route handlers used to build these requests inline, which meant a

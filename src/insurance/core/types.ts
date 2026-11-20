@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Reusable Multi-Insurer Core Contracts & Pure Rules
+ * Syrona Medical Center HMIS — Reusable Multi-Insurer Core Contracts & Pure Rules
  *
  * Payer-independent types, capability descriptors, SmartLink reference
  * workflow concepts, decimal-safe cent arithmetic, and strict state

@@ -22,7 +22,7 @@ This demonstrates properties of the existing billing and reviewed journal primit
 
 | Check | Result and scope |
 | --- | --- |
-| Final full mandatory-PostgreSQL regression | **224 files passed; 2081 tests passed / 0 failed / 0 skipped.** `JALICARE_REQUIRE_DB=1 npx vitest run --maxWorkers=1` used the existing isolated synthetic PostgreSQL database. No final failing test names. This local run did not collect coverage. |
+| Final full mandatory-PostgreSQL regression | **224 files passed; 2081 tests passed / 0 failed / 0 skipped.** `SYRONA_REQUIRE_DB=1 npx vitest run --maxWorkers=1` used the existing isolated synthetic PostgreSQL database. No final failing test names. This local run did not collect coverage. |
 | GitHub CI for implementation commit `2d4273c` | **All seven jobs passed:** typecheck/lint, PostgreSQL coverage, migrations/database specs, fresh-checkout Docker bootstrap, production build, dependency audit and formatting. See [CI run 42213535966](https://github.com/fetronix/afyahub-hmis-kenya/actions/runs/42213535966). Job conclusions were verified; detailed coverage percentages were not retrieved. |
 | Focused PostgreSQL payment hub and billing-to-ledger suites | **33 passed / 0 failed / 0 skipped** across 2 files, including 24 hub HTTP/PostgreSQL tests and 9 reviewed billing/ledger tests. Provider traffic is mocked. |
 | Focused latest UI, ledger and Docker-bootstrap suites | **33 passed / 0 failed / 0 skipped** across 3 files, including 11 collection UI tests and 13 bootstrap tests. |
@@ -98,14 +98,14 @@ The five statuses below apply to the **specific scoped requirement in each row**
 - Cashier and integration views: `src/components/modules/BillingCashierModule.tsx`, `src/components/modules/FinalizedInvoicePanel.tsx`, `src/components/modules/payment-hub/FacilityPaymentIntegrations.tsx`, `src/components/modules/payment-hub/PaymentTransactions.tsx`.
 - Synthetic tests: `src/tests/integration/billing-posting.db.spec.ts`, `src/tests/vitest/payment-hub.spec.ts`, `src/tests/vitest/payment-hub.db.spec.ts`, `src/tests/vitest/payment-hub-ui.spec.tsx`, `src/tests/vitest/payment-hub-collection-ui.spec.tsx`, `src/tests/vitest/billing-cashier-ui.spec.tsx`, `scripts/mpesa-phase1-browser-synthetic.mjs`, `scripts/synthetic-mpesa-browser-transport.mjs`.
 
-No callback route or migration was changed in this Phase 1 patch. Local raw synthetic logs were retained outside the repository under `/home/user/jalicare-integration-20261106/`; they are not provider evidence or a production backup.
+No callback route or migration was changed in this Phase 1 patch. Local raw synthetic logs were retained outside the repository under `/home/user/syrona-integration-20261106/`; they are not provider evidence or a production backup.
 
 ### Reproducing the checks
 
 Use an **already provisioned, isolated synthetic PostgreSQL test database**; do not reset or reinitialize an existing database. Set the application's `SQL_HOST`, `SQL_PORT`, `SQL_DB_NAME`, `SQL_ADMIN_USER` and `SQL_ADMIN_PASSWORD` through an approved local environment/secret mechanism. Start from a clean checkout so the Docker-bootstrap safety guard is not affected by a stale generated migration bundle.
 
 ```sh
-JALICARE_REQUIRE_DB=1 npx vitest run --maxWorkers=1
+SYRONA_REQUIRE_DB=1 npx vitest run --maxWorkers=1
 npm run db:status:all       # read-only journal/status check
 npm run typecheck
 npm run lint

@@ -33,7 +33,7 @@ export const BillingJournalPostingPanel: React.FC<{
   accounts: AccountingOverview['accounts'];
   onPosted: () => void;
 }> = ({ facilityId, userId, accounts, onPosted }) => {
-  const storageKey = `jalicare:billing-journal:pending:${userId}:${facilityId}`;
+  const storageKey = `syrona:billing-journal:pending:${userId}:${facilityId}`;
   const active = useRef(true);
   const [pending, setPending] = useState<Pending | null>(null);
   const [storageError, setStorageError] = useState(false);

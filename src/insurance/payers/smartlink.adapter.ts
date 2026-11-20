@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — SmartLink Third-Party EDI Gateway Adapter (`smartlink_gateway`)
+ * Syrona Medical Center HMIS — SmartLink Third-Party EDI Gateway Adapter (`smartlink_gateway`)
  *
  * Models the documented SmartLink hospital-to-insurer workflow concepts as a
  * separately named third-party gateway adapter (`isGatewayAdapter = true`),

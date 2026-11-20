@@ -1,6 +1,6 @@
 # Syrona Medical Center — Requirements Gap Assessment
 
-**Scope:** evidence-based assessment of the current JaliCare HMIS source tree against the
+**Scope:** evidence-based assessment of the current Syrona Medical Center HMIS source tree against the
 Syrona Medical Center requirement list supplied with the assessment request.
 
 **Assessment date:** 2026-11-13
@@ -490,7 +490,7 @@ Specs that would have provided the strongest Syrona evidence but did **not** run
 | Backup | `src/tests/integration/backup-restore.db.spec.ts` |
 
 CI (`.github/workflows/ci.yml`) runs these in a `database` job and in the `unit` job against
-`postgres:16` with `JALICARE_REQUIRE_DB=1`, which converts a skip into a failure. That is the
+`postgres:16` with `SYRONA_REQUIRE_DB=1`, which converts a skip into a failure. That is the
 mechanism by which they are verified — **but this assessment did not observe a green CI run**, and
 the last known green run belongs to a different commit than this working tree.
 

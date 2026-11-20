@@ -30,7 +30,7 @@ vi.mock('../../api/client.ts', () => ({ api: mocked.api }));
 
 import { PharmacyModule } from '../../components/modules/PharmacyModule.tsx';
 
-const storageName = 'jalicare:pharmacy:pending:7:10';
+const storageName = 'syrona:pharmacy:pending:7:10';
 
 describe('Pharmacy retry recovery in one browser', () => {
   beforeEach(() => {

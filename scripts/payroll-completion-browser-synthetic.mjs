@@ -20,7 +20,7 @@ if (
 const target = {
   host: process.env.SQL_HOST ?? '',
   name: process.env.SQL_DB_NAME ?? '',
-  containerClusterIdentifier: process.env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER,
+  containerClusterIdentifier: process.env.SYRONA_TEST_PG_SYSTEM_IDENTIFIER,
 };
 assertSyntheticTarget(target);
 const sql = new pg.Client({
@@ -39,7 +39,7 @@ const identity = (
 assertSyntheticDatabaseIdentity(target, identity);
 const fixture = (
   await sql.query(
-    `SELECT u.facility_id FROM users u JOIN tenants t ON t.id=u.tenant_id WHERE u.username='synthetic.admin' AND t.slug='jalicare-synthetic-training'`,
+    `SELECT u.facility_id FROM users u JOIN tenants t ON t.id=u.tenant_id WHERE u.username='synthetic.admin' AND t.slug='syrona-synthetic-training'`,
   )
 ).rows[0];
 if (!fixture) throw new Error('Run the isolated synthetic workforce fixture first.');

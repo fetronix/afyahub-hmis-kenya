@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — financial statement derivation.
+ * Syrona Medical Center HMIS — financial statement derivation.
  *
  * Everything here is a pure function of ledger totals that the caller has
  * already read. No statement is ever given a figure the ledger does not

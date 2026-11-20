@@ -1,4 +1,4 @@
-﻿# JaliCare HMIS — Target Architecture
+﻿# Syrona Medical Center HMIS — Target Architecture
 
 ## Objective
 

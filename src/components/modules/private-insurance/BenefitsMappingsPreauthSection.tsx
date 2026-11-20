@@ -580,7 +580,7 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
                 onChange={(e) => setValForm({ ...valForm, tariffId: e.target.value })}
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm md:col-span-2"
               >
-                <option value="">Select JaliCare Service Tariff...</option>
+                <option value="">Select Syrona Medical Center Service Tariff...</option>
                 {tariffs.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.code} — {t.description} (KES {t.fee})
@@ -644,7 +644,7 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
               <thead className="bg-slate-50 border-b border-slate-200 uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-2.5">Insurer</th>
-                  <th className="px-4 py-2.5">JaliCare Service</th>
+                  <th className="px-4 py-2.5">Syrona Medical Center Service</th>
                   <th className="px-4 py-2.5">Insurer Code</th>
                   <th className="px-4 py-2.5">Decision &amp; Evidence</th>
                   <th className="px-4 py-2.5">Est. Claimable</th>
@@ -687,10 +687,10 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
           <div>
             <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
               <Layers className="w-5 h-5 text-brand-600" />
-              JaliCare-to-Insurer Service-Code Mapping
+              Syrona Medical Center-to-Insurer Service-Code Mapping
             </h2>
             <p className="text-sm text-slate-600 mt-0.5">
-              Maps internal JaliCare tariffs across OPD, lab, pharmacy, imaging, procedures,
+              Maps internal Syrona Medical Center tariffs across OPD, lab, pharmacy, imaging, procedures,
               inpatient beds, and theatre to Britam and PACIS service codes.
             </p>
           </div>
@@ -728,7 +728,7 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
               </div>
               <div className="md:col-span-2">
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  JaliCare Facility Service Tariff
+                  Syrona Medical Center Facility Service Tariff
                 </label>
                 <select
                   value={mapForm.tariffId}
@@ -744,7 +744,7 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                 >
                   <option value="">
-                    Select existing JaliCare tariff (or enter custom below)...
+                    Select existing Syrona Medical Center tariff (or enter custom below)...
                   </option>
                   {tariffs.map((t) => (
                     <option key={t.id} value={t.id}>
@@ -755,7 +755,7 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  JaliCare Local Code
+                  Syrona Medical Center Local Code
                 </label>
                 <input
                   required
@@ -849,7 +849,7 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
               <thead className="bg-slate-50 border-b border-slate-200 uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-3">Insurer</th>
-                  <th className="px-4 py-3">JaliCare Code &amp; Service</th>
+                  <th className="px-4 py-3">Syrona Medical Center Code &amp; Service</th>
                   <th className="px-4 py-3">Category</th>
                   <th className="px-4 py-3">Insurer Code</th>
                   <th className="px-4 py-3">Contracted Tariff</th>
@@ -909,7 +909,7 @@ export const BenefitsMappingsPreauthSection: React.FC<Props> = ({
           </h2>
           <p className="text-sm text-slate-600 mt-0.5">
             Draft, submit, attach clinical evidence, and record authentic insurer authorization
-            decisions. JaliCare never fabricates insurer approval numbers.
+            decisions. Syrona Medical Center never fabricates insurer approval numbers.
           </p>
         </div>
         {canManagePreauth && (

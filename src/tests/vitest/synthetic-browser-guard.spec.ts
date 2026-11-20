@@ -10,7 +10,7 @@ const safeEnv = {
   ...process.env,
   BROWSER_SMOKE_SYNTHETIC: 'YES',
   SQL_HOST: '127.0.0.1',
-  SQL_DB_NAME: 'jalicare_browser_test',
+  SQL_DB_NAME: 'syrona_browser_test',
   SQL_ADMIN_USER: 'synthetic',
   SQL_ADMIN_PASSWORD: '',
   CHROME_EXECUTABLE_PATH: '/does-not-exist',

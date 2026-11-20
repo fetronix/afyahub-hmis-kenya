@@ -68,7 +68,7 @@ export const BillingCashierModule: React.FC = () => {
 
   const paymentStorageKey =
     canRecordPayment && currentFacility?.id && authenticatedUser?.id
-      ? `jalicare:payment:pending:${authenticatedUser.id}:${currentFacility.id}`
+      ? `syrona:payment:pending:${authenticatedUser.id}:${currentFacility.id}`
       : null;
   const [pendingPayment, setPendingPayment] = useState<PendingPayment | null>(null);
   const [paymentStorageError, setPaymentStorageError] = useState('');

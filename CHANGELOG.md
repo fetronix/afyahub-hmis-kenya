@@ -1,6 +1,6 @@
 # Changelog
 
-Changes to JaliCare Kenya HMIS, most recent first.
+Changes to Syrona Medical Center Kenya HMIS, most recent first.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -129,7 +129,7 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   into a report, the known exposure, and an honest statement that no tagged
   releases exist and no security email is published.
 - `.env.example` now documents `LOG_LEVEL`, `LOG_PSEUDONYM_KEY`,
-  `JALICARE_DB_AVAILABLE` and `JALICARE_REQUIRE_DB`, which the source read
+  `SYRONA_DB_AVAILABLE` and `SYRONA_REQUIRE_DB`, which the source read
   but the example omitted. Empty values; no credential introduced.
 
 ### Testing
@@ -147,7 +147,7 @@ Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- `package.json` identity: `react-example` / `0.0.0` -> `jalicare-hmis` /
+- `package.json` identity: `react-example` / `0.0.0` -> `syrona-hmis` /
   `0.1.0`. Deliberately not 1.0.0: there are no tags and no releases. No
   `license` field is added — that decision belongs to the owner.
 - README testing instructions corrected: copying `.env.example` alone is not
@@ -184,7 +184,7 @@ server.
 - `src/tests/vitest/migrations.db.spec.ts` and
   `tenant-isolation.db.spec.ts` — the first tests in this repository that
   touch PostgreSQL. They skip with the address they tried when no database is
-  present, and fail when `JALICARE_REQUIRE_DB=1`.
+  present, and fail when `SYRONA_REQUIRE_DB=1`.
 
 **CI**
 

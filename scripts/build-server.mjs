@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Deployment build — server and command-line bundles
  *
  * WHY THIS EXISTS

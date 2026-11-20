@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Scope Enforcement Service
  *
  * Responsible for enforcing tenant and facility boundaries.

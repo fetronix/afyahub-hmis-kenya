@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * DHA / AfyaConnect integration — configuration
  *
  * SOURCE OF TRUTH

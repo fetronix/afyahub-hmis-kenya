@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Health Worker Registry — contracts
  *
  * SOURCE OF TRUTH
@@ -61,7 +61,7 @@ export interface RegulatorDefinition {
   /** Full statutory name, for display only. */
   name: string;
   shortName: string;
-  /** Professions this regulator licenses, in JaliCare's own words. */
+  /** Professions this regulator licenses, in Syrona Medical Center's own words. */
   professions: string[];
   /**
    * True when the published Health Worker Registry endpoint accepts this

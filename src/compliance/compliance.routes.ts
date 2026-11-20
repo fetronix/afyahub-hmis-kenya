@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * DHA compliance — read-only assessment endpoint
  *
  * The register is compiled into the server so the figure an

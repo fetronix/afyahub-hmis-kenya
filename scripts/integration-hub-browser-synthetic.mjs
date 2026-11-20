@@ -167,7 +167,7 @@ try {
 
   // Production-mode app behind a local TLS termination proxy. The self-signed
   // certificate is synthetic and Chromium ignores its trust chain ONLY here.
-  tempDir = await mkdtemp(path.join(os.tmpdir(), 'jalicare-synthetic-tls-'));
+  tempDir = await mkdtemp(path.join(os.tmpdir(), 'syrona-synthetic-tls-'));
   const keyFile = path.join(tempDir, 'key.pem'),
     certFile = path.join(tempDir, 'cert.pem');
   execFileSync(

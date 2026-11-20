@@ -23,7 +23,7 @@ describeDb('facility ledger against PostgreSQL', () => {
   let journalId: number;
 
   beforeAll(async () => {
-    if (!(process.env.SQL_DB_NAME ?? 'jalicare_test').includes('test'))
+    if (!(process.env.SQL_DB_NAME ?? 'syrona_test').includes('test'))
       throw new Error('Test database required.');
     const suffix = randomUUID().slice(0, 8);
     const tenant = await pool.query(

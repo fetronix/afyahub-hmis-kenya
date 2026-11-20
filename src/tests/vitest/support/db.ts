@@ -8,24 +8,24 @@
  * Without a database the suite is skipped with a message naming the
  * address it tried, so a laptop without PostgreSQL still gets a meaningful
  * result. CI provides the postgres:16 service and sets
- * JALICARE_REQUIRE_DB=1, which turns a skip into a failure — in CI a skip
+ * SYRONA_REQUIRE_DB=1, which turns a skip into a failure — in CI a skip
  * means the service did not come up, and that must not pass silently.
  */
 
 import { afterAll, describe } from 'vitest';
 import { Pool } from 'pg';
 
-export const dbIsAvailable = (): boolean => process.env.JALICARE_DB_AVAILABLE === '1';
+export const dbIsAvailable = (): boolean => process.env.SYRONA_DB_AVAILABLE === '1';
 
-export const dbIsRequired = (): boolean => process.env.JALICARE_REQUIRE_DB === '1';
+export const dbIsRequired = (): boolean => process.env.SYRONA_REQUIRE_DB === '1';
 
 function connectionConfig() {
   return {
     host: process.env.SQL_HOST ?? '127.0.0.1',
     port: Number(process.env.SQL_PORT ?? 5432),
-    database: process.env.SQL_DB_NAME ?? 'jalicare_test',
-    user: process.env.SQL_ADMIN_USER ?? 'jalicare_test',
-    password: process.env.SQL_ADMIN_PASSWORD ?? 'jalicare_test',
+    database: process.env.SQL_DB_NAME ?? 'syrona_test',
+    user: process.env.SQL_ADMIN_USER ?? 'syrona_test',
+    password: process.env.SQL_ADMIN_PASSWORD ?? 'syrona_test',
     ssl: process.env.SQL_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
     connectionTimeoutMillis: 5_000,
     max: 4,
@@ -61,7 +61,7 @@ export function describeDb(name: string, fn: () => void): void {
   if (dbIsRequired()) {
     describe(name, () => {
       throw new Error(
-        `JALICARE_REQUIRE_DB=1, but no PostgreSQL answered on ${address}. ` +
+        `SYRONA_REQUIRE_DB=1, but no PostgreSQL answered on ${address}. ` +
           'The postgres service must be healthy before these specs run.',
       );
     });

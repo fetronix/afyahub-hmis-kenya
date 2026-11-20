@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Pharmacy stock service: batches, expiry and FEFO dispensing.
  *
  * inventory_batches existed but nothing wrote to it and nothing read

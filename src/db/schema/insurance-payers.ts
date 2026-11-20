@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — insurance payers schema.
+ * Syrona Medical Center HMIS — insurance payers schema.
  * Definitions are re-exported by ../schema.ts for existing callers and drizzle-kit.
  */
 

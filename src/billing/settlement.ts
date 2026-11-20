@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Payment settlement — classifying what a payment did to an invoice
  *
  * Money in a Kenyan facility arrives as cash at the counter, an M-Pesa

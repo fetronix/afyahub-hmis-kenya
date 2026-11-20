@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Claim dispatch reconciliation.
+ * Syrona Medical Center HMIS — Claim dispatch reconciliation.
  *
  * WHY THIS EXISTS
  * A claim dispatch reserves a durable guard row *before* the external call. If

@@ -338,7 +338,7 @@ export async function executeReset(s: PlanningScope, input: Row): Promise<ResetR
         [s.tenantId, s.facilityId, s.actorId],
       )
     ).rows[0].id;
-    await c.query("SELECT set_config('jalicare.planning_reset_event', $1, true)", [
+    await c.query("SELECT set_config('syrona.planning_reset_event', $1, true)", [
       String(authorization),
     ]);
     const deleted: Record<string, number> = {};

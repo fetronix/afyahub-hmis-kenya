@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Script dispatcher: prefer the built JavaScript, fall back to TypeScript
  *
  * WHY THIS EXISTS

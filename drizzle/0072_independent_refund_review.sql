@@ -8,7 +8,7 @@ BEGIN
      OR to_regclass('refund_requests_payment_status_idx') IS NOT NULL
      OR EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
                 WHERE n.nspname=current_schema() AND p.proname IN
-                  ('jalicare_refund_request_guard','jalicare_refund_approval_guard','jalicare_refund_link_guard')) THEN
+                  ('syrona_refund_request_guard','syrona_refund_approval_guard','syrona_refund_link_guard')) THEN
     RAISE EXCEPTION 'Refund review objects already exist without this journal entry; review before migration';
   END IF;
 END $$;
@@ -59,7 +59,7 @@ CREATE INDEX IF NOT EXISTS "refund_requests_invoice_idx" ON "billing_refund_requ
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "refund_requests_payment_status_idx" ON "billing_refund_requests" ("payment_id", "status");
 --> statement-breakpoint
-CREATE FUNCTION "jalicare_refund_request_guard"() RETURNS trigger AS $$
+CREATE FUNCTION "syrona_refund_request_guard"() RETURNS trigger AS $$
 BEGIN
   IF TG_OP='DELETE' THEN
     RAISE EXCEPTION 'Refund requests are retained; use an authorized decision' USING ERRCODE='23514';
@@ -112,11 +112,11 @@ END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
 CREATE TRIGGER "refund_requests_immutable_guard" BEFORE INSERT OR UPDATE OR DELETE ON "billing_refund_requests"
-  FOR EACH ROW EXECUTE FUNCTION "jalicare_refund_request_guard"();
+  FOR EACH ROW EXECUTE FUNCTION "syrona_refund_request_guard"();
 --> statement-breakpoint
 -- Named after the existing invoice/payment guard so the lock order stays
 -- invoice -> receipt -> request. Existing refund rows are never inspected.
-CREATE FUNCTION "jalicare_refund_approval_guard"() RETURNS trigger AS $$
+CREATE FUNCTION "syrona_refund_approval_guard"() RETURNS trigger AS $$
 BEGIN
   PERFORM 1 FROM billing_refund_requests q WHERE q.tenant_id=NEW.tenant_id AND q.facility_id=NEW.facility_id
     AND q.invoice_id=NEW.invoice_id AND q.payment_id=NEW.payment_id AND q.amount=NEW.amount
@@ -130,9 +130,9 @@ END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
 CREATE TRIGGER "billing_refunds_z_approval_guard" BEFORE INSERT ON "billing_refunds"
-  FOR EACH ROW EXECUTE FUNCTION "jalicare_refund_approval_guard"();
+  FOR EACH ROW EXECUTE FUNCTION "syrona_refund_approval_guard"();
 --> statement-breakpoint
-CREATE FUNCTION "jalicare_refund_link_guard"() RETURNS trigger AS $$
+CREATE FUNCTION "syrona_refund_link_guard"() RETURNS trigger AS $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM billing_refund_requests q WHERE q.tenant_id=NEW.tenant_id AND q.facility_id=NEW.facility_id
     AND q.idempotency_key=NEW.idempotency_key AND q.status='SETTLED' AND q.settled_refund_id=NEW.id) THEN
@@ -143,4 +143,4 @@ END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
 CREATE CONSTRAINT TRIGGER "billing_refunds_request_link_guard" AFTER INSERT ON "billing_refunds"
-  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "jalicare_refund_link_guard"();
+  DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION "syrona_refund_link_guard"();

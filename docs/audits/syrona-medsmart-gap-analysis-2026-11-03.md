@@ -1,4 +1,4 @@
-# JaliCare HMIS — MedSmart checklist gap analysis
+# Syrona Medical Center HMIS — MedSmart checklist gap analysis
 
 **Date:** 3 November 2026
 
@@ -140,7 +140,7 @@ The two selected Vitest runs passed the *focused* and *supplemental* files ident
 | T17 | **Focused UI and supplemental database:** `src/tests/vitest/notification-centre-ui.spec.tsx`, `src/tests/integration/notification-inbox.db.spec.ts`. B1 verifies a synthetic browser read/audit path. |
 | T18 | **Supplemental:** `src/tests/patient-portal.spec.ts`; policy/unit checks, not proof of a printable discharge template. |
 | T19 | **Focused:** `src/tests/reporting.spec.ts`, `src/tests/round5.spec.ts`; fixed report calculations/mocked paths, not a custom report builder or MOH certification. |
-| T20 | Audit-only `check-financial-report.mts` and `jalicare-medsmart-report-check-production.log` under `/home/user/jalicare-medsmart-audit-runtime/` and `/home/user/`; a narrow HTTP + synthetic PostgreSQL check, not a committed suite or complete reconciled report. |
+| T20 | Audit-only `check-financial-report.mts` and `syrona-medsmart-report-check-production.log` under `/home/user/syrona-medsmart-audit-runtime/` and `/home/user/`; a narrow HTTP + synthetic PostgreSQL check, not a committed suite or complete reconciled report. |
 | B1 | Copied `scripts/dashboard-browser-synthetic.mjs`: synthetic production Chromium login, dashboard, filters, persisted read/audit, search/open-directory and responsive navigation; adapted output location outside repo. Passed. |
 | B2 | Copied `scripts/synthetic-inpatient-bed-browser.mjs` with explicit policy-load wait: ward-default and bed-override journeys passed after the original failed at policy loading. A second external variant configured a KES 175 synthetic ward default and KES 100 bed override, verifying that the saved `BED_OVERRIDE` snapshot and billed receipt used the bed price. Neither journey used real data or validated transfers. |
 

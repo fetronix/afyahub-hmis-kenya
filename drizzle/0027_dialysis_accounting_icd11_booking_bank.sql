@@ -671,7 +671,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "journal_entries_source_once_idx"
   ON "journal_entries" ("facility_id", "source_type", "source_id")
   WHERE "source_id" IS NOT NULL AND "source_type" <> 'MANUAL';
 --> statement-breakpoint
-CREATE FUNCTION "jalicare_financial_period_guard"() RETURNS trigger AS $$
+CREATE FUNCTION "syrona_financial_period_guard"() RETURNS trigger AS $$
 BEGIN
   PERFORM pg_advisory_xact_lock(146907, NEW.facility_id);
   IF TG_OP = 'UPDATE' AND OLD.status <> 'OPEN' THEN
@@ -693,9 +693,9 @@ END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
 CREATE TRIGGER "financial_periods_guard" BEFORE INSERT OR UPDATE ON "financial_periods"
-  FOR EACH ROW EXECUTE FUNCTION "jalicare_financial_period_guard"();
+  FOR EACH ROW EXECUTE FUNCTION "syrona_financial_period_guard"();
 --> statement-breakpoint
-CREATE FUNCTION "jalicare_journal_header_guard"() RETURNS trigger AS $$
+CREATE FUNCTION "syrona_journal_header_guard"() RETURNS trigger AS $$
 DECLARE
   period_row financial_periods%ROWTYPE;
 BEGIN
@@ -735,9 +735,9 @@ END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
 CREATE TRIGGER "journal_entries_guard" BEFORE INSERT OR UPDATE OR DELETE ON "journal_entries"
-  FOR EACH ROW EXECUTE FUNCTION "jalicare_journal_header_guard"();
+  FOR EACH ROW EXECUTE FUNCTION "syrona_journal_header_guard"();
 --> statement-breakpoint
-CREATE FUNCTION "jalicare_journal_line_guard"() RETURNS trigger AS $$
+CREATE FUNCTION "syrona_journal_line_guard"() RETURNS trigger AS $$
 DECLARE
   header_row journal_entries%ROWTYPE;
   account_row chart_of_accounts%ROWTYPE;
@@ -786,9 +786,9 @@ END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
 CREATE TRIGGER "journal_lines_guard" BEFORE INSERT OR UPDATE OR DELETE ON "journal_lines"
-  FOR EACH ROW EXECUTE FUNCTION "jalicare_journal_line_guard"();
+  FOR EACH ROW EXECUTE FUNCTION "syrona_journal_line_guard"();
 --> statement-breakpoint
-CREATE FUNCTION "jalicare_journal_balanced_at_commit"() RETURNS trigger AS $$
+CREATE FUNCTION "syrona_journal_balanced_at_commit"() RETURNS trigger AS $$
 DECLARE
   header_row journal_entries%ROWTYPE;
   actual_debit numeric;
@@ -831,7 +831,7 @@ $$ LANGUAGE plpgsql;
 --> statement-breakpoint
 CREATE CONSTRAINT TRIGGER "journal_entries_balanced_at_commit"
   AFTER INSERT OR UPDATE ON "journal_entries" DEFERRABLE INITIALLY DEFERRED
-  FOR EACH ROW EXECUTE FUNCTION "jalicare_journal_balanced_at_commit"();
+  FOR EACH ROW EXECUTE FUNCTION "syrona_journal_balanced_at_commit"();
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "facilities_id_tenant_unique_idx" ON "facilities" ("id", "tenant_id");
 --> statement-breakpoint
@@ -850,7 +850,7 @@ ALTER TABLE "dialysis_schedules" ADD CONSTRAINT "dialysis_schedule_time_chk"
 --> statement-breakpoint
 ALTER TABLE "dialysis_consumable_usages" ADD CONSTRAINT "dialysis_consumable_quantity_chk" CHECK ("quantity_used" > 0);
 --> statement-breakpoint
-CREATE FUNCTION "jalicare_dialysis_schedule_guard"() RETURNS trigger AS $$
+CREATE FUNCTION "syrona_dialysis_schedule_guard"() RETURNS trigger AS $$
 BEGIN
   IF NEW.machine_id IS NULL THEN RETURN NEW; END IF;
   PERFORM pg_advisory_xact_lock(146908, NEW.machine_id);
@@ -870,7 +870,7 @@ END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
 CREATE TRIGGER "dialysis_schedule_guard" BEFORE INSERT OR UPDATE ON "dialysis_schedules"
-  FOR EACH ROW EXECUTE FUNCTION "jalicare_dialysis_schedule_guard"();
+  FOR EACH ROW EXECUTE FUNCTION "syrona_dialysis_schedule_guard"();
 --> statement-breakpoint
 ALTER TABLE "dialysis_machines" ADD CONSTRAINT "dialysis_machine_facility_tenant_fk"
   FOREIGN KEY ("facility_id", "tenant_id") REFERENCES "facilities" ("id", "tenant_id");
@@ -922,7 +922,7 @@ CREATE TABLE IF NOT EXISTS "website_booking_mutations" (
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "website_booking_mutation_idempotency_idx" ON "website_booking_mutations" ("client_id", "idempotency_key");
 --> statement-breakpoint
-CREATE FUNCTION "jalicare_booking_capacity_guard"() RETURNS trigger AS $$
+CREATE FUNCTION "syrona_booking_capacity_guard"() RETURNS trigger AS $$
 DECLARE slot_row website_booking_slots%ROWTYPE;
 BEGIN
   SELECT * INTO slot_row FROM website_booking_slots WHERE id=NEW.slot_id FOR UPDATE;
@@ -944,7 +944,7 @@ END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
 CREATE TRIGGER "website_booking_capacity_guard" BEFORE INSERT OR UPDATE OF "slot_id", "status", "facility_id", "tenant_id", "booking_client_id", "service_code" ON "external_bookings"
-  FOR EACH ROW EXECUTE FUNCTION "jalicare_booking_capacity_guard"();
+  FOR EACH ROW EXECUTE FUNCTION "syrona_booking_capacity_guard"();
 --> statement-breakpoint
 ALTER TABLE "website_booking_clients" ADD CONSTRAINT "booking_client_facility_tenant_fk"
   FOREIGN KEY ("facility_id", "tenant_id") REFERENCES "facilities" ("id", "tenant_id");
@@ -969,7 +969,7 @@ CREATE TABLE IF NOT EXISTS "website_booking_reminders" (
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "website_booking_reminder_idempotency_idx" ON "website_booking_reminders" ("facility_id", "idempotency_key");
 --> statement-breakpoint
-CREATE FUNCTION "jalicare_account_immutable_after_posting"() RETURNS trigger AS $$
+CREATE FUNCTION "syrona_account_immutable_after_posting"() RETURNS trigger AS $$
 BEGIN
   IF EXISTS (SELECT 1 FROM journal_lines l JOIN journal_entries j ON j.id=l.journal_entry_id
              WHERE l.account_id=OLD.id AND j.status='POSTED') THEN
@@ -981,7 +981,7 @@ END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
 CREATE TRIGGER "chart_of_accounts_posted_guard" BEFORE UPDATE OR DELETE ON "chart_of_accounts"
-  FOR EACH ROW EXECUTE FUNCTION "jalicare_account_immutable_after_posting"();
+  FOR EACH ROW EXECUTE FUNCTION "syrona_account_immutable_after_posting"();
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "bank_transaction_dedupe_idx" ON "bank_transactions" ("bank_account_id", "dedupe_hash");
 --> statement-breakpoint
@@ -1006,7 +1006,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS "bank_accounts_facility_gl_unique_idx" ON "ban
 ALTER TABLE "expense_requests" ADD CONSTRAINT "expense_facility_tenant_fk"
   FOREIGN KEY ("facility_id", "tenant_id") REFERENCES "facilities" ("id", "tenant_id");
 --> statement-breakpoint
-CREATE FUNCTION "jalicare_expense_finalized_guard"() RETURNS trigger AS $$
+CREATE FUNCTION "syrona_expense_finalized_guard"() RETURNS trigger AS $$
 BEGIN
   IF OLD.status IN ('REJECTED','POSTED') THEN
     RAISE EXCEPTION 'Finalized expense requests cannot be changed' USING ERRCODE='23514';
@@ -1019,7 +1019,7 @@ END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
 CREATE TRIGGER "expense_finalized_guard" BEFORE UPDATE OR DELETE ON "expense_requests"
-  FOR EACH ROW EXECUTE FUNCTION "jalicare_expense_finalized_guard"();
+  FOR EACH ROW EXECUTE FUNCTION "syrona_expense_finalized_guard"();
 --> statement-breakpoint
 CREATE SEQUENCE IF NOT EXISTS "private_insurance_preauth_number_seq";
 --> statement-breakpoint

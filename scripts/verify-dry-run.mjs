@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Prove that `--dry-run` writes nothing, without a database.
  *
  * This runs the BUILT migration runner against a fake `pg` driver that
@@ -39,8 +39,8 @@ if (!existsSync(BUNDLE)) {
  * both paths must be write-free.
  */
 const FAKE_PG = `
-const log = () => globalThis.__JALICARE_SQL__;
-const mode = globalThis.__JALICARE_MODE__;
+const log = () => globalThis.__SYRONA_SQL__;
+const mode = globalThis.__SYRONA_MODE__;
 
 function handle(text) {
   const sql = typeof text === 'string' ? text : text?.text ?? '';
@@ -94,8 +94,8 @@ function isWrite(sql) {
 let failures = 0;
 
 for (const mode of MODES) {
-  globalThis.__JALICARE_SQL__ = [];
-  globalThis.__JALICARE_MODE__ = mode;
+  globalThis.__SYRONA_SQL__ = [];
+  globalThis.__SYRONA_MODE__ = mode;
 
   /* First run: install the module hook that swaps `pg` for the fake. */
   if (!existsSync(PROXY)) {
@@ -106,7 +106,7 @@ for (const mode of MODES) {
     writeFileSync(PROXY, FAKE_PG);
   }
 
-  if (!globalThis.__JALICARE_HOOKED__) {
+  if (!globalThis.__SYRONA_HOOKED__) {
     register(
       'data:text/javascript,' +
         encodeURIComponent(`
@@ -119,7 +119,7 @@ export async function resolve(specifier, context, next) {
 `),
     );
 
-    globalThis.__JALICARE_HOOKED__ = true;
+    globalThis.__SYRONA_HOOKED__ = true;
   }
 
   process.argv.push('--dry-run');
@@ -135,7 +135,7 @@ export async function resolve(specifier, context, next) {
     continue;
   }
 
-  const statements = globalThis.__JALICARE_SQL__;
+  const statements = globalThis.__SYRONA_SQL__;
   const writes = statements.filter(isWrite);
 
   console.log('');

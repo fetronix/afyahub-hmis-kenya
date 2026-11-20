@@ -176,7 +176,7 @@ try {
   );
   const date = (await pool.query('SELECT current_date::text AS today')).rows[0].today;
 
-  tempDir = await mkdtemp(path.join(os.tmpdir(), 'jalicare-settlement-synthetic-tls-'));
+  tempDir = await mkdtemp(path.join(os.tmpdir(), 'syrona-settlement-synthetic-tls-'));
   const keyFile = path.join(tempDir, 'key.pem'),
     certFile = path.join(tempDir, 'cert.pem');
   execFileSync(

@@ -138,7 +138,7 @@ try {
   await page.type('input[placeholder="Password"]', f.password);
   await page.click('button[type="submit"]');
   await page.waitForSelector('aside');
-  const token = await page.evaluate(() => localStorage.getItem('jalicare_session_token'));
+  const token = await page.evaluate(() => localStorage.getItem('syrona_session_token'));
   check(Boolean(token), 'Real normal staff username/password login');
   async function api(
     url: string,

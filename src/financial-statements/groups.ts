@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — presentation groups for the financial statements.
+ * Syrona Medical Center HMIS — presentation groups for the financial statements.
  *
  * An account's `sub_type` is free text written by whoever created the account,
  * so it can be anything from `CURRENT_ASSET` to `PAYROLL`. A balance sheet line

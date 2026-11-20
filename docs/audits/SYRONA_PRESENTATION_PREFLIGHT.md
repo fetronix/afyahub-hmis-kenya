@@ -1,4 +1,4 @@
-# JaliCare — Final Syrona Presentation Preflight
+# Syrona Medical Center — Final Syrona Presentation Preflight
 
 **Assessment date:** 2026-10-27 (conversation date).
 **Branch:** `arena/e088f11d-afyahub-hmis-kenya`
@@ -7,7 +7,7 @@
 
 ## Scope and access outcome
 
-This is a documentation-only final preflight, using the existing [presentation-readiness report](JALICARE_PRESENTATION_READINESS_REPORT.md) and [saved verification summary](presentation-readiness-evidence/verification-summary.json). It does not repeat the full suite, implement features or reinterpret synthetic acceptance as deployment acceptance.
+This is a documentation-only final preflight, using the existing [presentation-readiness report](SYRONA_PRESENTATION_READINESS_REPORT.md) and [saved verification summary](presentation-readiness-evidence/verification-summary.json). It does not repeat the full suite, implement features or reinterpret synthetic acceptance as deployment acceptance.
 
 **No authorized Syrona presentation deployment URL, tenant/facility ID, presentation staff login, patient portal login or authenticated operator session was provided or available to this run.** No matching deployment/database URL or SQL configuration was present in the process environment; the only root `.env*` file was `.env.example`. No actual deployment configuration was loaded, and no secret contents are reproduced here. The prior private synthetic-account handover file was not present; even if present, it would not authorize Syrona access. The existing [production deployment gate](SYRONA_PRODUCTION_DEPLOYMENT_GATE.md) also records an unidentified target; it is historical context, not a fresh deployment observation.
 
@@ -32,7 +32,7 @@ No live application request, database connection, login, upload, release, activa
 
 ## Existing evidence reviewed — not fresh Syrona passes
 
-- [Readiness report](JALICARE_PRESENTATION_READINESS_REPORT.md): selected synthetic demonstration only; explicitly not production deployment or complete Reporting Centre acceptance.
+- [Readiness report](SYRONA_PRESENTATION_READINESS_REPORT.md): selected synthetic demonstration only; explicitly not production deployment or complete Reporting Centre acceptance.
 - [Verification summary](presentation-readiness-evidence/verification-summary.json): `syntheticOnly: true`, `productionAccess: false`. It records 177 unique regression tests, 200 main built-application checks and 32 Batch 1 browser checks from the prior run. **None were rerun for this preflight.**
 - [Evidence manifest](presentation-readiness-evidence/SHA256SUMS): all **108 existing saved-file hashes** match during this review. This is artifact-integrity verification only, not live behavior or clinical verification.
 - [144-entry presentation matrix](presentation-readiness-evidence/catalogue-presentation-matrix.json) and [actual synthetic screen census](presentation-readiness-evidence/catalogue-screen-results.json): preserve per-entry dependencies and limits. Master reporting classifications remain **0 complete and verified, 28 partially supported, 97 unavailable, 19 blocked by missing source data or approved definitions**.

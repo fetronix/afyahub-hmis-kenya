@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — goods receiving and accounts payable.
+ * Syrona Medical Center HMIS — goods receiving and accounts payable.
  *
  * The chain implemented here is:
  *

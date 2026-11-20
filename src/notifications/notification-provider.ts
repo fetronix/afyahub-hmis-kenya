@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Notification provider
  *
  * The repository has no SMS or email provider configured anywhere — no

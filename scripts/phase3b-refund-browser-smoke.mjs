@@ -16,7 +16,7 @@ if (
   !['127.0.0.1', 'localhost', '::1'].includes(host) ||
   !/(?:synthetic.*test|test.*synthetic)/i.test(database) ||
   !process.env.SQL_ADMIN_USER ||
-  !process.env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER ||
+  !process.env.SYRONA_TEST_PG_SYSTEM_IDENTIFIER ||
   !process.env.BROWSER_SMOKE_PG_DATA_DIRECTORY ||
   !executablePath ||
   !Number.isInteger(port) ||
@@ -66,7 +66,7 @@ try {
       ['127.0.0.1/32', '127.0.0.1', '::1/128', '::1'].includes(identity.address) &&
       identity.directory === process.env.BROWSER_SMOKE_PG_DATA_DIRECTORY &&
       identity.timezone === 'UTC' &&
-      identity.cluster === process.env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER &&
+      identity.cluster === process.env.SYRONA_TEST_PG_SYSTEM_IDENTIFIER &&
       identity.version.startsWith('16.15') &&
       identity.migrations === 73,
     'Synthetic database identity mismatch.',

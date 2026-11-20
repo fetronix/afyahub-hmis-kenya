@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * HTTP security middleware
  *
  * Three things every internet-facing deployment needs and this one did

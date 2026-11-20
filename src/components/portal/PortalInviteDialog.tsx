@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Portal invitation — the reception desk panel
  *
  * This is where a patient is invited to the portal. It is deliberately

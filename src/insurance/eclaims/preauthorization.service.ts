@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * SHA & DHA HIE Beneficiary Consent, Visit Authorization & Preauthorization Service
  *
  * Implements:

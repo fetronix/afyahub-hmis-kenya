@@ -285,7 +285,7 @@ try {
   async function documents(page: Page) {
     return page.evaluate(async (patient) => {
       const r = await fetch(`/api/patient-documents/patients/${patient}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('jalicare_session_token')}` },
+        headers: { Authorization: `Bearer ${localStorage.getItem('syrona_session_token')}` },
       });
       return { status: r.status, data: await r.json() };
     }, f.patient);

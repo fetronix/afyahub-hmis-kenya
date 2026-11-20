@@ -263,7 +263,7 @@ export const PayrollModule: React.FC<{ initialTab?: PayrollTabId }> = ({ initial
           {missingStatutes.map((entry) => entry.statute).join(', ')}. Record the authority&apos;s
           published figures with their effective dates and source in <em>Statutory rules</em>.
           Select the actual payroll period in the readiness panel for date-specific validation.
-          JaliCare ships no Kenyan rates of its own and will refuse to guess.
+          Syrona Medical Center ships no Kenyan rates of its own and will refuse to guess.
         </AlertBanner>
       )}
 

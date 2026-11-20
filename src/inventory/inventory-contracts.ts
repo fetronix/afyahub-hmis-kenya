@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Pharmacy stock contracts: expiry and FEFO allocation.
  *
  * First-Expiry-First-Out is the rule that keeps near-expiry stock

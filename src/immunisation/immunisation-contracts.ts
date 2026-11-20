@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Immunisation schedule and due-date logic
  *
  * The schedule lives in code, not in the database, for one reason: a

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Patient portal routes
  *
  * Two halves, deliberately in one file so the boundary is visible:

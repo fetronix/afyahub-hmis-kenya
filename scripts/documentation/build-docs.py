@@ -3,11 +3,11 @@
 
 One Markdown source, four documents:
 
-* JALICARE_COMPLETE_SYSTEM_DOCUMENTATION.docx — all chapters and the appendix
-* JALICARE_USER_MANUAL.docx — operator edition
-* JALICARE_TECHNICAL_MANUAL.docx — architecture, accounting engine, reporting,
+* SYRONA_COMPLETE_SYSTEM_DOCUMENTATION.docx — all chapters and the appendix
+* SYRONA_USER_MANUAL.docx — operator edition
+* SYRONA_TECHNICAL_MANUAL.docx — architecture, accounting engine, reporting,
   security, deployment and verification
-* JALICARE_TEST_AND_VERIFICATION_REPORT.docx — test register, completion
+* SYRONA_TEST_AND_VERIFICATION_REPORT.docx — test register, completion
   register and evidence appendix
 
 Every figure is a real file on disk. If an image is missing the build fails
@@ -241,7 +241,7 @@ class Manual:
         left.font.size = Pt(8)
         left.font.color.rgb = GREY
         paragraph.add_run("\t")
-        right = paragraph.add_run(f"JaliCare HMIS · {self.doc_id} · v1.0")
+        right = paragraph.add_run(f"Syrona Medical Center HMIS · {self.doc_id} · v1.0")
         right.font.size = Pt(8)
         right.font.color.rgb = GREY
         border_paragraph(paragraph, bottom=(6, LINE_HEX))
@@ -274,7 +274,7 @@ class Manual:
         cell.width = Cm(CONTENT_WIDTH_CM)
         paragraph = cell.paragraphs[0]
         paragraph.paragraph_format.space_after = Pt(4)
-        run = paragraph.add_run("JALICARE HMIS")
+        run = paragraph.add_run("SYRONA MEDICAL CENTER HMIS")
         run.font.size = Pt(15)
         run.font.bold = True
         run.font.color.rgb = RGBColor(0xBF, 0xDD, 0xDF)
@@ -304,7 +304,7 @@ class Manual:
             ("Version", "1.0"),
             ("Status", "Issued"),
             ("Date", "19 November 2026"),
-            ("System", "JaliCare HMIS 0.1.0 (AfyaHub Kenya)"),
+            ("System", "Syrona Medical Center HMIS 0.1.0 (AfyaHub Kenya)"),
             ("Base commit", "0111b5502e1a8d8a21faf53845360122275727df"),
             ("Branch", "arena/e088f11d-afyahub-hmis-kenya"),
             ("Classification", "Internal — facility operations and technical support"),
@@ -354,7 +354,7 @@ class Manual:
             ("Prepared from", "Repository fetronix/afyahub-hmis-kenya at commit 0111b55, plus the "
                               "recorded verification runs held in this repository"),
             ("Reviewed by", "Not reviewed by a second party at issue"),
-            ("Applies to", "JaliCare HMIS 0.1.0, PostgreSQL 16, Node.js 22"),
+            ("Applies to", "Syrona Medical Center HMIS 0.1.0, PostgreSQL 16, Node.js 22"),
             ("Supersedes", "None — first issue"),
             ("Related documents", "The other volumes of this package and the two workbooks: "
                                   "report catalogue and traceability matrix"),
@@ -741,7 +741,7 @@ def front_matter_for(kind: str) -> str:
 
 ## Who it is for
 
-This is the operator edition for the people who use JaliCare HMIS during a working day: reception, clinicians, nurses, laboratory and radiology staff, pharmacists, cashiers, accountants, stores and procurement officers, HR and payroll officers, and the administrators who configure the system.
+This is the operator edition for the people who use Syrona Medical Center HMIS during a working day: reception, clinicians, nurses, laboratory and radiology staff, pharmacists, cashiers, accountants, stores and procurement officers, HR and payroll officers, and the administrators who configure the system.
 
 ## How to find a task
 
@@ -779,7 +779,7 @@ You need a user account issued by your facility administrator, the facility you 
 
 ## Scope
 
-This volume documents how JaliCare HMIS is built and operated: the request path, the data model behind the clinical and financial records, the accounting and reporting engines, the security controls, deployment and maintenance, and the verification record.
+This volume documents how Syrona Medical Center HMIS is built and operated: the request path, the data model behind the clinical and financial records, the accounting and reporting engines, the security controls, deployment and maintenance, and the verification record.
 
 It is written for engineers, database administrators, system administrators and technical reviewers, and assumes familiarity with Node.js, TypeScript, PostgreSQL and HTTP APIs.
 
@@ -833,7 +833,7 @@ def build_complete() -> None:
         subtitle="User manual, technical manual and test evidence in one volume",
         audience="Facility management, clinical and administrative staff, finance, engineering and support",
         description=(
-            "A full description of the JaliCare HMIS build in this repository: the clinical "
+            "A full description of the Syrona Medical Center HMIS build in this repository: the clinical "
             "modules, the money, the reports, the controls around them, the evidence that they "
             "work, and the limits that remain."
         ),
@@ -854,7 +854,7 @@ def build_complete() -> None:
                  "05-ch13-17.md", "06-ch18-22.md", "07-ch23-26.md", "08-ch27-29.md",
                  "09-appendix-evidence.md"):
         manual.body(read(name))
-    manual.save(OUT / "JALICARE_COMPLETE_SYSTEM_DOCUMENTATION.docx")
+    manual.save(OUT / "SYRONA_COMPLETE_SYSTEM_DOCUMENTATION.docx")
 
 
 def build_user_manual() -> None:
@@ -864,7 +864,7 @@ def build_user_manual() -> None:
         subtitle="Working guide for facility staff — operator edition",
         audience="Reception, clinical, nursing, laboratory, radiology, pharmacy, cashier, accounting, stores, HR and payroll staff",
         description=(
-            "How to carry out each task in JaliCare HMIS, screen by screen, with the controls "
+            "How to carry out each task in Syrona Medical Center HMIS, screen by screen, with the controls "
             "that will refuse the action and what to do about them."
         ),
         scope_note=(
@@ -885,7 +885,7 @@ def build_user_manual() -> None:
     manual.body(read("05-ch13-17.md"))
     manual.body(read("06-ch18-22.md"))
     manual.body(chapters_from(read("07-ch23-26.md"), {"23", "24"}))
-    manual.save(OUT / "JALICARE_USER_MANUAL.docx")
+    manual.save(OUT / "SYRONA_USER_MANUAL.docx")
 
 
 def build_technical_manual() -> None:
@@ -914,7 +914,7 @@ def build_technical_manual() -> None:
     manual.body(chapters_from(read("07-ch23-26.md"), {"23", "25", "26"}))
     manual.body(read("08-ch27-29.md"))
     manual.body(read("09-appendix-evidence.md"))
-    manual.save(OUT / "JALICARE_TECHNICAL_MANUAL.docx")
+    manual.save(OUT / "SYRONA_TECHNICAL_MANUAL.docx")
 
 
 def build_test_report() -> None:
@@ -941,7 +941,7 @@ def build_test_report() -> None:
     manual.body(front_matter_for("test"))
     manual.body(read("08-ch27-29.md"))
     manual.body(read("09-appendix-evidence.md"))
-    manual.save(OUT / "JALICARE_TEST_AND_VERIFICATION_REPORT.docx")
+    manual.save(OUT / "SYRONA_TEST_AND_VERIFICATION_REPORT.docx")
 
 
 def build_markdown_master() -> None:
@@ -956,7 +956,7 @@ def build_markdown_master() -> None:
             toc.append(f"- {line[2:].strip()}")
         elif re.match(r"^## \d+\.\d+", line):
             toc.append(f"  - {line[3:].strip()}")
-    header = f"""# JaliCare HMIS — Complete System Documentation
+    header = f"""# Syrona Medical Center HMIS — Complete System Documentation
 
 **AfyaHub Kenya · Health Information Management System**
 
@@ -981,7 +981,7 @@ def build_markdown_master() -> None:
 ---
 
 """
-    path = OUT / "JALICARE_COMPLETE_SYSTEM_DOCUMENTATION.md"
+    path = OUT / "SYRONA_COMPLETE_SYSTEM_DOCUMENTATION.md"
     path.write_text(header + body.strip() + "\n")
     print(f"wrote {path.relative_to(ROOT)} · {len(path.read_text().splitlines())} lines")
 

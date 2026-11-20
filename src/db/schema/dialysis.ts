@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — dialysis schema.
+ * Syrona Medical Center HMIS — dialysis schema.
  * Definitions are re-exported by ../schema.ts for existing callers and drizzle-kit.
  */
 

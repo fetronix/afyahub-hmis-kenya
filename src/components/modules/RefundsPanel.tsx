@@ -36,7 +36,7 @@ export const RefundsPanel: React.FC<{ invoiceId: number; bankOnly?: boolean }> =
   );
   const storageKey =
     canRefund && facilityId && authenticatedUser?.id
-      ? `jalicare:refund:pending:${authenticatedUser.id}:${facilityId}`
+      ? `syrona:refund:pending:${authenticatedUser.id}:${facilityId}`
       : null;
   const scope = facilityId ? `${facilityId}:${invoiceId}` : null;
   const [loadedScope, setLoadedScope] = useState<string | null>(null);
@@ -555,7 +555,7 @@ export const RefundsPanel: React.FC<{ invoiceId: number; bankOnly?: boolean }> =
               onChange={(e) => setConfirmed(e.target.checked)}
             />
             <span>
-              I confirm the refund was actually performed outside JaliCare and am authorized to
+              I confirm the refund was actually performed outside Syrona Medical Center and am authorized to
               record it.
             </span>
           </label>

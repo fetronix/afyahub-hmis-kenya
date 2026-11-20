@@ -1,4 +1,4 @@
-# JaliCare HMIS — DHA Readiness Audit
+# Syrona Medical Center HMIS — DHA Readiness Audit
 
 **Audit date:** 21 October 2026
 **Last revised:** 22 October 2026 (revision 4 — patient portal round)
@@ -73,7 +73,7 @@ different number from 90%, and the difference is the point.
 
 ---
 
-## 1. What JaliCare is, factually
+## 1. What Syrona Medical Center is, factually
 
 | Item | Finding | Evidence |
 |---|---|---|

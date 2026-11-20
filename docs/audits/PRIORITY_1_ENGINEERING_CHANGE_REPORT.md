@@ -24,7 +24,7 @@
 
 ## Local verification performed
 
-The following checks were run sequentially on this branch. The database was created fresh for this run, had a test-only name and contained only synthetic records. `JALICARE_REQUIRE_DB=1` ensured database-dependent tests did not silently skip. The historical migration chain, including 0002's destructive statements, was run **only** on that new synthetic database under the previously granted permission.
+The following checks were run sequentially on this branch. The database was created fresh for this run, had a test-only name and contained only synthetic records. `SYRONA_REQUIRE_DB=1` ensured database-dependent tests did not silently skip. The historical migration chain, including 0002's destructive statements, was run **only** on that new synthetic database under the previously granted permission.
 
 | Check                                     | Outcome                                                                                                                                                                                                                                                                                                                                               |
 | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

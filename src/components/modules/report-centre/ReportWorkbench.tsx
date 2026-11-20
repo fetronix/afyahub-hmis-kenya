@@ -498,7 +498,7 @@ export const ReportWorkbench: React.FC<{
           >
             <div className="border-b border-slate-100 bg-slate-50/70 p-4">
               <p className="text-2xs font-bold uppercase tracking-widest text-teal-700">
-                JaliCare HMIS · Reporting Centre
+                Syrona Medical Center HMIS · Reporting Centre
               </p>
               <h3 className="mt-1 text-base font-bold text-slate-900">{result.title}</h3>
               <p className="mt-1 text-xs text-slate-600">

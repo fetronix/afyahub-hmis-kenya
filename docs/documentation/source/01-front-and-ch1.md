@@ -1,10 +1,10 @@
-# JaliCare HMIS — Complete System Documentation
+# Syrona Medical Center HMIS — Complete System Documentation
 
 **AfyaHub Kenya · Health Information Management System**
 
 | Field | Value |
 | --- | --- |
-| Document title | JaliCare HMIS — Complete System Documentation |
+| Document title | Syrona Medical Center HMIS — Complete System Documentation |
 | Document identifier | JC-DOC-001 |
 | Version | 1.0 |
 | Document date | 19 November 2026 |
@@ -46,7 +46,7 @@ This document is written for facility management, hospital administrators, clini
 
 ## 1.1 Purpose of the system
 
-JaliCare HMIS (AfyaHub Kenya) is a multi-tenant hospital information management system for Kenyan health facilities. It covers the patient journey from registration through outpatient and inpatient care, diagnostics, pharmacy, billing and payment, and it carries the facility's accounting through to financial statements and partners' equity. It also carries workforce records and payroll, fixed assets, procurement and stock, insurance claims, budget planning and a reporting centre.
+Syrona Medical Center HMIS (AfyaHub Kenya) is a multi-tenant hospital information management system for Kenyan health facilities. It covers the patient journey from registration through outpatient and inpatient care, diagnostics, pharmacy, billing and payment, and it carries the facility's accounting through to financial statements and partners' equity. It also carries workforce records and payroll, fixed assets, procurement and stock, insurance claims, budget planning and a reporting centre.
 
 The system is a single Node.js process serving a React single-page application and a JSON API, backed by PostgreSQL. It is designed for facilities that must produce auditable financial records alongside clinical records, and it enforces that separation: a clinical action that creates a charge posts through the billing module, and a financial posting is only made through the accounting service with an open period, a balanced journal and an audit trail.
 

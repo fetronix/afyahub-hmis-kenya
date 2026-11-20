@@ -175,7 +175,7 @@ export const MembershipAndEligibilitySection: React.FC<Props> = ({
         manualReviewNotes: memberForm.notes || null,
       });
       showToast(
-        'Policy linked to JaliCare patient (labelled UNVERIFIED_LOCAL until eligibility is verified).',
+        'Policy linked to Syrona Medical Center patient (labelled UNVERIFIED_LOCAL until eligibility is verified).',
         { tone: 'success' },
       );
       setShowMemberForm(false);
@@ -261,7 +261,7 @@ export const MembershipAndEligibilitySection: React.FC<Props> = ({
               Member &amp; Policy Management
             </h2>
             <p className="text-sm text-slate-600 mt-0.5">
-              Links existing JaliCare patients to Britam, PACIS, or other private policies without
+              Links existing Syrona Medical Center patients to Britam, PACIS, or other private policies without
               duplicating patient registration. Locally entered policy details remain{' '}
               <strong>UNVERIFIED_LOCAL</strong> until verified.
             </p>
@@ -295,12 +295,12 @@ export const MembershipAndEligibilitySection: React.FC<Props> = ({
             className="bg-white border border-brand-200 rounded-xl p-5 shadow-sm space-y-4"
           >
             <h3 className="text-sm font-bold text-slate-900">
-              Link Existing JaliCare Patient to Insurer Policy
+              Link Existing Syrona Medical Center Patient to Insurer Policy
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  JaliCare Patient
+                  Syrona Medical Center Patient
                 </label>
                 <select
                   required
@@ -667,7 +667,7 @@ export const MembershipAndEligibilitySection: React.FC<Props> = ({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  1. JaliCare Patient
+                  1. Syrona Medical Center Patient
                 </label>
                 <select
                   required

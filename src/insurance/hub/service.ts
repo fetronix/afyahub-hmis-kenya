@@ -1,7 +1,7 @@
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.ts';
 
-/** These are JaliCare workflow permissions, not provider API capabilities. */
+/** These are Syrona Medical Center workflow permissions, not provider API capabilities. */
 export const PAYER_WORKFLOWS = [
   'CONFIGURE',
   'MEMBERSHIP',

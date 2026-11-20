@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Ward and bed setup
  *
  * The inpatient board was read-only: wards and beds could only appear if

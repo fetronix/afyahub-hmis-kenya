@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS master_services (
 --> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS master_services_origin_unique ON master_services (origin_facility_id, clinical_source, origin_source_id) WHERE origin_source_id IS NOT NULL;
 --> statement-breakpoint
--- These codes are JaliCare's internal identifiers, not payer or government codes.
+-- These codes are Syrona Medical Center's internal identifiers, not payer or government codes.
 -- Each corresponds to a source-defined encounter/admission/delivery mode.
 INSERT INTO master_services (code, description, department, billing_family, unit, clinical_source) VALUES
 ('JC-OPD-CONSULT','Outpatient consultation','opd','CONSULTATION','Visit','ENCOUNTER:OUTPATIENT'),

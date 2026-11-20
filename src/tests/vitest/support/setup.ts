@@ -19,9 +19,9 @@ process.env.NODE_ENV ??= 'test';
 
 process.env.SQL_HOST ??= '127.0.0.1';
 process.env.SQL_PORT ??= '5432';
-process.env.SQL_DB_NAME ??= 'jalicare_test';
-process.env.SQL_ADMIN_USER ??= 'jalicare_test';
-process.env.SQL_ADMIN_PASSWORD ??= 'jalicare_test';
+process.env.SQL_DB_NAME ??= 'syrona_test';
+process.env.SQL_ADMIN_USER ??= 'syrona_test';
+process.env.SQL_ADMIN_PASSWORD ??= 'syrona_test';
 process.env.SQL_SSL ??= 'false';
 process.env.SQL_SSL_REJECT_UNAUTHORIZED ??= 'true';
 
@@ -45,7 +45,7 @@ process.env.DHA_ALLOW_PRODUCTION = 'false';
  * (which the field-crypto tests need: ciphertext written by one test must be
  * readable by the next).
  */
-const TEST_ONLY_KEY_MATERIAL = 'jalicare-test-only-field-encryption-key';
+const TEST_ONLY_KEY_MATERIAL = 'syrona-test-only-field-encryption-key';
 
 process.env.FIELD_ENCRYPTION_KEY ??= createHash('sha256')
   .update(TEST_ONLY_KEY_MATERIAL)

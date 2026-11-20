@@ -59,7 +59,7 @@ describe('backup encryption', () => {
 
   it('rejects a file that is not an archive', () => {
     expect(() => decryptBuffer(Buffer.from('PK\u0003\u0004 not a backup'), key())).toThrow(
-      /Not a JaliCare backup archive/,
+      /Not a Syrona Medical Center backup archive/,
     );
   });
 
@@ -91,7 +91,7 @@ describe('encryption key resolution', () => {
 
 describe('manifest', () => {
   it('round-trips and records the format version', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'jalicare-manifest-'));
+    const dir = await mkdtemp(join(tmpdir(), 'syrona-manifest-'));
     const archive = join(dir, 'example.jcbak');
     await writeFile(archive, 'x');
     await writeManifest(archive, { formatVersion: 1, engine: 'logical', database: 'db' });
@@ -101,7 +101,7 @@ describe('manifest', () => {
   });
 
   it('refuses an archive written by a newer format', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'jalicare-manifest-'));
+    const dir = await mkdtemp(join(tmpdir(), 'syrona-manifest-'));
     const archive = join(dir, 'future.jcbak');
     await writeFile(archive, 'x');
     await writeManifest(archive, { formatVersion: 99, engine: 'logical' });
@@ -112,7 +112,7 @@ describe('manifest', () => {
 
 describe('retention', () => {
   async function makeArchives(count: number) {
-    const dir = await mkdtemp(join(tmpdir(), 'jalicare-retention-'));
+    const dir = await mkdtemp(join(tmpdir(), 'syrona-retention-'));
     const now = Date.now();
     const names = [];
     for (let index = 0; index < count; index += 1) {
@@ -154,7 +154,7 @@ describe('retention', () => {
   });
 
   it('does nothing when the directory does not exist', async () => {
-    const result = await applyRetention(join(tmpdir(), 'jalicare-does-not-exist-dir'), {});
+    const result = await applyRetention(join(tmpdir(), 'syrona-does-not-exist-dir'), {});
     expect(result).toEqual({ deleted: [], kept: [] });
   });
 });

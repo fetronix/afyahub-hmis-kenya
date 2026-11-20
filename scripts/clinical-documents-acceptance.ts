@@ -17,7 +17,7 @@ if (
   process.env.CLINICAL_DOCUMENTS_SYNTHETIC !== 'YES' ||
   process.env.SQL_HOST !== '127.0.0.1' ||
   process.env.SQL_DB_NAME !== 'clinical_documents_synthetic_test' ||
-  !/^\d{1,20}$/.test(process.env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER ?? '') ||
+  !/^\d{1,20}$/.test(process.env.SYRONA_TEST_PG_SYSTEM_IDENTIFIER ?? '') ||
   !process.env.CLINICAL_TEST_PG_DATA_DIRECTORY ||
   !process.env.CHROME_EXECUTABLE_PATH
 )
@@ -139,7 +139,7 @@ try {
   check(
     identity.name === 'clinical_documents_synthetic_test' &&
       ['127.0.0.1', '127.0.0.1/32'].includes(identity.address) &&
-      identity.cluster === process.env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER &&
+      identity.cluster === process.env.SYRONA_TEST_PG_SYSTEM_IDENTIFIER &&
       identity.directory === process.env.CLINICAL_TEST_PG_DATA_DIRECTORY,
     'Independently attested disposable cluster, database and data directory match before fixtures',
   );
@@ -298,7 +298,7 @@ try {
   await page.click('button[type="submit"]');
   await page.waitForSelector('aside');
   await idle(page);
-  token = (await page.evaluate(() => localStorage.getItem('jalicare_session_token')))!;
+  token = (await page.evaluate(() => localStorage.getItem('syrona_session_token')))!;
   check(Boolean(token), 'Real staff username/password login');
   const login = async (name: string) => {
     const r = await api(
@@ -571,7 +571,7 @@ try {
     fullPage: true,
   });
   const portalToken = (await portalPage.evaluate(() =>
-    localStorage.getItem('jalicare_portal_token'),
+    localStorage.getItem('syrona_portal_token'),
   ))!;
   const portalList = await api('/api/portal/documents', 'GET', undefined, portalToken);
   check(

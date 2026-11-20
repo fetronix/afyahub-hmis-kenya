@@ -696,7 +696,7 @@ async function shot(page: Page, name: string) {
 async function portalApi(page: Page, pathname: string) {
   return page.evaluate(async (target) => {
     const response = await fetch('/api/portal' + target, {
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('jalicare_portal_token') },
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('syrona_portal_token') },
     });
     const type = response.headers.get('content-type') ?? '';
     return {
@@ -713,7 +713,7 @@ async function portalApi(page: Page, pathname: string) {
 async function apiPdf(page: Page, pathname: string) {
   const result = await page.evaluate(async (target) => {
     const response = await fetch('/api/portal' + target, {
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('jalicare_portal_token') },
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('syrona_portal_token') },
     });
     const type = response.headers.get('content-type') ?? '';
     return {

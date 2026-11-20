@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — synthetic workforce fixture (development only).
+ * Syrona Medical Center HMIS — synthetic workforce fixture (development only).
  *
  * Creates a clearly-labelled synthetic tenant, one facility, a chain of
  * command (finance/HR) accounts and the permission grants needed to exercise
@@ -25,8 +25,8 @@ import { db, pool } from '../src/db/index.ts';
 import * as schema from '../src/db/schema.ts';
 import { hashPassword } from '../src/utils/password.ts';
 
-const SLUG = 'jalicare-synthetic-training';
-const TENANT_NAME = 'JaliCare Synthetic Training Tenant';
+const SLUG = 'syrona-synthetic-training';
+const TENANT_NAME = 'Syrona Medical Center Synthetic Training Tenant';
 const FACILITY_CODE = 'SYNTH-WF-01';
 
 const ACCOUNTS = [

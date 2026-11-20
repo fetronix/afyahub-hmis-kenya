@@ -7,7 +7,7 @@
 
 ## What changed
 
-The existing JaliCare HMIS was refined in place; this is not a second application or a replacement patient, billing, inventory or clinical system. The dashboard now presents, in order:
+The existing Syrona Medical Center HMIS was refined in place; this is not a second application or a replacement patient, billing, inventory or clinical system. The dashboard now presents, in order:
 
 1. A compact welcome using the authenticated name and role, the selected authorized facility and MFL code, and a greeting and date in the facility's configured timezone.
 2. An active operational alert strip or an explicit unavailable/all-clear message for the accessible alert sources.
@@ -70,7 +70,7 @@ The 44-migration chain, including `0043_notification_centre.sql`, was applied on
 
 ## Verification performed
 
-- Full DB-required `npm test`: **189 files, 1,735 tests passed** on isolated synthetic PostgreSQL (`JALICARE_REQUIRE_DB=1`); coverage was generated. This includes existing HMIS regression tests and new inbox/dashboard HTTP, permission, timezone, UI and persistence tests.
+- Full DB-required `npm test`: **189 files, 1,735 tests passed** on isolated synthetic PostgreSQL (`SYRONA_REQUIRE_DB=1`); coverage was generated. This includes existing HMIS regression tests and new inbox/dashboard HTTP, permission, timezone, UI and persistence tests.
 - Focused tests cover expiry boundaries including expired/today/7/8/10/30/31 days, malformed dates, zero-quantity batches, no stock mutation, two users, tenant/facility isolation, hidden modules, no-permission states, active critical indication, alert revisions/recurrence, concurrent/idempotent receipts, audit, paging/filtering, active queue filtering before the 100-row limit, focus, failed-request retry, facility switches and late responses. Theatre-only and inpatient-only permissions are tested independently. The prior obsolete ten-day dashboard source-string test was replaced by behavior assertions for the consolidated warning plus preservation of Inventory's cost, countdown and expiry policy.
 - `npm run typecheck` and `npm run format:check`: passed.
 - `npm run lint`: passed with **0 errors and 74 warnings**. Warnings remain in the broader repository and should be reviewed; they are not represented as a clean lint run.

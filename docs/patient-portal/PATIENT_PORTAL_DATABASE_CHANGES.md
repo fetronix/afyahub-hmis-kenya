@@ -224,18 +224,18 @@ the edit.
 
 ```bash
 # 1. Back up first. Never proceed without a verified backup.
-pg_dump --format=custom --file=jalicare-before-0018.dump "$DATABASE_URL"
-pg_restore --list jalicare-before-0018.dump | head     # prove the dump is readable
+pg_dump --format=custom --file=syrona-before-0018.dump "$DATABASE_URL"
+pg_restore --list syrona-before-0018.dump | head     # prove the dump is readable
 
 # 2. Apply to a scratch database that was restored from that dump.
-createdb jalicare_pre_0018
-pg_restore --dbname=jalicare_pre_0018 jalicare-before-0018.dump
-DATABASE_URL="postgresql://…/jalicare_pre_0018" npm run db:migrate
-DATABASE_URL="postgresql://…/jalicare_pre_0018" npm run db:status
+createdb syrona_pre_0018
+pg_restore --dbname=syrona_pre_0018 syrona-before-0018.dump
+DATABASE_URL="postgresql://…/syrona_pre_0018" npm run db:migrate
+DATABASE_URL="postgresql://…/syrona_pre_0018" npm run db:status
 
 # 3. Check the six tables and the five unique indexes exist.
-psql "postgresql://…/jalicare_pre_0018" -c "\d patient_portal_accounts"
-psql "postgresql://…/jalicare_pre_0018" -c "\di patient_portal_*"
+psql "postgresql://…/syrona_pre_0018" -c "\d patient_portal_accounts"
+psql "postgresql://…/syrona_pre_0018" -c "\di patient_portal_*"
 
 # 4. Only then repeat against the target, in a maintenance window.
 ```

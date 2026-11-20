@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * SHA & DHA HIE Patient Identity Resolution (CR ID) & Eligibility Verification Service
  *
  * Strictly distinguishes:
@@ -206,7 +206,7 @@ async function resolvePatientIdentifierForSha(
 
 /**
  * Workflow 1a: Resolve patient identity (`CR ID`) from DHA Client Registry (`GET /patients`).
- * Never overwrites local JaliCare demographics with simulated data.
+ * Never overwrites local Syrona Medical Center demographics with simulated data.
  */
 export async function resolvePatientClientRegistryIdentity(
   scope: InsuranceActorScope,

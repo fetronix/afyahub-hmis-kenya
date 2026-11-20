@@ -114,7 +114,7 @@ const read = (endpoint) =>
           (endpoint.includes('?') ? '&' : '?') +
           'facilityId=' +
           facility,
-        { headers: { Authorization: 'Bearer ' + localStorage.getItem('jalicare_session_token') } },
+        { headers: { Authorization: 'Bearer ' + localStorage.getItem('syrona_session_token') } },
       );
       if (!r.ok) throw Error('Read failed ' + r.status);
       return r.json();
@@ -298,7 +298,7 @@ try {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: 'Bearer ' + localStorage.getItem('jalicare_session_token'),
+            Authorization: 'Bearer ' + localStorage.getItem('syrona_session_token'),
           },
           body: JSON.stringify(input),
         },

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — /api/financial-statements
+ * Syrona Medical Center HMIS — /api/financial-statements
  *
  * Every route is facility-scoped to the authenticated facility and gated by a
  * separate permission for preparing, reviewing, approving, reopening and

@@ -89,7 +89,7 @@ export async function registerCallbackEndpoint(
       method: 'POST',
       headers,
       body: JSON.stringify({
-        name: `JaliCare ${req.entityType} status callbacks`,
+        name: `Syrona Medical Center ${req.entityType} status callbacks`,
         entity_type: req.entityType,
         environment: req.environment,
         base_url: req.baseUrl,

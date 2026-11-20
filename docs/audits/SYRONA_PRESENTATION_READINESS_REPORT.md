@@ -1,4 +1,4 @@
-# JaliCare — Presentation Readiness Verification and Correction
+# Syrona Medical Center — Presentation Readiness Verification and Correction
 
 ## Decision
 
@@ -6,7 +6,7 @@
 
 Assessment date: **2026-10-27**. Entry baseline: `9814678a0229cdeb5946a717111cddfa1ba17364`, branch `arena/e088f11d-afyahub-hmis-kenya`. The sandbox database/browser timestamps show November 2026; actual exported timestamps are retained, not rewritten into a purported deployment chronology. Corrected source fingerprints and test evidence are in [verification-summary.json](presentation-readiness-evidence/verification-summary.json). Final commit/push is reported in the delivery response.
 
-This is the requested narrow presentation check, not another system audit or reporting implementation batch. Read [the master register](JALICARE_MASTER_COMPLETION_REGISTER.md), [its JSON](JALICARE_MASTER_COMPLETION_REGISTER.json), [clinical-document acceptance](CLINICAL_DOCUMENTS_FINAL_ACCEPTANCE.md), its initial audit, and the current reporting matrix/Batch 1 evidence before proceeding. Historical acceptance is not counted as this run.
+This is the requested narrow presentation check, not another system audit or reporting implementation batch. Read [the master register](SYRONA_MASTER_COMPLETION_REGISTER.md), [its JSON](SYRONA_MASTER_COMPLETION_REGISTER.json), [clinical-document acceptance](CLINICAL_DOCUMENTS_FINAL_ACCEPTANCE.md), its initial audit, and the current reporting matrix/Batch 1 evidence before proceeding. Historical acceptance is not counted as this run.
 
 ### Safety and entry state
 
@@ -137,7 +137,7 @@ npm ci
 npm run build
 npm run build:server
 # Set explicit loopback SQL_* for the newly created synthetic database only.
-# Independently obtain JALICARE_TEST_PG_SYSTEM_IDENTIFIER and the data directory
+# Independently obtain SYRONA_TEST_PG_SYSTEM_IDENTIFIER and the data directory
 # from the cluster you just initialized, not by trusting an arbitrary endpoint.
 # Apply scripts/migrate.ts ONLY to those new scratch databases before fixtures.
 export SQL_DB_NAME=clinical_documents_synthetic_test

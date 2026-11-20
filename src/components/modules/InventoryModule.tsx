@@ -85,7 +85,7 @@ export const InventoryModule: React.FC = () => {
   const [receiptCancellationReason, setReceiptCancellationReason] = useState('');
   const receiptStorageKey =
     authenticatedUser?.id && currentFacility?.id
-      ? `jalicare:inventory:receipt:${authenticatedUser.id}:${currentFacility.id}`
+      ? `syrona:inventory:receipt:${authenticatedUser.id}:${currentFacility.id}`
       : null;
   const [receiveForm, setReceiveForm] = useState({
     itemId: '',

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Tariff resolver — one place that answers "what does this cost?"
  *
  * ------------------------------------------------------------------
@@ -735,7 +735,7 @@ export function resolveFromRows(input: ResolutionInput): TariffResolution {
     if (outcome.ambiguity) {
       return finish(null, null, null, {
         code: 'AMBIGUOUS',
-        message: `Two active tariffs both describe this service — ${outcome.ambiguity.codes.join(' and ')}. JaliCare will not choose between them: link the right one under “Use an existing tariff”.`,
+        message: `Two active tariffs both describe this service — ${outcome.ambiguity.codes.join(' and ')}. Syrona Medical Center will not choose between them: link the right one under “Use an existing tariff”.`,
         candidates: outcome.ambiguity.codes,
       });
     }

@@ -53,7 +53,7 @@ describe('SuperAdminDashboardModule — genuine empty data vs failed API request
     vi.spyOn(api, 'getSubscriptionPeriods').mockResolvedValue([]);
     vi.spyOn(api, 'getHealth').mockResolvedValue({
       status: 'healthy',
-      system: 'JaliCare HMIS',
+      system: 'Syrona Medical Center HMIS',
       dhaReadiness: 'Mock mode',
       timestamp: '2026-10-27T08:00:00.000Z',
     });
@@ -109,7 +109,7 @@ describe('SuperAdminDashboardModule — genuine empty data vs failed API request
     vi.spyOn(api, 'getSubscriptionPeriods').mockResolvedValue([{ id: 1, status: 'ACTIVE' }]);
     vi.spyOn(api, 'getHealth').mockResolvedValue({
       status: 'healthy',
-      system: 'JaliCare HMIS',
+      system: 'Syrona Medical Center HMIS',
       dhaReadiness: 'Mock mode',
       timestamp: '2026-10-27T08:00:00.000Z',
     });

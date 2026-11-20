@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Immunisation service
  *
  * Records the doses that were given, and works out what is outstanding

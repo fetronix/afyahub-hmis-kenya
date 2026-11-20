@@ -123,11 +123,11 @@ acceptable procedure; operations must schedule it and record each run.
 ```bash
 # Nightly, to storage that is encrypted at rest and access-controlled
 pg_dump --format=custom \
-        --file=/backups/jalicare-$(date +%F).dump \
+        --file=/backups/syrona-$(date +%F).dump \
         "$DATABASE_URL"
 
 # Prove the file is readable before trusting it
-pg_restore --list /backups/jalicare-$(date +%F).dump > /dev/null
+pg_restore --list /backups/syrona-$(date +%F).dump > /dev/null
 ```
 
 Retention and access:
@@ -151,13 +151,13 @@ ODPC registration. They must not be copied to a developer laptop.
 Run in an **isolated** environment. Never restore over production to "test".
 
 ```bash
-createdb jalicare_restore_test
-pg_restore --dbname=jalicare_restore_test --no-owner --clean /backups/jalicare-YYYY-MM-DD.dump
+createdb syrona_restore_test
+pg_restore --dbname=syrona_restore_test --no-owner --clean /backups/syrona-YYYY-MM-DD.dump
 
-psql jalicare_restore_test -c "select count(*) from patients;"
-psql jalicare_restore_test -c "select count(*) from encounters;"
-psql jalicare_restore_test -c "select count(*) from audit_logs;"
-psql jalicare_restore_test -c "select max(created_at) from audit_logs;"
+psql syrona_restore_test -c "select count(*) from patients;"
+psql syrona_restore_test -c "select count(*) from encounters;"
+psql syrona_restore_test -c "select count(*) from audit_logs;"
+psql syrona_restore_test -c "select max(created_at) from audit_logs;"
 
 # Then point a non-production instance at it and sign in.
 ```

@@ -53,7 +53,7 @@ const ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 const key = randomBytes(32);
 const source = {
   ...(resolveConfig() as DbConfig),
-  database: process.env.SQL_DB_NAME ?? 'jalicare_test',
+  database: process.env.SQL_DB_NAME ?? 'syrona_test',
 };
 const drillDatabase = `${source.database}_bktest_${Date.now()}`.toLowerCase();
 
@@ -86,7 +86,7 @@ describeDb('backup and restore', () => {
   }, 60_000);
 
   it('writes an encrypted archive that cannot be read without the key or after tampering', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'jalicare-bk-'));
+    const dir = await mkdtemp(join(tmpdir(), 'syrona-bk-'));
     const dump = await dumpLogical(source);
 
     const name = archiveName(source.database);
@@ -119,7 +119,7 @@ describeDb('backup and restore', () => {
   }, 120_000);
 
   it('restores into a separate database with identical contents', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'jalicare-drill-'));
+    const dir = await mkdtemp(join(tmpdir(), 'syrona-drill-'));
     const dump = await dumpLogical(source);
 
     const name = archiveName(source.database);

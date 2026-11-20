@@ -13,7 +13,7 @@
  *   - coverage, measured rather than asserted;
  *   - DOM tests for React components (jsdom + Testing Library);
  *   - database tests that need a real PostgreSQL (skipped without one unless
- *     JALICARE_REQUIRE_DB=1; the full coverage ratchet requires those tests);
+ *     SYRONA_REQUIRE_DB=1; the full coverage ratchet requires those tests);
  *   - a watch mode and a per-file runner for development.
  *
  * Migration is incremental: a suite moves here only once its assertions

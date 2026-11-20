@@ -1,6 +1,6 @@
 /**
  * Immutable manual refund receipts, not a payment-provider integration.
- * The actor attests that the return of funds was performed outside JaliCare.
+ * The actor attests that the return of funds was performed outside Syrona Medical Center.
  */
 import { createHash } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';

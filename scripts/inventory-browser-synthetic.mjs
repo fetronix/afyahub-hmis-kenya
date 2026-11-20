@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — inventory stock-control browser acceptance (synthetic).
+ * Syrona Medical Center HMIS — inventory stock-control browser acceptance (synthetic).
  *
  * Signs in through the real login form as the synthetic stores officer, opens
  * Inventory → Stock Control and walks the ledger, adjustment, physical count,
@@ -7,7 +7,7 @@
  * count and records a real transfer through the UI, so the write paths are
  * proven in the browser and not only through the API.
  *
- *   LD_LIBRARY_PATH=/tmp/al2023-check/lib SQL_DB_NAME=jalicare_synth \
+ *   LD_LIBRARY_PATH=/tmp/al2023-check/lib SQL_DB_NAME=syrona_synth \
  *   BROWSER_SMOKE_SYNTHETIC=YES BASE_URL=http://127.0.0.1:3000 \
  *   CHROME_EXECUTABLE_PATH=/tmp/chromium \
  *   SYNTH_INVENTORY_PASSWORD=... \

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — the financial statement workflow.
+ * Syrona Medical Center HMIS — the financial statement workflow.
  *
  * Generate from the posted ledger, review, approve, freeze, export, retrieve.
  * Every step is facility-scoped and audited through the accounting service's

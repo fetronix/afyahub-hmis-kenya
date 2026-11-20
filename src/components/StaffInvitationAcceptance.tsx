@@ -162,7 +162,7 @@ export const StaffInvitationAcceptance: React.FC = () => {
               <HeartPulse className="h-6 w-6" />
             </div>
             <div>
-              <h1 className="font-display text-xl">JaliCare HMIS</h1>
+              <h1 className="font-display text-xl">Syrona Medical Center HMIS</h1>
               <p className="text-sm text-navy-200">Secure staff account setup</p>
             </div>
           </div>
@@ -187,7 +187,7 @@ export const StaffInvitationAcceptance: React.FC = () => {
               <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-600" />
               <h3 className="mt-4 font-display text-xl text-ink">You're ready to sign in</h3>
               <p className="mt-2 text-sm leading-relaxed text-muted">
-                Return to the JaliCare staff portal and sign in with your new username and password.
+                Return to the Syrona Medical Center staff portal and sign in with your new username and password.
               </p>
               <button
                 type="button"

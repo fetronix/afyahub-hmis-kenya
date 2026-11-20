@@ -8,7 +8,7 @@ import {
 
 const target: SyntheticDatabaseTarget = {
   host: '127.0.0.1',
-  name: 'jalicare_synthetic_test',
+  name: 'syrona_synthetic_test',
 };
 const local: SyntheticDatabaseIdentity = {
   name: target.name,
@@ -20,7 +20,7 @@ describe('synthetic PostgreSQL fixture guard', () => {
   it('requires both a synthetic test name and a loopback client endpoint before connecting', () => {
     expect(() => assertSyntheticTarget(target)).not.toThrow();
     for (const bad of [
-      { ...target, name: 'jalicare_test' },
+      { ...target, name: 'syrona_test' },
       { ...target, name: 'production' },
       { ...target, host: 'postgres.example.test' },
       { ...target, host: '0.0.0.0' },

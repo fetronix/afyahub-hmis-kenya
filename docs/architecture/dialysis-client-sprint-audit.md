@@ -1,6 +1,6 @@
 # Dialysis facility sprint: repository audit and implementation risks
 
-Audit of the existing JaliCare checkout, 2026-10-28. This is not a clinical, accounting or integration certification. The prospective facility's identity, approved clinical protocols, accounting policies, bank and website details have not been provided.
+Audit of the existing Syrona Medical Center checkout, 2026-10-28. This is not a clinical, accounting or integration certification. The prospective facility's identity, approved clinical protocols, accounting policies, bank and website details have not been provided.
 
 ## Existing building blocks
 

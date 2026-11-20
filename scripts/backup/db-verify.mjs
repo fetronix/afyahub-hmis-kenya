@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * JaliCare HMIS — verify a backup archive.
+ * Syrona Medical Center HMIS — verify a backup archive.
  *
  *   npm run db:backup:verify                       (newest archive in BACKUP_DIR)
  *   node scripts/backup/db-verify.mjs <archive>    (a specific archive)

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Platform administration - shared request helpers
  *
  * These helpers were the first hundred lines of `platform.routes.ts`. Every

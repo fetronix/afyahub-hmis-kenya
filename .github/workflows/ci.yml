@@ -1,4 +1,4 @@
-# JaliCare HMIS — continuous integration
+# Syrona Medical Center HMIS — continuous integration
 #
 # Every job here runs a command a developer can run locally. Nothing is
 # special-cased for CI except the PostgreSQL service and the throwaway
@@ -43,9 +43,9 @@ env:
   # Deterministic, obviously-fake values. See the note at the top of this file.
   SQL_HOST: 127.0.0.1
   SQL_PORT: '5432'
-  SQL_DB_NAME: jalicare_test
-  SQL_ADMIN_USER: jalicare_test
-  SQL_ADMIN_PASSWORD: jalicare_test_password
+  SQL_DB_NAME: syrona_test
+  SQL_ADMIN_USER: syrona_test
+  SQL_ADMIN_PASSWORD: syrona_test_password
   SQL_SSL: 'false'
   SQL_SSL_REJECT_UNAUTHORIZED: 'true'
   NODE_ENV: test
@@ -103,19 +103,19 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_USER: jalicare_test
-          POSTGRES_PASSWORD: jalicare_test_password
-          POSTGRES_DB: jalicare_synthetic_test
+          POSTGRES_USER: syrona_test
+          POSTGRES_PASSWORD: syrona_test_password
+          POSTGRES_DB: syrona_synthetic_test
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U jalicare_test -d jalicare_synthetic_test"
+          --health-cmd "pg_isready -U syrona_test -d syrona_synthetic_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
     env:
-      JALICARE_REQUIRE_DB: '1'
-      SQL_DB_NAME: jalicare_synthetic_test
+      SYRONA_REQUIRE_DB: '1'
+      SQL_DB_NAME: syrona_synthetic_test
     steps:
       - uses: actions/checkout@v4
 
@@ -141,9 +141,9 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$POSTGRES_CONTAINER"
-          identity="$(docker exec "$POSTGRES_CONTAINER" sh -c 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec psql -X -h 127.0.0.1 -U jalicare_test -d jalicare_synthetic_test -At -c "SELECT system_identifier::text FROM pg_control_system()"')"
+          identity="$(docker exec "$POSTGRES_CONTAINER" sh -c 'export PGPASSWORD="$POSTGRES_PASSWORD"; exec psql -X -h 127.0.0.1 -U syrona_test -d syrona_synthetic_test -At -c "SELECT system_identifier::text FROM pg_control_system()"')"
           [[ "$identity" =~ ^[0-9]{1,20}$ ]] || { echo "Invalid synthetic PostgreSQL identity"; exit 1; }
-          echo "JALICARE_TEST_PG_SYSTEM_IDENTIFIER=$identity" >> "$GITHUB_ENV"
+          echo "SYRONA_TEST_PG_SYSTEM_IDENTIFIER=$identity" >> "$GITHUB_ENV"
 
       - name: Apply migrations to the disposable coverage database
         run: npm run db:migrate -- --yes
@@ -186,14 +186,14 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_USER: jalicare_test
-          POSTGRES_PASSWORD: jalicare_test_password
-          POSTGRES_DB: jalicare_test
+          POSTGRES_USER: syrona_test
+          POSTGRES_PASSWORD: syrona_test_password
+          POSTGRES_DB: syrona_test
         ports:
           - 5432:5432
         # Wait for readiness here rather than sleeping in a step.
         options: >-
-          --health-cmd "pg_isready -U jalicare_test -d jalicare_test"
+          --health-cmd "pg_isready -U syrona_test -d syrona_test"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 20
@@ -201,7 +201,7 @@ jobs:
     env:
       # Turns a skipped database suite into a failure: in CI, "no database"
       # means the service did not come up, and that must not pass quietly.
-      JALICARE_REQUIRE_DB: '1'
+      SYRONA_REQUIRE_DB: '1'
 
     steps:
       - uses: actions/checkout@v4
@@ -223,7 +223,7 @@ jobs:
         run: |
           node -e "
             const { Pool } = require('pg');
-            const pool = new Pool({ host: '127.0.0.1', port: 5432, user: 'jalicare_test', password: 'jalicare_test_password', database: 'jalicare_test' });
+            const pool = new Pool({ host: '127.0.0.1', port: 5432, user: 'syrona_test', password: 'syrona_test_password', database: 'syrona_test' });
             pool.query('SELECT version()').then(r => { console.log(r.rows[0].version); return pool.end(); }).catch(e => { console.error(e); process.exit(1); });
           "
 

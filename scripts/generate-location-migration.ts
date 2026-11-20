@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Generate the county/sub-county normalisation migration from the constants
  *
  * WHY THIS EXISTS

@@ -95,7 +95,7 @@ Typecheck, frontend build and server build pass. Scoped ESLint has zero errors a
 
 ### Reproduction
 
-Run `npx vitest run --maxWorkers=2` on the 14 suites listed in the retained regression log. For the equity DB suite, set `EQUITY_SYNTHETIC=YES`, `JALICARE_REQUIRE_DB=1`, a loopback SQL host and disposable database **`equity_synthetic_test`**. Existing DB suites instead require `FINANCIAL_BUDGET_SYNTHETIC=YES` and **`financial_budget_synthetic_test`**. Use locally supplied synthetic credentials, never production credentials. Prepare the disposable schema with `scripts/migrate.ts` first. Typecheck in this resource-limited sandbox used `GOMEMLIMIT=1800MiB GOMAXPROCS=2 npm run typecheck`; no source settings were weakened. Then run `npm run build` and `npm run build:server`.
+Run `npx vitest run --maxWorkers=2` on the 14 suites listed in the retained regression log. For the equity DB suite, set `EQUITY_SYNTHETIC=YES`, `SYRONA_REQUIRE_DB=1`, a loopback SQL host and disposable database **`equity_synthetic_test`**. Existing DB suites instead require `FINANCIAL_BUDGET_SYNTHETIC=YES` and **`financial_budget_synthetic_test`**. Use locally supplied synthetic credentials, never production credentials. Prepare the disposable schema with `scripts/migrate.ts` first. Typecheck in this resource-limited sandbox used `GOMEMLIMIT=1800MiB GOMAXPROCS=2 npm run typecheck`; no source settings were weakened. Then run `npm run build` and `npm run build:server`.
 
 ## Operational boundary and remaining review
 

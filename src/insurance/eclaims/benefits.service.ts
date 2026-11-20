@@ -1,12 +1,12 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * SHA Benefits & Service Coverage Validation Service
  *
  * Distinct from membership eligibility: an active SHA beneficiary may still
  * require preauthorization, a higher KEPH facility level, referral notes,
  * or face scheme exclusions/limits for a specific service or medicine.
  *
- * Never treats unmapped JaliCare tariffs or unapproved (`DRAFT`) local rules
+ * Never treats unmapped Syrona Medical Center tariffs or unapproved (`DRAFT`) local rules
  * as SHA-covered, and never promises reimbursement.
  */
 
@@ -142,7 +142,7 @@ export async function validateServiceBenefits(
     if (hasCodedDiagnosis) hasClinicalNotes = true;
   }
 
-  // 2. Resolve JaliCare facility tariff (without modifying it)
+  // 2. Resolve Syrona Medical Center facility tariff (without modifying it)
   let tariff: typeof schema.facilityServiceTariffs.$inferSelect | null = null;
   if (input.tariffId !== undefined && input.tariffId !== null) {
     const [found] = await db
@@ -179,7 +179,7 @@ export async function validateServiceBenefits(
   if (!serviceDescription) {
     throw new InsuranceDomainError(
       'MISSING_SERVICE_DESCRIPTION',
-      'Select a JaliCare facility tariff or provide a service description.',
+      'Select a Syrona Medical Center facility tariff or provide a service description.',
       400,
     );
   }
@@ -371,7 +371,7 @@ export async function validateServiceBenefits(
     verificationSource = 'UNMAPPED_SERVICE';
     missingRequirements.push('Active SHA payer service-code mapping');
     reason =
-      'This JaliCare service/tariff is not mapped to an effective SHA intervention code. Configure a verified SHA mapping before claiming.';
+      'This Syrona Medical Center service/tariff is not mapped to an effective SHA intervention code. Configure a verified SHA mapping before claiming.';
   } else if (!approvedRule) {
     decision = 'UNABLE_TO_VERIFY';
     verificationSource = matchingDraftRule ? 'UNVERIFIED_DRAFT_RULE' : 'NO_APPROVED_RULE';

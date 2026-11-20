@@ -55,7 +55,7 @@ export const PERSONAS: Record<string, TestSessionPersona> = {
       id: 1,
       uid: 'usr-super-1',
       username: 'platform_root',
-      email: 'root@jalicare.example.test',
+      email: 'root@syrona.example.test',
       fullName: 'Platform Super Admin',
       tenantId: null,
       facilityId: null,

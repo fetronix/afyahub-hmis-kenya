@@ -1014,7 +1014,7 @@ export async function seedInitialData() {
       resource: 'Database',
       resourceId: 'ALL',
       details:
-        'AfyaHub Kenya HMIS initial multi-tenant database migration and bootstrap completed successfully.',
+        'Syrona Medical Center HMIS initial multi-tenant database migration and bootstrap completed successfully.',
     });
 
     console.log('Seeding completed successfully!');

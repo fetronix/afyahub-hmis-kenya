@@ -2,7 +2,7 @@
 
 Date: 2026-10-27  
 Scope: controlled manual bank transfers, not live bank API activation.  
-Companion plan: `JALICARE_BANK_PAYMENTS_ASSESSMENT_2026-10-27.md`.
+Companion plan: `SYRONA_BANK_PAYMENTS_ASSESSMENT_2026-10-27.md`.
 
 ## Delivery boundary
 
@@ -116,7 +116,7 @@ npx vitest run src/tests/vitest/bank-payments-ui.spec.tsx \
   src/tests/vitest/billing-cashier-ui.spec.tsx
 ```
 
-For full offline tests, point the connection explicitly at an unavailable local test port and set `JALICARE_REQUIRE_DB=0`. For actual DB evidence use `JALICARE_REQUIRE_DB=1` and a migrated approved synthetic target. Run heavyweight TypeScript separately from the regression suite in memory-constrained environments.
+For full offline tests, point the connection explicitly at an unavailable local test port and set `SYRONA_REQUIRE_DB=0`. For actual DB evidence use `SYRONA_REQUIRE_DB=1` and a migrated approved synthetic target. Run heavyweight TypeScript separately from the regression suite in memory-constrained environments.
 
 ## Controlled rollout / operator handover
 

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * DHA / AfyaConnect — verified API contracts
  *
  * Every field below is taken from the published DHA documentation. Where

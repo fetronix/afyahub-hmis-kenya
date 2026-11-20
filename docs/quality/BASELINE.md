@@ -195,7 +195,7 @@ That is now covered by two specs against a real database:
 
 **These have not run in this environment**, because it has no PostgreSQL. They
 skip with the address they tried and are executed by the CI `database` job,
-where `JALICARE_REQUIRE_DB=1` makes a skip a failure. The results are in the
+where `SYRONA_REQUIRE_DB=1` makes a skip a failure. The results are in the
 first CI run; they are not claimed here.
 
 ## 7.4 Correction to section 5

@@ -1,4 +1,4 @@
-# JaliCare — Payroll configuration and readiness
+# Syrona Medical Center — Payroll configuration and readiness
 
 Report date: **2026-10-27**. Scope: extend the existing workforce/payroll implementation, not replace it.
 
@@ -143,7 +143,7 @@ Coverage includes missing/wrong-type/inactive/out-of-scope mappings; missing/unv
 Reproducible targeted command after supplying an explicitly authorized disposable DB environment:
 
 ```sh
-JALICARE_REQUIRE_DB=1 npx vitest run \
+SYRONA_REQUIRE_DB=1 npx vitest run \
   src/tests/integration/workforce-payroll.db.spec.ts \
   src/tests/vitest/payroll-readiness.spec.ts \
   src/tests/vitest/payroll-readiness-ui.spec.tsx \

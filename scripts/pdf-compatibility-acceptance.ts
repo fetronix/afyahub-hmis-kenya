@@ -237,7 +237,7 @@ try {
       async (url) =>
         (
           await fetch(url, {
-            headers: { Authorization: `Bearer ${localStorage.getItem('jalicare_session_token')}` },
+            headers: { Authorization: `Bearer ${localStorage.getItem('syrona_session_token')}` },
           })
         ).json(),
       `/api/patient-documents/patients/${f.patient}`,
@@ -247,7 +247,7 @@ try {
     const fileUrl = `/api/patient-documents/patients/${f.patient}/${data.id}/file`;
     const untouched = await page.evaluate(async (url) => {
       const r = await fetch(url, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('jalicare_session_token')}` },
+        headers: { Authorization: `Bearer ${localStorage.getItem('syrona_session_token')}` },
       });
       return {
         status: r.status,

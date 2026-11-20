@@ -87,7 +87,7 @@ const fill = async (label, value, select = false) => {
 const query = async (path) =>
   page.evaluate(async (path) => {
     const r = await fetch(path, {
-      headers: { Authorization: 'Bearer ' + localStorage.getItem('jalicare_session_token') },
+      headers: { Authorization: 'Bearer ' + localStorage.getItem('syrona_session_token') },
     });
     return { status: r.status, body: await r.json() };
   }, path);
@@ -286,7 +286,7 @@ try {
   const reportId = reportRows.body[0].id;
   const download = await page.evaluate(
     async ({ id, facility }) => {
-      const token = localStorage.getItem('jalicare_session_token');
+      const token = localStorage.getItem('syrona_session_token');
       return await Promise.all(
         ['pdf', 'xlsx'].map(async (f) => {
           const r = await fetch(`/api/budget-planning/reports/${id}/${f}?facilityId=${facility}`, {

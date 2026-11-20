@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Deterministic migration runner
  *
  * WHY THIS EXISTS
@@ -195,7 +195,7 @@ async function main(): Promise<void> {
     fail(error instanceof Error ? error.message : String(error));
   }
 
-  heading('JaliCare HMIS — migration runner');
+  heading('Syrona Medical Center HMIS — migration runner');
 
   let pool: Pool;
   let env: { database: { host: string; port: number; name: string; user: string } };
@@ -380,7 +380,7 @@ async function main(): Promise<void> {
     console.log(`${RED}Refusing to apply to ${env.database.host} without confirmation.${RESET}`);
     console.log('');
     console.log('Take a verified backup first:');
-    console.log('  pg_dump -Fc -f jalicare-$(date +%F-%H%M).dump "$SQL_DB_NAME"');
+    console.log('  pg_dump -Fc -f syrona-$(date +%F-%H%M).dump "$SQL_DB_NAME"');
     console.log('');
     console.log('Then run:');
     console.log('  npm run db:migrate -- --yes');

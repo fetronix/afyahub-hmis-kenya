@@ -20,7 +20,7 @@ describeDb('expense request controls against PostgreSQL', () => {
     periodId: number,
     expenseId: number;
   beforeAll(async () => {
-    if (!(process.env.SQL_DB_NAME ?? 'jalicare_test').includes('test'))
+    if (!(process.env.SQL_DB_NAME ?? 'syrona_test').includes('test'))
       throw new Error('Test database required.');
     const x = randomUUID().slice(0, 8);
     const t = await pool.query('INSERT INTO tenants (name,slug) VALUES ($1,$2) RETURNING id', [

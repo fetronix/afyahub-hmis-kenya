@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Tariff code candidates
  *
  * Pure functions with no database import, so the same rule that prices a

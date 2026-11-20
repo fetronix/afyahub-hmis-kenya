@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Queries: Invoices, payments, insurance claims, and invoice detail
  *
  * Extracted from `../queries.ts`, which re-exports every function here so that

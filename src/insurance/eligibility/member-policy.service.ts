@@ -1,7 +1,7 @@
 /**
- * JaliCare HMIS — Member Registration & Policy Management Service
+ * Syrona Medical Center HMIS — Member Registration & Policy Management Service
  *
- * Links existing JaliCare patients to one or more private insurance
+ * Links existing Syrona Medical Center patients to one or more private insurance
  * memberships (Britam, PACIS, etc.) with duplicate prevention,
  * principal/dependent tracking, and auditable corrections.
  *
@@ -163,7 +163,7 @@ export async function createInsuranceMemberPolicy(params: {
   if (!Number.isInteger(patientId) || patientId <= 0) {
     throw new PrivateInsuranceError(
       'INVALID_PATIENT_ID',
-      'Valid JaliCare patientId is required.',
+      'Valid Syrona Medical Center patientId is required.',
       400,
     );
   }
@@ -173,7 +173,7 @@ export async function createInsuranceMemberPolicy(params: {
   if (!patient) {
     throw new PrivateInsuranceError(
       'PATIENT_NOT_FOUND',
-      'Existing JaliCare patient was not found for this tenant.',
+      'Existing Syrona Medical Center patient was not found for this tenant.',
       404,
     );
   }

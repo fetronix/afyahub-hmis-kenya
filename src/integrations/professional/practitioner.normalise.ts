@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Health Worker Registry — response normalisation
  *
  * Turns whatever `/professionals` returns into one of the statuses the

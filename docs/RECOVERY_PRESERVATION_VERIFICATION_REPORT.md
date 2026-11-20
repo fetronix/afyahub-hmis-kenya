@@ -1,4 +1,4 @@
-# JaliCare HMIS — Recovery, Preservation and Verification Baseline
+# Syrona Medical Center HMIS — Recovery, Preservation and Verification Baseline
 
 **Single-file consolidated report. Assessment only: no features implemented, nothing staged, committed or pushed.**
 
@@ -31,7 +31,7 @@ The workspace has moved on since the task brief was written. The brief describes
 * remote is `34b00d1`, **52** commits ahead of local HEAD, not `4cdbc93`;
 * the working tree is **byte-identical to the current remote tip** (`34b00d1`): 1,226 of 1,226 files match, 0 differ;
 * the reconciliation that the brief asks to be *investigated* (the four schema-contract failures) is **already published** in `ea4dfca` and is green;
-* the preservation archive the brief expects to find (`/home/user/jalicare-preservation-2026-11-13/`) **was gone** — the workspace rolled back between sessions — and has been rebuilt.
+* the preservation archive the brief expects to find (`/home/user/syrona-preservation-2026-11-13/`) **was gone** — the workspace rolled back between sessions — and has been rebuilt.
 
 Everything below is measured against the *current* state, with the historical figures re-derived where they could be reproduced.
 
@@ -109,7 +109,7 @@ Against the *current* remote tip `34b00d1`, that divergence is **zero**: see §D
 
 | Path | Expected | Found |
 | --- | --- | --- |
-| `/home/user/jalicare-preservation-2026-11-13/` (38 MB, `tree.tar.gz` sha256 `57c26237…`) | preservation archive from the previous pass | **ABSENT** |
+| `/home/user/syrona-preservation-2026-11-13/` (38 MB, `tree.tar.gz` sha256 `57c26237…`) | preservation archive from the previous pass | **ABSENT** |
 | `/home/user/recon-delta-2026-11-13/` (27-file delta, sha256 `c3b8bfb7…`) | delta copy from the reconciliation pass | **ABSENT** |
 
 Both were verified as *not present* — the calls returned `No such file or directory`. The workspace snapshot had rolled back between sessions: `node_modules`, the throwaway PostgreSQL prefix and the cluster were also gone, and local HEAD had reverted from `34b00d1` to `0111b55`. **The project files themselves survived intact** (§D); only the out-of-repo auxiliary directories and the local commit pointer were lost.
@@ -118,7 +118,7 @@ Consequence: every hash quoted in the previous report is now stale, and a fresh 
 
 ### B.2 Preservation copy created
 
-Location: **`/home/user/jalicare-preservation-2026-11-13-r2/`** — outside the repository, untracked by Git, separate from the working tree.
+Location: **`/home/user/syrona-preservation-2026-11-13-r2/`** — outside the repository, untracked by Git, separate from the working tree.
 
 | Path | Size | SHA-256 |
 | --- | --- | --- |
@@ -218,7 +218,7 @@ The brief's figures (1,217 blobs compared, 1,206 identical, 11 differing, 0 abse
 | Present and byte-identical | 1,206 | **1,199** | −7: the seven reconciliation edits to already-published files |
 | Present but differing | 11 | **18** | +7: the same seven files |
 | Absent from disk | 0 | **0** | unchanged |
-| Local-only | 8 | **9** | +1: this report's predecessor, `docs/audits/JALICARE_RECOVERY_PRESERVATION_VERIFICATION_2026-11-13.md` |
+| Local-only | 8 | **9** | +1: this report's predecessor, `docs/audits/SYRONA_RECOVERY_PRESERVATION_VERIFICATION_2026-11-13.md` |
 | Files on disk | 1,225 | **1,226** | same +1 |
 
 Arithmetic closes exactly: 1,199 + 18 = 1,217; 1,217 + 9 = 1,226. **VERIFIED.**
@@ -267,7 +267,7 @@ $ git diff-tree -r --name-only 34b00d1 <worktree tree d96de69>
 | 17 | `src/tests/vitest/private-insurance.db.spec.ts` | +168 / −9 | older | **Both sides changed**: three probes replaced by assertions that the DB refuses the write | Yes | — | Yes (already resolved) | None — published |
 | 18 | `src/tests/vitest/sha-eclaims.db.spec.ts` | +250 / −26 | older | **Both sides changed**: corrupting probes replaced by refusal assertions | Yes | — | Yes (already resolved) | None — published |
 
-Local-only files (9): `docs/PHASE_A3_CHECKPOINT.md` (+35), `docs/audits/JALICARE_RECOVERY_PRESERVATION_VERIFICATION_2026-11-13.md` (+674), `docs/audits/SYRONA_REQUIREMENTS_GAP_ASSESSMENT_2026-11-13.md` (+567), `drizzle/0088_claim_invoice_finalization.sql` (+52), `drizzle/0089_facility_letterheads.sql` (+197), `src/accounting/source-ledger-coverage.service.ts` (+330), `src/db/schema/facility-branding.ts` (+89), `src/insurance/core/claim-invoice-gate.ts` (+166), `src/tests/vitest/source-ledger-coverage-ui.spec.tsx` (+204).
+Local-only files (9): `docs/PHASE_A3_CHECKPOINT.md` (+35), `docs/audits/SYRONA_RECOVERY_PRESERVATION_VERIFICATION_2026-11-13.md` (+674), `docs/audits/SYRONA_REQUIREMENTS_GAP_ASSESSMENT_2026-11-13.md` (+567), `drizzle/0088_claim_invoice_finalization.sql` (+52), `drizzle/0089_facility_letterheads.sql` (+197), `src/accounting/source-ledger-coverage.service.ts` (+330), `src/db/schema/facility-branding.ts` (+89), `src/insurance/core/claim-invoice-gate.ts` (+166), `src/tests/vitest/source-ledger-coverage-ui.spec.tsx` (+204).
 
 **On items 17 and 18 (the only two where the local version removes lines):** the removals are not loss. They delete assertions that a pending claim could *detect* an invoice changing underneath it, and replace them with assertions that the database now *refuses* the change outright. The removed behaviour is strictly weaker than the behaviour that replaced it, and the replacement is enforced by migration 0037's immutability triggers, not by test convenience. **VERIFIED** by the two specs passing on PostgreSQL 16.
 
@@ -286,7 +286,7 @@ Local-only files (9): `docs/PHASE_A3_CHECKPOINT.md` (+35), `docs/audits/JALICARE
 | `system_identifier` | **`7707584137819502262`** — newly initialised this session | **VERIFIED** |
 | Docker | **not installed**, daemon unreachable | **BLOCKED** (only affects `npm run test:docker`; the vitest suite does not need it) |
 | Node / npm | v22.22.3 / 10.9.8 | **VERIFIED** |
-| Test database configuration | `src/tests/vitest/support/db.ts` reads `SQL_HOST`/`SQL_PORT`/`SQL_DB_NAME`/`SQL_ADMIN_USER`/`SQL_ADMIN_PASSWORD`; availability decided once in `global-setup.ts` via `JALICARE_DB_AVAILABLE`; `JALICARE_REQUIRE_DB=1` turns a skip into a failure | **VERIFIED** |
+| Test database configuration | `src/tests/vitest/support/db.ts` reads `SQL_HOST`/`SQL_PORT`/`SQL_DB_NAME`/`SQL_ADMIN_USER`/`SQL_ADMIN_PASSWORD`; availability decided once in `global-setup.ts` via `SYRONA_DB_AVAILABLE`; `SYRONA_REQUIRE_DB=1` turns a skip into a failure | **VERIFIED** |
 | Production access | **none attempted** — the cluster is a disposable directory created by this task | **VERIFIED** |
 
 ### E.2 Migration inventory
@@ -311,10 +311,10 @@ The barrel exports the module, `billing.ts` references it, `schema-extraction.sp
 
 ### E.3 Migrations applied from an empty disposable database
 
-Database `jalicare_synthetic_test` created fresh (0 tables), then:
+Database `syrona_synthetic_test` created fresh (0 tables), then:
 
 ```
-$ SQL_HOST=127.0.0.1 SQL_PORT=55432 SQL_DB_NAME=jalicare_synthetic_test \
+$ SQL_HOST=127.0.0.1 SQL_PORT=55432 SQL_DB_NAME=syrona_synthetic_test \
   SQL_ADMIN_USER=<redacted> SQL_ADMIN_PASSWORD=<redacted> npx drizzle-kit migrate
 [✓] migrations applied successfully!
 ```
@@ -348,8 +348,8 @@ $ SQL_HOST=127.0.0.1 SQL_PORT=55432 SQL_DB_NAME=jalicare_synthetic_test \
 | TypeScript | `npx tsc --noEmit` | **exit 0**, zero output | **VERIFIED** |
 | ESLint | `npx eslint .` | **exit 0**, **0 errors, 102 warnings** | **VERIFIED** |
 | Prettier | `npm run format:check` (read-only check; no `--write`) | **clean**, "All matched files use Prettier code style!" | **VERIFIED** |
-| Full suite **with** PostgreSQL | `JALICARE_REQUIRE_DB=1 JALICARE_TEST_PG_SYSTEM_IDENTIFIER=<new sysid> npx vitest run` | **287/287 files, 2,673/2,673 tests passed, 0 failed, 0 skipped, 460.84 s, exit 0** | **VERIFIED** |
-| Full suite **without** PostgreSQL | `env -u SQL_* -u JALICARE_REQUIRE_DB npx vitest run` | **202 files passed / 85 skipped; 1,902 tests passed / 771 skipped; 0 failed; exit 0** | **VERIFIED** |
+| Full suite **with** PostgreSQL | `SYRONA_REQUIRE_DB=1 SYRONA_TEST_PG_SYSTEM_IDENTIFIER=<new sysid> npx vitest run` | **287/287 files, 2,673/2,673 tests passed, 0 failed, 0 skipped, 460.84 s, exit 0** | **VERIFIED** |
+| Full suite **without** PostgreSQL | `env -u SQL_* -u SYRONA_REQUIRE_DB npx vitest run` | **202 files passed / 85 skipped; 1,902 tests passed / 771 skipped; 0 failed; exit 0** | **VERIFIED** |
 | Schema specs alone | `npx vitest run schema-extraction schema-sha-claims schema-private-insurance` | **3 files, 119/119 tests passed** | **VERIFIED** |
 | Coverage | `npm run test:coverage` | Measured **66.84 % lines / 61.55 % branches** earlier in the same working session, before the workspace rollback; **not re-run after the rollback** | **PARTIAL** |
 | Docker bootstrap | `npm run test:docker` | Docker absent | **BLOCKED** |
@@ -474,7 +474,7 @@ Prohibited and unnecessary: editing the fixture, weakening `toEqual` to a subset
 | D-1 | Database readiness | **Low** | No Docker in the sandbox; `npm run test:docker` cannot run | The `bootstrap` CI job is unverifiable locally | Accept: CI runs it (7/7 green on `34b00d1`). |
 | M-1 | Migration integrity | **Medium** | No drizzle snapshots for 0088/0089; both hand-written (§E.2) | `drizzle-kit generate` in future may try to "re-create" columns that already exist, or miss the CHECK constraints | Record 0088/0089 in `drizzle/meta/` before the next `generate`; add the DB-level contract tests from §G.7. |
 | M-2 | Migration integrity | **Low** | 0088 columns are physically at ordinal 53/54 rather than after `invoice_id` | A future schema diff shows spurious column moves | Accept (order is not semantic), or note it in the migration comments. |
-| T-1 | Test reliability | **Low** | Full suite needs a real PostgreSQL and a matching `JALICARE_TEST_PG_SYSTEM_IDENTIFIER`; a re-initialised cluster rotates the identifier | A stale identifier makes `report-centre` fail at suite level with an unrelated-looking error | Always re-read `pg_control_system()` after provisioning, as this session did. |
+| T-1 | Test reliability | **Low** | Full suite needs a real PostgreSQL and a matching `SYRONA_TEST_PG_SYSTEM_IDENTIFIER`; a re-initialised cluster rotates the identifier | A stale identifier makes `report-centre` fail at suite level with an unrelated-looking error | Always re-read `pg_control_system()` after provisioning, as this session did. |
 | T-2 | Test reliability | **Medium** | The suite's DB gate depends on an env var set by `global-setup.ts`; a no-DB run is green by skipping 771 tests | A green run on a laptop can mean "Tested nothing" | Always report both numbers: with-DB 2,673 passed, and no-DB 1,902 passed / 771 skipped. |
 | C-1 | Claim-invoice finalization WIP | **Low** | Gate, migration, wiring and specs all present and green | — | None. This work is complete and published. |
 | C-2 | Facility letterhead WIP | **High** | Schema + migration + FK exist; **no service, route, UI or spec** (§C.3) | The database carries two empty tables and a nullable FK that nothing writes. A "letterhead feature" would be reported as present on the strength of a table and a button-less schema | Do not describe Phase B as delivered. Finish it as a unit (§I step 4) or leave it clearly marked as infrastructure. |
@@ -519,7 +519,7 @@ The caveat: the local **index** is 52 commits behind the **tree**, so `git statu
 
 **Yes — all current work is backed up and verified.**
 
-`/home/user/jalicare-preservation-2026-11-13-r2/` holds a whole-tree archive (1,227 files, verified 1,227/1,227 against a SHA-256 manifest), a complete and *restorable* Git bundle of all refs (334 commits, proven by cloning it back), and the Git metadata captures. The previous archive and the earlier delta copy had both disappeared with the workspace rollback; this one replaces them.
+`/home/user/syrona-preservation-2026-11-13-r2/` holds a whole-tree archive (1,227 files, verified 1,227/1,227 against a SHA-256 manifest), a complete and *restorable* Git bundle of all refs (334 commits, proven by cloning it back), and the Git metadata captures. The previous archive and the earlier delta copy had both disappeared with the workspace rollback; this one replaces them.
 
 One methodological finding is worth carrying forward: **`git bundle verify` passing does not mean a bundle can be restored.** The first attempt, taken from this shallow clone, verified cleanly and then failed to clone.
 
@@ -596,11 +596,11 @@ git status --porcelain -uall | wc -l                                            
 cat .git/shallow; git rev-list --count --all                                          # 53
 
 # --- B. Preservation (outside the repository) ---
-git bundle create /home/user/jalicare-preservation-2026-11-13-r2/git/all-refs.bundle --all
+git bundle create /home/user/syrona-preservation-2026-11-13-r2/git/all-refs.bundle --all
 tar --exclude=./.git --exclude=./node_modules --exclude=./coverage -czf \
-    /home/user/jalicare-preservation-2026-11-13-r2/tree.tar.gz .
+    /home/user/syrona-preservation-2026-11-13-r2/tree.tar.gz .
 find . -path ./.git -prune -o -path ./node_modules -prune -o -type f -print0 | sort -z \
-  | xargs -0 sha256sum > /home/user/jalicare-preservation-2026-11-13-r2/manifests/tree.sha256
+  | xargs -0 sha256sum > /home/user/syrona-preservation-2026-11-13-r2/manifests/tree.sha256
 tar -xzf …/tree.tar.gz -C /tmp/verify_r2 && cd /tmp/verify_r2 \
   && sha256sum -c …/manifests/tree.sha256                                              # 1226/1226 OK
 git clone …/git/all-refs.bundle /tmp/bundle_clone                                     # FAILED (shallow clone)
@@ -619,20 +619,20 @@ git diff --cached --name-only | wc -l                    # 0 — nothing staged
 # --- E. Disposable PostgreSQL 16.15 ---
 npm install --prefix /home/user/pgtool embedded-postgres@16.15.0-beta.19
 PGBIN=/home/user/pgtool/node_modules/@embedded-postgres/linux-x64/native/bin
-"$PGBIN/initdb" -D /home/user/pgtest16 -U jalicare_test --auth=trust -E UTF8 --locale=C
+"$PGBIN/initdb" -D /home/user/pgtest16 -U syrona_test --auth=trust -E UTF8 --locale=C
 "$PGBIN/pg_ctl" -D /home/user/pgtest16 -l /tmp/pg16.log \
   -o "-p 55432 -c listen_addresses=127.0.0.1 -c unix_socket_directories=/tmp -c fsync=off" -w start
-# CREATE DATABASE jalicare_synthetic_test via node-postgres (no psql in the npm package)
-SQL_HOST=127.0.0.1 SQL_PORT=55432 SQL_DB_NAME=jalicare_synthetic_test \
+# CREATE DATABASE syrona_synthetic_test via node-postgres (no psql in the npm package)
+SQL_HOST=127.0.0.1 SQL_PORT=55432 SQL_DB_NAME=syrona_synthetic_test \
 SQL_ADMIN_USER=<redacted> SQL_ADMIN_PASSWORD=<redacted> npx drizzle-kit migrate   # 90/90, exit 0
 
 # --- F. Verification ---
 npx tsc --noEmit                                                                  # exit 0
 npx eslint .                                                                      # 0 errors, 102 warnings
 npm run format:check                                                              # clean (check only)
-SQL_HOST=… JALICARE_REQUIRE_DB=1 JALICARE_TEST_PG_SYSTEM_IDENTIFIER=7707584137819502262 \
+SQL_HOST=… SYRONA_REQUIRE_DB=1 SYRONA_TEST_PG_SYSTEM_IDENTIFIER=7707584137819502262 \
   npx vitest run                                                                  # 2673 passed / 287 files
-env -u SQL_HOST -u SQL_PORT -u SQL_DB_NAME -u JALICARE_REQUIRE_DB npx vitest run   # 1902 passed / 771 skipped
+env -u SQL_HOST -u SQL_PORT -u SQL_DB_NAME -u SYRONA_REQUIRE_DB npx vitest run   # 1902 passed / 771 skipped
 npx vitest run src/tests/schema-extraction.spec.ts src/tests/schema-sha-claims.spec.ts \
   src/tests/schema-private-insurance.spec.ts                                      # 119 passed
 

@@ -1,8 +1,8 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * SHA eClaims Preparation, Validation, Submission, Status Tracking & Resubmission Service
  *
- * Pulls clinical & billing evidence from existing JaliCare OPD, IPD, Lab,
+ * Pulls clinical & billing evidence from existing Syrona Medical Center OPD, IPD, Lab,
  * Radiology, Pharmacy, Tariffs, and Invoices without mutating original
  * accounting records. Enforces server-side state machine transitions and
  * decimal-safe cents arithmetic throughout.
@@ -247,7 +247,7 @@ export function evaluateClaimValidationRules(
       code: 'DUPLICATE_INVOICE_CLAIM',
       severity: 'ERROR',
       field: 'invoiceId',
-      message: 'Another active SHA eClaim already exists for this JaliCare invoice.',
+      message: 'Another active SHA eClaim already exists for this Syrona Medical Center invoice.',
     });
   }
 
@@ -374,7 +374,7 @@ export async function prepareShaClaim(scope: InsuranceActorScope, input: Prepare
   await loadScopedFacility(scope);
   const payerCode = (input.payerCode ?? 'SHA').trim().toUpperCase();
 
-  // 1. Load JaliCare invoice & verify tenant/facility ownership (never mutate invoice!)
+  // 1. Load Syrona Medical Center invoice & verify tenant/facility ownership (never mutate invoice!)
   const [invoice] = await db
     .select()
     .from(schema.billingInvoices)
@@ -390,7 +390,7 @@ export async function prepareShaClaim(scope: InsuranceActorScope, input: Prepare
   if (!invoice) {
     throw new InsuranceDomainError(
       'INVOICE_NOT_FOUND',
-      'Selected JaliCare invoice does not exist in this facility.',
+      'Selected Syrona Medical Center invoice does not exist in this facility.',
       404,
     );
   }
@@ -968,7 +968,7 @@ export async function prepareShaClaim(scope: InsuranceActorScope, input: Prepare
       toStatus: 'DRAFT',
       source: 'SYSTEM',
       actorUserId: scope.userId,
-      reason: `Prepared from JaliCare invoice ${invoice.invoiceNumber} (${insertedItems.length} line items).`,
+      reason: `Prepared from Syrona Medical Center invoice ${invoice.invoiceNumber} (${insertedItems.length} line items).`,
     });
 
     await tx.insert(schema.patientRecordAccessLogs).values({

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Private Insurance Multi-Payer Module (Britam & PACIS First)
+ * Syrona Medical Center HMIS — Private Insurance Multi-Payer Module (Britam & PACIS First)
  * PostgreSQL End-to-End Integration & Tenant Isolation Suite
  */
 
@@ -121,7 +121,7 @@ describeDb(
     let invoicePacisId = 0;
 
     beforeAll(async () => {
-      const dbName = process.env.SQL_DB_NAME ?? 'jalicare_test';
+      const dbName = process.env.SQL_DB_NAME ?? 'syrona_test';
       if (!dbName.includes('test')) {
         throw new Error(`Refusing to run DB integration tests against non-test DB "${dbName}".`);
       }
@@ -419,7 +419,7 @@ describeDb(
         },
       });
 
-      // 2. Link SAME JaliCare patient to BOTH Britam and PACIS policies (multi-policy support)
+      // 2. Link SAME Syrona Medical Center patient to BOTH Britam and PACIS policies (multi-policy support)
       const britamPolicy = await createInsuranceMemberPolicy({
         ...actorA,
         input: {
@@ -950,7 +950,7 @@ describeDb(
         registerPayerAdapter(originalAdapter);
       }
 
-      // 6. Prepare Britam Claim from JaliCare invoice WITHOUT mutating original invoice
+      // 6. Prepare Britam Claim from Syrona Medical Center invoice WITHOUT mutating original invoice
       const britamClaim = await preparePrivateInsuranceClaim({
         ...actorA,
         input: {
@@ -962,7 +962,7 @@ describeDb(
             {
               documentType: 'ITEMIZED_INVOICE',
               fileName: 'synthetic-invoice.pdf',
-              storageReference: `jalicare://invoices/${invoiceBritamId}`,
+              storageReference: `syrona://invoices/${invoiceBritamId}`,
             },
             {
               documentType: 'SIGNED_CLAIM_FORM',
@@ -1019,7 +1019,7 @@ describeDb(
       expect(britamClaim.confirmedCopayAmount).toBe('500.00');
       expect(britamClaim.proposedClaimAmount).toBe('2500.00');
 
-      // Verify original JaliCare invoice is untouched and STILL Unpaid!
+      // Verify original Syrona Medical Center invoice is untouched and STILL Unpaid!
       const [invBeforeSubmit] = await db
         .select()
         .from(schema.billingInvoices)
@@ -1089,7 +1089,7 @@ describeDb(
             {
               documentType: 'ITEMIZED_INVOICE',
               fileName: 'synthetic-invoice.pdf',
-              storageReference: `jalicare://invoices/${invoiceBritamId}`,
+              storageReference: `syrona://invoices/${invoiceBritamId}`,
             },
             {
               documentType: 'SIGNED_CLAIM_FORM',

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Kenya eClaims FHIR R4 v0.1.0 (https://fhir.dha.go.ke/ig/eclaims/) — Builder, Validator & Parser
  *
  * Implements the published Kenya eClaims FHIR Implementation Guide v0.1.0 (FHIR R4 4.0.1,
@@ -667,7 +667,7 @@ export function buildShaFhirBundle(input: BuildShaFhirBundleInput): Record<strin
     meta: { profile: [resolveClaimProfile(input.use, input.preauthCategory)] },
     identifier: [
       {
-        system: 'urn:jalicare:hmis:sha-eclaim-number',
+        system: 'urn:syrona:hmis:sha-eclaim-number',
         value: input.claimNumber,
       },
     ],

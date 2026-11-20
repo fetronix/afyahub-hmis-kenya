@@ -1,6 +1,6 @@
 import { requireFacilityIntegrationAdministrator } from '../integrations/hub/facility-authorization.ts';
 /**
- * JaliCare HMIS — Private Insurance & Multi-Insurer Routes (`/api/insurance/*`)
+ * Syrona Medical Center HMIS — Private Insurance & Multi-Insurer Routes (`/api/insurance/*`)
  *
  * Mounted at `/api/insurance` after `/api/insurance/sha`, behind `requireAuth`,
  * `requireAuthorization`, and `requireFacilityModule('insurance')`.

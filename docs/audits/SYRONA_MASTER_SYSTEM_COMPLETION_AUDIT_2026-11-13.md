@@ -1,4 +1,4 @@
-# JaliCare HMIS / AfyaHub Kenya — Master System Completion Audit
+# Syrona Medical Center HMIS / AfyaHub Kenya — Master System Completion Audit
 
 **Requested audit label:** 2026-11-13  
 **Repository:** `fetronix/afyahub-hmis-kenya`  
@@ -77,7 +77,7 @@ Most hospital workflow rows are deliberately **I**, even where extensive tests e
 
 Before application-source inspection, branch/HEAD/status/remote were recorded and both prior preservation reports were read:
 
-- `docs/audits/JALICARE_RECOVERY_PRESERVATION_VERIFICATION_2026-11-13.md`
+- `docs/audits/SYRONA_RECOVERY_PRESERVATION_VERIFICATION_2026-11-13.md`
 - `docs/RECOVERY_PRESERVATION_VERIFICATION_REPORT.md`
 
 The P0 completion report and Syrona gap assessment were then read as leads and checked against current source, not adopted as truth.
@@ -679,7 +679,7 @@ Dependencies were restored with `npm ci --ignore-scripts --no-audit --no-fund` i
 | TypeScript                                     | `GOMAXPROCS=2 GOGC=50 npm run typecheck`                                       | **Exit 0**, no errors.                                                                                                                                                              |
 | Lint                                           | `npm run lint`                                                                 | **Exit 0**, **0 errors / 103 warnings**. Warnings are not newly investigated as all pre-existing; some P0 UI effects are included.                                                  |
 | Configured formatting gate                     | `npm run format:check`                                                         | **Exit 0**, all matching files formatted. Scope: src TS/TSX/CSS, scripts MJS, server.ts and root JSON/MD; not all docs/SQL/configs.                                                 |
-| Vitest discovery/full command without DB       | `npx vitest run` with explicit loopback port 59999 and `JALICARE_REQUIRE_DB=0` | **Exit 0**: **202 passed / 87 skipped files**; **1,902 passed / 805 skipped tests**, 289 files / 2,707 discovered. About 378 seconds. **Not a full database-backed green run.**     |
+| Vitest discovery/full command without DB       | `npx vitest run` with explicit loopback port 59999 and `SYRONA_REQUIRE_DB=0` | **Exit 0**: **202 passed / 87 skipped files**; **1,902 passed / 805 skipped tests**, 289 files / 2,707 discovered. About 378 seconds. **Not a full database-backed green run.**     |
 | Frontend production build                      | `npm run build`                                                                | **Exit 0**; index JS ~1.99 MB (~455 KB gzip); >500 KB chunk warning.                                                                                                                |
 | Server build                                   | `npm run build:server`                                                         | **Exit 0**, server/operator script bundles generated in ignored build/.                                                                                                             |
 | Artifact consistency                           | `npm run deploy:verify`                                                        | **Exit 0**: required files present, npm start points to server bundle, 91 migrations exactly match journal. Tool explicitly says folder completeness is not host proof.             |
@@ -802,7 +802,7 @@ Priorities are conditional on the signed launch scope. A mandatory theatre, mate
 
 The sole new repository deliverable is:
 
-`docs/audits/JALICARE_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md`
+`docs/audits/SYRONA_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md`
 
 The exact target did not exist at entry. No existing file was overwritten. Ignored dependencies and build artifacts were generated only to run checks; temporary evidence/manifests/probes were written outside the repository. No database schema, migration, test or application source was changed. No feature was implemented. No changes were staged, committed or pushed. Local HEAD and the stale index were deliberately preserved; this audit did not repeat the prior task's ref repair.
 

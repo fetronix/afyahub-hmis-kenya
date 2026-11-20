@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Payroll calculation — pure functions, no database access.
  *
  * DESIGN RULES

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Remove build output.
  *
  * A shell one-liner (`rm -rf dist build`) does not run in cmd.exe on

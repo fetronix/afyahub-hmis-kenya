@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — financial statements schema.
+ * Syrona Medical Center HMIS — financial statements schema.
  *
  * Statements are derived from the ledger, never typed. These tables hold the
  * three things a derivation cannot invent for itself: how long the facility's

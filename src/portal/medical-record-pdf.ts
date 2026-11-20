@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Patient portal — the medical record PDF
  *
  * WHAT THIS FILE IS, AND IS NOT
@@ -358,7 +358,7 @@ export async function renderMedicalRecordPdf(
       Title: 'Patient Medical Record',
       Author: record.facility.name,
       Subject: 'Patient medical record',
-      Creator: 'JaliCare HMIS',
+      Creator: 'Syrona Medical Center HMIS',
     },
   });
 

@@ -64,13 +64,14 @@ describe('LoginScreen — Syrona Medical Center HMIS sign-in', () => {
     expect(screen.getByText('Syrona Medical Center HMIS v1.0')).toBeInTheDocument();
   });
 
-  it('does not offer Biometric or Smart Card sign-in and drops every JaliCare reference', () => {
+  it('does not offer Biometric or Smart Card sign-in and carries no legacy JaliCare or AfyaHub reference', () => {
     const { container } = render(<LoginScreen />);
 
     expect(screen.queryByRole('button', { name: /Biometric Login/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Smart Card Login/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/JaliCare/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/AfyaHub/i)).not.toBeInTheDocument();
+    // The retired brand must not survive the rename.
     expect(container.innerHTML).not.toMatch(/jalicare|afyahub/i);
   });
 

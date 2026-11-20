@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Patient-authorised record sharing
  *
  * A patient records a sharing request for selected categories. This is

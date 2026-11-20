@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — synthetic stock-control fixture (development only).
+ * Syrona Medical Center HMIS — synthetic stock-control fixture (development only).
  *
  * Reuses the synthetic procurement facility when it exists, then adds the
  * minimum stock-control evidence: four items (two at or below their reorder
@@ -22,8 +22,8 @@ import * as schema from '../src/db/schema.ts';
 import { hashPassword } from '../src/utils/password.ts';
 
 const FACILITY_CODE = 'SYNTH-PROC-01';
-const TENANT_NAME = 'JaliCare Synthetic Procurement Tenant';
-const TENANT_SLUG = 'jalicare-synthetic-procurement';
+const TENANT_NAME = 'Syrona Medical Center Synthetic Procurement Tenant';
+const TENANT_SLUG = 'syrona-synthetic-procurement';
 
 const STOREKEEPER = {
   username: 'synthetic.inventory',

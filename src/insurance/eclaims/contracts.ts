@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Payer-Independent Insurance Domain Engine — Contracts, State Machines & Audit Helpers
  *
  * Designed so SHA is the primary public scheme adapter today while private
@@ -247,7 +247,7 @@ export async function loadScopedFacility(
 }
 
 /**
- * Enforce tenant boundary on an existing JaliCare patient (no duplicate registration).
+ * Enforce tenant boundary on an existing Syrona Medical Center patient (no duplicate registration).
  */
 export async function loadTenantPatient(tenantId: number, patientId: number, facilityId: number) {
   const patient = await findFacilityPatient(tenantId, facilityId, patientId);

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Staff roles API
  *
  * Mounted at /api/staff-roles.

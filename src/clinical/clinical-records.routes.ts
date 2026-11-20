@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Consent and allergy routes
  *
  * Both resources hang off a patient, are scoped to the caller's

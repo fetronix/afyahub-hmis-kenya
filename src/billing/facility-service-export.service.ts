@@ -112,7 +112,7 @@ export async function exportFacilityServiceCatalogue(
     ]),
   ];
   return {
-    filename: `jalicare-facility-${facility.id}-service-catalogue.csv`,
+    filename: `syrona-facility-${facility.id}-service-catalogue.csv`,
     contentType: 'text/csv; charset=utf-8',
     base64: Buffer.from(
       `\ufeff${content.map((row) => row.map(csvCell).join(',')).join('\r\n')}\r\n`,

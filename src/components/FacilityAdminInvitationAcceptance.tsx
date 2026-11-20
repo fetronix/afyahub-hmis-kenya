@@ -126,7 +126,7 @@ export default function FacilityAdminInvitationAcceptance() {
               <HeartPulse className="h-6 w-6" />
             </div>
             <div>
-              <h1 className="font-display text-xl">JaliCare HMIS</h1>
+              <h1 className="font-display text-xl">Syrona Medical Center HMIS</h1>
               <p className="text-sm text-navy-200">Facility administrator setup</p>
             </div>
           </div>
@@ -150,7 +150,7 @@ export default function FacilityAdminInvitationAcceptance() {
               <CheckCircle2 className="mx-auto h-14 w-14 text-emerald-600" />
               <h3 className="mt-4 font-display text-xl text-ink">You're ready to sign in</h3>
               <p className="mt-2 text-sm text-muted">
-                Return to JaliCare and sign in using your new username and password.
+                Return to Syrona Medical Center and sign in using your new username and password.
               </p>
               <button
                 type="button"

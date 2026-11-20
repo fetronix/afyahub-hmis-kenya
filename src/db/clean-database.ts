@@ -15,7 +15,7 @@ if (!ADMIN_USERNAME && !ADMIN_EMAIL) {
 
 async function cleanDatabase() {
   console.log('==============================================');
-  console.log(' JaliCare HMIS DATABASE CLEANUP');
+  console.log(' Syrona Medical Center HMIS DATABASE CLEANUP');
   console.log('==============================================');
 
   await db.transaction(async (tx) => {

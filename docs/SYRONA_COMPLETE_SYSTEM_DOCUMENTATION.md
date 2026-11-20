@@ -1,4 +1,4 @@
-# JaliCare HMIS — Complete System Documentation
+# Syrona Medical Center HMIS — Complete System Documentation
 
 **AfyaHub Kenya · Health Information Management System**
 
@@ -266,13 +266,13 @@
 
 ---
 
-# JaliCare HMIS — Complete System Documentation
+# Syrona Medical Center HMIS — Complete System Documentation
 
 **AfyaHub Kenya · Health Information Management System**
 
 | Field | Value |
 | --- | --- |
-| Document title | JaliCare HMIS — Complete System Documentation |
+| Document title | Syrona Medical Center HMIS — Complete System Documentation |
 | Document identifier | JC-DOC-001 |
 | Version | 1.0 |
 | Document date | 19 November 2026 |
@@ -314,7 +314,7 @@ This document is written for facility management, hospital administrators, clini
 
 ## 1.1 Purpose of the system
 
-JaliCare HMIS (AfyaHub Kenya) is a multi-tenant hospital information management system for Kenyan health facilities. It covers the patient journey from registration through outpatient and inpatient care, diagnostics, pharmacy, billing and payment, and it carries the facility's accounting through to financial statements and partners' equity. It also carries workforce records and payroll, fixed assets, procurement and stock, insurance claims, budget planning and a reporting centre.
+Syrona Medical Center HMIS (AfyaHub Kenya) is a multi-tenant hospital information management system for Kenyan health facilities. It covers the patient journey from registration through outpatient and inpatient care, diagnostics, pharmacy, billing and payment, and it carries the facility's accounting through to financial statements and partners' equity. It also carries workforce records and payroll, fixed assets, procurement and stock, insurance claims, budget planning and a reporting centre.
 
 The system is a single Node.js process serving a React single-page application and a JSON API, backed by PostgreSQL. It is designed for facilities that must produce auditable financial records alongside clinical records, and it enforces that separation: a clinical action that creates a charge posts through the billing module, and a financial posting is only made through the accounting service with an open period, a balanced journal and an audit trail.
 
@@ -1613,7 +1613,7 @@ The report catalogue contains **144 entries in ten categories**. Each entry stat
 | MOH & Regulatory | 8 | 0 | 0 | 8 |
 | **Total** | **144** | **24** | **4** | **116** |
 
-The full list, one row per report with its purpose, engine, dependency and output formats, is the companion workbook `docs/JALICARE_REPORT_CATALOGUE.xlsx` and the CSV `docs/documentation/report-catalogue.csv`.
+The full list, one row per report with its purpose, engine, dependency and output formats, is the companion workbook `docs/SYRONA_REPORT_CATALOGUE.xlsx` and the CSV `docs/documentation/report-catalogue.csv`.
 
 ## 23.3 The twenty engines
 
@@ -1875,7 +1875,7 @@ Every test below was executed for this issue. Results come from command output a
 | Date of execution | 19 November 2026 |
 | Application | Branch `arena/e088f11d-afyahub-hmis-kenya`, base commit `0111b55` |
 | Runtime | Node.js 22.22.3 |
-| Database | PostgreSQL 16, databases `jalicare_test` and `jalicare_synthetic_test` (disposable), `payroll_test` (synthetic fixture) |
+| Database | PostgreSQL 16, databases `syrona_test` and `syrona_synthetic_test` (disposable), `payroll_test` (synthetic fixture) |
 | Facility | Syrona Medical Center (Synthetic), code `SYN-SMC-01` |
 | Data | Synthetic only. No production data was loaded or contacted |
 | Browser | Not available at the end of the issue; browser evidence is the recorded runs named per test |
@@ -1892,7 +1892,7 @@ Every test below was executed for this issue. Results come from command output a
 
 ## 27.4 Full automated suite
 
-Command: `vitest run` with `JALICARE_REQUIRE_DB=1` against PostgreSQL.
+Command: `vitest run` with `SYRONA_REQUIRE_DB=1` against PostgreSQL.
 
 | Measure | Result |
 | --- | --- |
@@ -1908,7 +1908,7 @@ The 418 pending tests are conditional suites (database-dependent or feature-flag
 
 ## 27.5 The 36 failures, and what happened to them
 
-Of the 36 failures, **24** came from eight suites that refused to run because the test database was named `jalicare_test`, and the harness requires a database whose name matches the synthetic-test pattern (`assertSyntheticTarget`). That is a real guard: it stops the suite running against a database that is not provably synthetic. The eight suites were re-run against a correctly named database, `jalicare_synthetic_test`:
+Of the 36 failures, **24** came from eight suites that refused to run because the test database was named `syrona_test`, and the harness requires a database whose name matches the synthetic-test pattern (`assertSyntheticTarget`). That is a real guard: it stops the suite running against a database that is not provably synthetic. The eight suites were re-run against a correctly named database, `syrona_synthetic_test`:
 
 | Suite | Tests | Passed | Failed after rename |
 | --- | --- | --- | --- |

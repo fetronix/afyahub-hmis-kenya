@@ -1,4 +1,4 @@
-# JaliCare HMIS / AfyaHub Kenya — Full System Audit and Completion Assessment
+# Syrona Medical Center HMIS / AfyaHub Kenya — Full System Audit and Completion Assessment
 
 **Audit date:** 2026-10-27
 **Repository:** `fetronix/afyahub-hmis-kenya`

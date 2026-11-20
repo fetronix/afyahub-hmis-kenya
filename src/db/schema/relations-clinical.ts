@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — relations clinical schema.
+ * Syrona Medical Center HMIS — relations clinical schema.
  * Definitions are re-exported by ../schema.ts for existing callers and drizzle-kit.
  */
 

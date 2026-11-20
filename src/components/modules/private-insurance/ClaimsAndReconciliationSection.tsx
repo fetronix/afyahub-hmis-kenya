@@ -192,7 +192,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
       });
       setSelectedClaim(detail);
       showToast(
-        `Prepared ${detail.claimNumber} (${detail.status}). Original JaliCare invoice #${detail.invoiceNumber} remains ${detail.originalInvoice.status}.`,
+        `Prepared ${detail.claimNumber} (${detail.status}). Original Syrona Medical Center invoice #${detail.invoiceNumber} remains ${detail.originalInvoice.status}.`,
         { tone: detail.status === 'READY' ? 'success' : 'warning' },
       );
       await onRefresh();
@@ -507,10 +507,10 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
         <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
           <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
             <FileSpreadsheet className="w-5 h-5 text-brand-600" />
-            Claim Preparation from JaliCare Invoices &amp; Clinical Encounters
+            Claim Preparation from Syrona Medical Center Invoices &amp; Clinical Encounters
           </h2>
           <p className="text-sm text-slate-600 mt-0.5">
-            Generates insurer-specific claim drafts directly from existing JaliCare invoices,
+            Generates insurer-specific claim drafts directly from existing Syrona Medical Center invoices,
             tariffs, encounters, diagnoses, labs, pharmacy orders, and preauthorizations without
             altering the original hospital invoice or marking it paid.
           </p>
@@ -520,7 +520,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    1. JaliCare Billing Invoice
+                    1. Syrona Medical Center Billing Invoice
                   </label>
                   <select
                     required
@@ -530,7 +530,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                     }
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
                   >
-                    <option value="">Select finalized/open JaliCare invoice...</option>
+                    <option value="">Select finalized/open Syrona Medical Center invoice...</option>
                     {invoices.map((inv) => (
                       <option key={inv.id} value={inv.id}>
                         {inv.invoiceNumber} — KES {inv.totalAmount} ({inv.status})
@@ -774,7 +774,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
                 <thead className="bg-slate-50 border-b border-slate-200 uppercase text-slate-500">
                   <tr>
                     <th className="px-3 py-2">Line</th>
-                    <th className="px-3 py-2">JaliCare Item</th>
+                    <th className="px-3 py-2">Syrona Medical Center Item</th>
                     <th className="px-3 py-2">Insurer Code</th>
                     <th className="px-3 py-2">Gross</th>
                     <th className="px-3 py-2">Copay</th>
@@ -1399,7 +1399,7 @@ export const ClaimsAndReconciliationSection: React.FC<Props> = ({
         </h2>
         <p className="text-sm text-slate-600 mt-0.5">
           Secret-redacted operational telemetry across Britam, PACIS, SmartLink gateway, and manual
-          workflows alongside immutable JaliCare <code>audit_logs</code> entries.
+          workflows alongside immutable Syrona Medical Center <code>audit_logs</code> entries.
         </p>
       </div>
 

@@ -1,4 +1,4 @@
-# JaliCare Kenya HMIS
+# Syrona Medical Center Kenya HMIS
 
 A hospital management information system for Kenyan health facilities:
 patient registration, OPD and triage, inpatient wards, maternity, laboratory,
@@ -361,7 +361,7 @@ docker compose up -d db && npm ci && npm run db:migrate -- --yes && npm test
 ```
 
 The bootstrap selects the isolated Compose file and project, waits for the
-server to be ready, and sets `JALICARE_REQUIRE_DB=1` so missing database tests
+server to be ready, and sets `SYRONA_REQUIRE_DB=1` so missing database tests
 cannot be silently skipped. The historical migrations run only against this
 new, empty test database. Application and payer environment variables are not
 inherited, integrations default to mock mode, and the test processes use a
@@ -406,7 +406,7 @@ each batch was checked.
 
 Database specs (`*.db.spec.ts`) skip themselves when no PostgreSQL answers;
 coverage thresholds can still cause a no-database run to fail. The Docker
-bootstrap and CI set `JALICARE_REQUIRE_DB=1`, turning a missing DB into a
+bootstrap and CI set `SYRONA_REQUIRE_DB=1`, turning a missing DB into a
 failure rather than a skip.
 
 ### Component tests
@@ -428,7 +428,7 @@ so; they do not fail:
 PostgreSQL not reachable at 127.0.0.1:5432 — database specs will be skipped.
 ```
 
-In CI, `JALICARE_REQUIRE_DB=1` turns that skip into a failure, so a database
+In CI, `SYRONA_REQUIRE_DB=1` turns that skip into a failure, so a database
 that did not start cannot pass quietly. The migration specs also refuse to run
 against a database whose name does not contain `test`.
 
@@ -471,7 +471,7 @@ patient data or production secret is used anywhere in CI.
 
 No job uses `continue-on-error`, and none is conditional on another's
 outcome, so any failure fails the run. The `database` job sets
-`JALICARE_REQUIRE_DB=1`, which turns "PostgreSQL was unreachable" from a
+`SYRONA_REQUIRE_DB=1`, which turns "PostgreSQL was unreachable" from a
 skip into a failure — otherwise a missing service would report green.
 
 `format:check` covers the same files `format` rewrites, including root

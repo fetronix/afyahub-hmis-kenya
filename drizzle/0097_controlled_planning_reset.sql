@@ -12,7 +12,7 @@ BEGIN
   RAISE EXCEPTION 'Only draft planning data can be reset' USING ERRCODE='23514';
  END IF;
  SELECT e.* INTO reset_evidence FROM planning_events e
- WHERE e.id=NULLIF(current_setting('jalicare.planning_reset_event',true),'')::integer
+ WHERE e.id=NULLIF(current_setting('syrona.planning_reset_event',true),'')::integer
  AND e.action='PLANNING_RESET_AUTHORIZED' AND e.entity='planning_reset'
  AND e.tenant_id=p.tenant_id AND e.facility_id=p.facility_id AND e.plan_id IS NULL
  AND e.xmin::text=pg_current_xact_id()::text

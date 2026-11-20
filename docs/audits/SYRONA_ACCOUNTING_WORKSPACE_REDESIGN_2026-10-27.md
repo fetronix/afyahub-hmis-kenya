@@ -1,4 +1,4 @@
-# JaliCare — Accounting & Finance workspace redesign
+# Syrona Medical Center — Accounting & Finance workspace redesign
 
 **Report date:** 2026-10-27  
 **Scope:** interface/navigation restructuring of existing accounting; no accounting rebuild.  
@@ -111,7 +111,7 @@ No accounting services, financial calculations, API routes, database schemas, mi
 
 ### Report/evidence
 
-- This report: `docs/audits/JALICARE_ACCOUNTING_WORKSPACE_REDESIGN_2026-10-27.md`.
+- This report: `docs/audits/SYRONA_ACCOUNTING_WORKSPACE_REDESIGN_2026-10-27.md`.
 - `docs/audits/accounting-workspace-evidence/browser-results.json` — 39 browser assertions.
 - `docs/audits/accounting-workspace-evidence/validation-output.txt` — sanitized validation output.
 - The twelve screenshot files listed below, all under `docs/audits/accounting-workspace-evidence/`.
@@ -143,7 +143,7 @@ Report date follows the session date. Sandbox-generated screenshots/log timestam
 
 ## 7. Test results
 
-**Final targeted run: 20 suites, 158 passed, 0 skipped.** Database availability was required (`JALICARE_REQUIRE_DB=1`). Tests ran against isolated PostgreSQL 18.6 on loopback. The existing full migration chain applied successfully: **95 migrations**; no migration was authored for this redesign.
+**Final targeted run: 20 suites, 158 passed, 0 skipped.** Database availability was required (`SYRONA_REQUIRE_DB=1`). Tests ran against isolated PostgreSQL 18.6 on loopback. The existing full migration chain applied successfully: **95 migrations**; no migration was authored for this redesign.
 
 | Suite                        |  Passed |
 | ---------------------------- | ------: |

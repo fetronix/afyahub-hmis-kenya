@@ -2,7 +2,7 @@ import { pool } from "../src/db/index.ts";
 import { STAFF_ROLE_CATALOGUE } from "../src/auth/staff-role-catalogue.ts";
 
 /*
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Backfill the staff role catalogue into existing tenants.
  *
  * Roles are tenant-scoped and were only created at tenant creation, so a

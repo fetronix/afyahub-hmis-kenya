@@ -20,13 +20,13 @@ import { expect, it } from 'vitest';
 
 import { describeDb } from './vitest/support/db.ts';
 
-const TEST_PASSWORD = 'JaliCareTestPassword2026!';
+const TEST_PASSWORD = 'Syrona Medical CenterTestPassword2026!';
 
 const TEST_USERNAME = `auth_admin_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
 
 const TEST_IP = '127.0.0.1';
 
-const TEST_USER_AGENT = 'JaliCare-Authentication-Test';
+const TEST_USER_AGENT = 'Syrona Medical Center-Authentication-Test';
 
 const MAX_FAILED_ATTEMPTS = 5;
 
@@ -62,8 +62,8 @@ describeDb('Sign-in and session lifecycle, against a real PostgreSQL', () => {
       tenantId: null,
       facilityId: null,
       username: TEST_USERNAME,
-      email: `${TEST_USERNAME}@test.jalicare.local`,
-      fullName: 'JaliCare Authentication Test Administrator',
+      email: `${TEST_USERNAME}@test.syrona.local`,
+      fullName: 'Syrona Medical Center Authentication Test Administrator',
       phone: null,
       designation: 'Platform Administrator',
       passwordHash: await hashPassword(TEST_PASSWORD),

@@ -1,7 +1,7 @@
 /**
- * JaliCare HMIS — Insurer Service-Code Mapping Service
+ * Syrona Medical Center HMIS — Insurer Service-Code Mapping Service
  *
- * Maps facility JaliCare tariffs and service items (OPD consultation,
+ * Maps facility Syrona Medical Center tariffs and service items (OPD consultation,
  * laboratory, pharmacy, imaging, procedures, inpatient/bed, theatre/specialist)
  * to each insurer's distinct service codes with effective dates.
  */
@@ -107,7 +107,7 @@ export async function createPayerServiceMapping(params: {
     if (!found) {
       throw new PrivateInsuranceError(
         'TARIFF_NOT_FOUND',
-        'Selected JaliCare facility service tariff was not found.',
+        'Selected Syrona Medical Center facility service tariff was not found.',
         404,
       );
     }

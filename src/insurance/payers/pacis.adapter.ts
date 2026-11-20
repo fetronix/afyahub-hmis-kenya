@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Dedicated PACIS Insurance Connector (`pacis_direct`)
+ * Syrona Medical Center HMIS — Dedicated PACIS Insurance Connector (`pacis_direct`)
  *
  * Safeguards enforced:
  * - Completely independent of Britam and SmartLink assumptions.

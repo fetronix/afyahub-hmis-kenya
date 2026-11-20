@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Date parsing shared by billing and reporting.
  *
  * admission_date and discharge_date are stored as text, written by

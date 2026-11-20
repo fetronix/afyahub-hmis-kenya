@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — insurance benefits schema.
+ * Syrona Medical Center HMIS — insurance benefits schema.
  * Definitions are re-exported by ../schema.ts for existing callers and drizzle-kit.
  */
 

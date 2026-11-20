@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Manual / File-Based Payer Adapter (`manual`) & SHA Bridge (`sha_afyalink`)
+ * Syrona Medical Center HMIS — Manual / File-Based Payer Adapter (`manual`) & SHA Bridge (`sha_afyalink`)
  */
 
 import type { PayerIntegrationAdapter } from '../core/adapter-registry.ts';
@@ -45,7 +45,7 @@ export class ManualFilePayerAdapter implements PayerIntegrationAdapter {
   getRequiredOnboardingChecklist(_config: PayerRuntimeConfig): string[] {
     return [
       'Insurer provider panel agreement and claim submission instructions (portal upload / signed claim schedule)',
-      'Tariff schedule and benefit/copayment rules for local JaliCare configuration',
+      'Tariff schedule and benefit/copayment rules for local Syrona Medical Center configuration',
     ];
   }
 

@@ -48,7 +48,7 @@ type InsuranceWorkspaceTab =
  *
  * Unifies SHA / DHA AfyaLink FHIR R4 eligibility verification, benefits
  * coverage validation, preauthorization, eClaims lifecycle, remittance
- * reconciliation, and payer rule governance alongside JaliCare's manual
+ * reconciliation, and payer rule governance alongside Syrona Medical Center's manual
  * invoice claims ledger.
  */
 export const InsuranceClaimsModule: React.FC = () => {

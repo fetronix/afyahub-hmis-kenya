@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * DHA / AfyaConnect — eligibility verdict
  *
  * Pure functions only: no database, no network, no environment. Kept

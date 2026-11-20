@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Patient portal API client
  *
  * Deliberately separate from `src/api/client.ts`. The staff client
@@ -14,8 +14,8 @@
 
 const API_BASE = '/api/portal';
 
-const PORTAL_TOKEN_KEY = 'jalicare_portal_token';
-const PORTAL_EXPIRY_KEY = 'jalicare_portal_expiry';
+const PORTAL_TOKEN_KEY = 'syrona_portal_token';
+const PORTAL_EXPIRY_KEY = 'syrona_portal_expiry';
 
 export function getPortalToken(): string | null {
   return localStorage.getItem(PORTAL_TOKEN_KEY);
@@ -577,7 +577,7 @@ async function staffFetch<T>(url: string, options: RequestInit = {}): Promise<T>
     headers.set('Content-Type', 'application/json');
   }
 
-  const token = localStorage.getItem('jalicare_session_token');
+  const token = localStorage.getItem('syrona_session_token');
 
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);

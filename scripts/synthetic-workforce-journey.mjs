@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — synthetic Phase 5 acceptance journey.
+ * Syrona Medical Center HMIS — synthetic Phase 5 acceptance journey.
  *
  * Drives the live HTTP API with synthetic data only: departments, employees,
  * attendance, leave with a separate approver, effective-dated statutory

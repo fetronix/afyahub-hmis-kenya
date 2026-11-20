@@ -1,5 +1,5 @@
 ==============================================
-JaliCare HMIS — migration runner
+Syrona Medical Center HMIS — migration runner
 ==============================================
 Target   : visibility_test@127.0.0.1:55443/equity_visibility_synthetic_test
 Folder   : <repository>/drizzle

@@ -138,7 +138,7 @@ export function SuperAdminDashboardModule({
       <PageHeader>
         <div>
           <p className="text-sm font-medium uppercase tracking-wider text-teal-700">
-            JaliCare HMIS · Platform administration
+            Syrona Medical Center HMIS · Platform administration
           </p>
           <h1 className="ui-page-title">Platform Management</h1>
           <p className="ui-page-description">

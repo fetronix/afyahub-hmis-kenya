@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — synthetic procurement fixture (development only).
+ * Syrona Medical Center HMIS — synthetic procurement fixture (development only).
  *
  * Creates a clearly labelled synthetic tenant with the minimum chart of
  * accounts, an open financial period, one bank account, one supplier and one
@@ -22,8 +22,8 @@ import { db, pool } from '../src/db/index.ts';
 import * as schema from '../src/db/schema.ts';
 import { hashPassword } from '../src/utils/password.ts';
 
-const SLUG = 'jalicare-synthetic-procurement';
-const TENANT_NAME = 'JaliCare Synthetic Procurement Tenant';
+const SLUG = 'syrona-synthetic-procurement';
+const TENANT_NAME = 'Syrona Medical Center Synthetic Procurement Tenant';
 const FACILITY_CODE = 'SYNTH-PROC-01';
 
 const REQUESTER = {

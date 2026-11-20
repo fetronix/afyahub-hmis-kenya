@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Queries: Observations, diagnoses, procedures, and medications
  *
  * Extracted from `../queries.ts`, which re-exports every function here so that

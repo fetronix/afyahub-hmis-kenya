@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Platform administration - subscription billing
  *
  * Split out of `platform.routes.ts` without editing a route. Each handler

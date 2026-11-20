@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Patient portal — authentication
  *
  * A patient identity is not a staff identity. It lives in its own table,

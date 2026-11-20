@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Partograph plot
  *
  * An inline SVG chart, drawn from the geometry the server computed.

@@ -30,7 +30,7 @@ describeDb('dialysis safety and isolation against PostgreSQL', () => {
     planId: number,
     sessionId: number;
   beforeAll(async () => {
-    if (!(process.env.SQL_DB_NAME ?? 'jalicare_test').includes('test'))
+    if (!(process.env.SQL_DB_NAME ?? 'syrona_test').includes('test'))
       throw new Error('Test database required.');
     const x = randomUUID().slice(0, 8);
     const t = await pool.query(

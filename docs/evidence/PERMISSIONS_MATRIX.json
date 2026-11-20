@@ -2349,7 +2349,7 @@
    "code": "insurance.private.claims.prepare",
    "name": "Prepare & Validate Private Insurance Claims",
    "module": "insurance",
-   "description": "Assemble, review, correct, and validate private insurance claims from JaliCare invoices and clinical records.",
+   "description": "Assemble, review, correct, and validate private insurance claims from Syrona Medical Center invoices and clinical records.",
    "roles": [
     "SUPER_ADMIN",
     "FACILITY_ADMIN",
@@ -3377,7 +3377,7 @@
    "code": "platform.manage",
    "name": "Manage Platform",
    "module": "platform",
-   "description": "Manage global JaliCare platform configuration.",
+   "description": "Manage global Syrona Medical Center platform configuration.",
    "roles": [
     "SUPER_ADMIN"
    ],
@@ -3389,7 +3389,7 @@
    "code": "platform.read",
    "name": "View Platform",
    "module": "platform",
-   "description": "View platform-wide JaliCare administration information.",
+   "description": "View platform-wide Syrona Medical Center administration information.",
    "roles": [
     "SUPER_ADMIN"
    ],

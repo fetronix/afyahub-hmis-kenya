@@ -344,7 +344,7 @@ async function notifyBooking(
   dateStr: string,
   time: string,
 ) {
-  const message = `JaliCare booking ${event}: ${reference}, ${dateStr} ${time}. Check status with the facility.`;
+  const message = `Syrona Medical Center booking ${event}: ${reference}, ${dateStr} ${time}. Check status with the facility.`;
   const channels: Array<{ channel: 'SMS' | 'EMAIL'; to: string }> = [{ channel: 'SMS', to: phone }];
   if (email) channels.push({ channel: 'EMAIL', to: email });
   const entries = [];
@@ -359,7 +359,7 @@ async function notifyBooking(
         getNotificationProvider().send({
           channel: item.channel,
           to: item.to,
-          subject: item.channel === 'EMAIL' ? 'JaliCare booking' : undefined,
+          subject: item.channel === 'EMAIL' ? 'Syrona Medical Center booking' : undefined,
           body: message,
         }),
         timeout,

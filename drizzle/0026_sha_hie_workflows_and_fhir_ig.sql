@@ -4,7 +4,7 @@
 --
 -- Forward-only, additive schema strengthening SHA eClaims across
 -- all 10 DHA HIE / AfyaConnect / AfyaLink / Kenya eClaims IG v0.1.0
--- workflows without mutating core JaliCare records or Private Insurance.
+-- workflows without mutating core Syrona Medical Center records or Private Insurance.
 --
 -- Adds:
 --   1. HIE eligibility attributes (`is_alive`, biometrics/OTP flags,

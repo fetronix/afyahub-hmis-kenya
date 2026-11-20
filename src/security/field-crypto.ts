@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Field encryption
  *
  * Encryption at rest is mostly a hosting decision — the PostgreSQL

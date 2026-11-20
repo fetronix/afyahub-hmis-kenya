@@ -284,7 +284,7 @@ try {
       async (target) => {
         const list = await fetch(
           `/api/patient-documents/patients/${target.patient}?search=${encodeURIComponent(target.title)}`,
-          { headers: { Authorization: 'Bearer ' + localStorage.getItem('jalicare_session_token') } },
+          { headers: { Authorization: 'Bearer ' + localStorage.getItem('syrona_session_token') } },
         );
         const rows = (await list.json()) as { id: number; title: string }[];
         return rows.find((row) => row.title === target.title)?.id ?? null;
@@ -364,7 +364,7 @@ try {
   async function portalApi(page: Page, suffix: string) {
     return page.evaluate(async (target) => {
       const response = await fetch('/api/portal/documents' + target, {
-        headers: { Authorization: 'Bearer ' + localStorage.getItem('jalicare_portal_token') },
+        headers: { Authorization: 'Bearer ' + localStorage.getItem('syrona_portal_token') },
       });
       const type = response.headers.get('content-type') ?? '';
       return {
@@ -379,7 +379,7 @@ try {
 
   /* Staff: uploads, consent review, release, revocation and permission notice. */
   const staff = await staffLogin(f.staff.username);
-  const staffToken = await staff.evaluate(() => localStorage.getItem('jalicare_session_token'));
+  const staffToken = await staff.evaluate(() => localStorage.getItem('syrona_session_token'));
   const api = async (pathname: string, init: RequestInit = {}) => {
     const response = await fetch(base + pathname, {
       ...init,

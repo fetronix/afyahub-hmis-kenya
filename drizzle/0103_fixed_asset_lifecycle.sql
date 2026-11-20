@@ -1,4 +1,4 @@
--- JaliCare HMIS
+-- Syrona Medical Center HMIS
 -- Fixed-asset register, depreciation workflow, maintenance and inspections
 --
 -- WHAT THIS MIGRATION DOES

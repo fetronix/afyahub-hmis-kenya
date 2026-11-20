@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — database backup, verification and restore primitives.
+ * Syrona Medical Center HMIS — database backup, verification and restore primitives.
  *
  * WHY THIS IS A LIBRARY AND NOT FOUR SCRIPTS
  * ------------------------------------------
@@ -50,7 +50,7 @@ export function resolveConfig(env = process.env) {
   const config = {
     host: env.SQL_HOST ?? '127.0.0.1',
     port: Number(env.SQL_PORT ?? 5432),
-    database: env.SQL_DB_NAME ?? env.SQL_DB ?? 'jalicare',
+    database: env.SQL_DB_NAME ?? env.SQL_DB ?? 'syrona',
     user: env.SQL_ADMIN_USER ?? env.SQL_USER ?? 'postgres',
     password: env.SQL_ADMIN_PASSWORD ?? env.SQL_PASSWORD ?? '',
     ssl: env.SQL_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
@@ -109,7 +109,7 @@ export function encryptBuffer(plaintext, key) {
 
 export function decryptBuffer(payload, key) {
   const magic = payload.subarray(0, 7).toString('utf8');
-  if (magic !== 'JCBAK1\n') throw new Error('Not a JaliCare backup archive (bad magic bytes).');
+  if (magic !== 'JCBAK1\n') throw new Error('Not a Syrona Medical Center backup archive (bad magic bytes).');
   const iv = payload.subarray(7, 19);
   const tag = payload.subarray(19, 35);
   const body = payload.subarray(35);

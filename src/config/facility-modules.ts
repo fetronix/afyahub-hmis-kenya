@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Facility module catalogue
  *
  * `facilities.enabled_modules` decides two separate things:

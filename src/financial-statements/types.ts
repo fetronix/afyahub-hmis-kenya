@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — the shape of a generated statement set.
+ * Syrona Medical Center HMIS — the shape of a generated statement set.
  *
  * Every amount is a decimal string of integer cents. The payload is stored as
  * `jsonb` when a statement is approved, and a `bigint` cannot be serialised to

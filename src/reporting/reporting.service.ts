@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Operational reporting: bed occupancy and length of stay.
  *
  * Every figure here is derived from records the facility already owns —

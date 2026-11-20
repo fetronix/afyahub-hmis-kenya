@@ -28,7 +28,7 @@ const accounts = [
     creditKes: '0.00',
   },
 ];
-const key = 'jalicare:billing-journal:pending:7:10';
+const key = 'syrona:billing-journal:pending:7:10';
 const panel = () => (
   <BillingJournalPostingPanel facilityId={10} userId={7} accounts={accounts} onPosted={vi.fn()} />
 );

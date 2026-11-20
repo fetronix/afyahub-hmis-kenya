@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Database preflight — read-only, safe against production
  *
  * Run this before any migration on a live database. It answers, without
@@ -19,7 +19,7 @@
  * as it found it, including on a first run where the table is absent.
  *
  *   npm run db:preflight
- *   npm run db:preflight -- --backup=C:\backups\jalicare-2026-10-22.dump
+ *   npm run db:preflight -- --backup=C:\backups\syrona-2026-10-22.dump
  *
  * Exit codes: 0 = no blocking issue, 1 = blocking issue, 2 = config.
  */
@@ -142,7 +142,7 @@ function createdTables(plan: MigrationPlan): string[] {
 async function main(): Promise<void> {
   console.log('');
   line();
-  console.log('JaliCare HMIS — database preflight (read-only)');
+  console.log('Syrona Medical Center HMIS — database preflight (read-only)');
   line();
 
   let pool: Pool;
@@ -399,8 +399,8 @@ async function main(): Promise<void> {
     console.log(`  ${YELLOW}No --backup given.${RESET}`);
     console.log('');
     console.log('  Take a verified dump before migrating, and name it next run:');
-    console.log('    pg_dump -Fc -f jalicare-2026-10-22.dump "$SQL_DB_NAME"');
-    console.log('    npm run db:preflight -- --backup=jalicare-2026-10-22.dump');
+    console.log('    pg_dump -Fc -f syrona-2026-10-22.dump "$SQL_DB_NAME"');
+    console.log('    npm run db:preflight -- --backup=syrona-2026-10-22.dump');
     console.log('');
     console.log('  Without a backup this preflight will not call the target ready.');
     blocking.push('No verified backup was named.');

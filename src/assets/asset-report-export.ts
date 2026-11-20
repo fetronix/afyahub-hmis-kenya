@@ -124,7 +124,7 @@ export async function exportAssetReport(
 ): Promise<AssetReportExport> {
   const bytes = format === 'pdf' ? await pdf(report, letterhead) : await excel(report);
   return {
-    filename: `jalicare-fixed-assets-${report.key}-${report.generatedAt.slice(0, 10)}.${format}`,
+    filename: `syrona-fixed-assets-${report.key}-${report.generatedAt.slice(0, 10)}.${format}`,
     contentType:
       format === 'pdf'
         ? 'application/pdf'

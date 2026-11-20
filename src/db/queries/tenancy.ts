@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Queries: Tenants, facilities, and departments
  *
  * Extracted from `../queries.ts`, which re-exports every function here so that

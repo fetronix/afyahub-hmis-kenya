@@ -23,7 +23,7 @@ process.env.SQL_HOST = process.env.SQL_HOST || '127.0.0.1';
 
 process.env.SQL_PORT = process.env.SQL_PORT || '5432';
 
-process.env.SQL_DB_NAME = process.env.SQL_DB_NAME || 'jalicare_test';
+process.env.SQL_DB_NAME = process.env.SQL_DB_NAME || 'syrona_test';
 
 process.env.SQL_ADMIN_USER = process.env.SQL_ADMIN_USER || 'postgres';
 

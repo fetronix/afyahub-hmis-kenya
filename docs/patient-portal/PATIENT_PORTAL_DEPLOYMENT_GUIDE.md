@@ -1,7 +1,7 @@
 # Patient Portal — Deployment Guide
 
 **Date:** 22 October 2026
-**Applies to:** JaliCare HMIS, patient digital health record portal (migration 0018)
+**Applies to:** Syrona Medical Center HMIS, patient digital health record portal (migration 0018)
 
 ---
 
@@ -57,19 +57,19 @@ Optional but recommended at the edge:
 # 0. Freeze: put the facility in read-only mode at the desk, or deploy out of hours.
 
 # 1. Back up and verify.
-pg_dump --format=custom --file=jalicare-pre-portal.dump "$DATABASE_URL"
-pg_restore --list jalicare-pre-portal.dump | head
+pg_dump --format=custom --file=syrona-pre-portal.dump "$DATABASE_URL"
+pg_restore --list syrona-pre-portal.dump | head
 
 # 2. Restore into a scratch database and rehearse there first.
-createdb jalicare_rehearsal
-pg_restore --dbname=jalicare_rehearsal jalicare-pre-portal.dump
-DATABASE_URL="postgresql://…/jalicare_rehearsal" npm run db:status
-DATABASE_URL="postgresql://…/jalicare_rehearsal" npm run db:migrate
-DATABASE_URL="postgresql://…/jalicare_rehearsal" npm run db:status:all
+createdb syrona_rehearsal
+pg_restore --dbname=syrona_rehearsal syrona-pre-portal.dump
+DATABASE_URL="postgresql://…/syrona_rehearsal" npm run db:status
+DATABASE_URL="postgresql://…/syrona_rehearsal" npm run db:migrate
+DATABASE_URL="postgresql://…/syrona_rehearsal" npm run db:status:all
 
 # 3. Seed the five portal permissions.
-DATABASE_URL="postgresql://…/jalicare_rehearsal" npm run db:bootstrap-admin   # first
-DATABASE_URL="postgresql://…/jalicare_rehearsal" npm run db:seed:permissions
+DATABASE_URL="postgresql://…/syrona_rehearsal" npm run db:bootstrap-admin   # first
+DATABASE_URL="postgresql://…/syrona_rehearsal" npm run db:seed:permissions
 
 # 4. Run the acceptance tests from PATIENT_PORTAL_TEST_RESULTS.md §5 against the rehearsal DB.
 
@@ -97,7 +97,7 @@ SELECT indexname FROM pg_indexes
  WHERE tablename LIKE 'patient_portal%';
 -- expect the unique indexes from PATIENT_PORTAL_DATABASE_CHANGES.md §2
 
-SELECT tgname FROM pg_trigger WHERE tgname = 'jalicare_audit_is_append_only';
+SELECT tgname FROM pg_trigger WHERE tgname = 'syrona_audit_is_append_only';
 -- expect the append-only trigger from 0017
 ```
 

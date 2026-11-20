@@ -1,6 +1,6 @@
 import { DataTable, PageHeader } from '../ui/layout.tsx';
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Patient portal management — facility administration
  *
  * This is the staff-side control room for the patient portal. It is

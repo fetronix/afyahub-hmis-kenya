@@ -222,9 +222,9 @@ the run red:
 | Coverage below per-module threshold (`tariff-codes` raised to 100) | 1                                                                      |
 | Broken client build                                                | 1                                                                      |
 | Broken server build                                                | 1                                                                      |
-| PostgreSQL unreachable with `JALICARE_REQUIRE_DB=1`                | 1 — fails, does not skip                                               |
+| PostgreSQL unreachable with `SYRONA_REQUIRE_DB=1`                | 1 — fails, does not skip                                               |
 
-The last one matters: without `JALICARE_REQUIRE_DB=1` a missing database
+The last one matters: without `SYRONA_REQUIRE_DB=1` a missing database
 makes the suite skip and the run green (verified: `5 skipped`, exit 0). With
 it, the same run fails. That is the difference between a gate and a
 formality.

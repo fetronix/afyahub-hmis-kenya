@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — financial ledger schema.
+ * Syrona Medical Center HMIS — financial ledger schema.
  * Definitions are re-exported by ../schema.ts for existing callers and drizzle-kit.
  */
 

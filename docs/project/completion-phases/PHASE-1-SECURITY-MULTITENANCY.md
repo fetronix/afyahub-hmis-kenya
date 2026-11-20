@@ -4,7 +4,7 @@
 
 ## Scope and findings
 
-The detailed source findings and evidence are in [the Phase 1A investigation](../../audits/JALICARE_PHASE_1A_SECURITY_INVESTIGATION.md); the crosswalk is in the [completion register](../JALICARE-COMPLETION-REGISTER.md). That investigation names portal authentication findings **PA-01–03**, release/sharing **PR-01–05**, clinical context **CX-01–03**, and staff/audit findings **AU-01–07**. There are no PA-04/PA-05 in that document; they have not been invented or silently renumbered.
+The detailed source findings and evidence are in [the Phase 1A investigation](../../audits/SYRONA_PHASE_1A_SECURITY_INVESTIGATION.md); the crosswalk is in the [completion register](../SYRONA-COMPLETION-REGISTER.md). That investigation names portal authentication findings **PA-01–03**, release/sharing **PR-01–05**, clinical context **CX-01–03**, and staff/audit findings **AU-01–07**. There are no PA-04/PA-05 in that document; they have not been invented or silently renumbered.
 
 Progress included in the testing checkpoint:
 

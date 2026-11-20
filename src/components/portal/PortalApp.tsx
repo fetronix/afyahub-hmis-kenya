@@ -1,6 +1,6 @@
 import { PortalDocuments } from './PortalDocuments.tsx';
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Patient digital health record portal
  *
  * A separate surface from the staff application: its own layout, its own
@@ -1207,7 +1207,10 @@ function PortalAccount({
        * in the catch below, so "downloaded" can never describe a failed call.
        */
       setLastRecordAt(new Date().toISOString());
-      setRecordNotice({ tone: 'ok', text: 'Your medical record PDF was downloaded to this device.' });
+      setRecordNotice({
+        tone: 'ok',
+        text: 'Your medical record PDF was downloaded to this device.',
+      });
     } catch (caught) {
       setRecordNotice({
         tone: 'danger',
@@ -1363,9 +1366,7 @@ function PortalAccount({
           ) : null}
 
           {recordNotice ? (
-            <Notice tone={recordNotice.tone === 'ok' ? 'ok' : 'danger'}>
-              {recordNotice.text}
-            </Notice>
+            <Notice tone={recordNotice.tone === 'ok' ? 'ok' : 'danger'}>{recordNotice.text}</Notice>
           ) : null}
 
           <p className="text-2xs text-slate-500">
@@ -1731,18 +1732,15 @@ function PortalFrame({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen w-full bg-canvas font-sans text-ink antialiased">
       <header className="border-b border-slate-200 bg-surface">
         <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-4 py-3">
-          <div className="flex items-center gap-2.5">
+          <div className="flex min-w-0 items-center gap-3">
             <img
-              src="/logo.jpg"
-              alt="JaliCare"
-              className="h-9 w-9 rounded-lg object-cover ring-1 ring-slate-200"
+              src="/assets/syrona-medical-center-logo-on-light.png"
+              alt="Syrona Medical Center"
+              className="h-9 w-auto shrink-0 select-none object-contain sm:h-10"
             />
-            <div>
-              <p className="text-xs font-semibold leading-tight text-ink">JaliCare</p>
-              <p className="text-2xs uppercase tracking-[0.16em] text-slate-500">
-                Patient health record
-              </p>
-            </div>
+            <p className="hidden text-2xs uppercase tracking-[0.16em] text-slate-500 sm:block">
+              Patient health record
+            </p>
           </div>
 
           <div className="h-1.5 w-10 rounded-full bg-ember-500" aria-hidden="true" />

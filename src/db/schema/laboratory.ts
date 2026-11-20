@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Schema: Laboratory catalogue, orders, results, and radiology orders
  *
  * Extracted from `../schema.ts`, which re-exports every table defined here so

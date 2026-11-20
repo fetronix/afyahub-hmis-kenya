@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — financial periods for the statements.
+ * Syrona Medical Center HMIS — financial periods for the statements.
  *
  * A facility's financial year begins in a month it chooses. July is common in
  * Kenya and is the default, but January, April and October exist too, so no

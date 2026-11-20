@@ -203,7 +203,7 @@ try {
   const api = async (method, path, body) => {
     const result = await page.evaluate(
       async (m, p, data) => {
-        const token = localStorage.getItem('jalicare_session_token');
+        const token = localStorage.getItem('syrona_session_token');
         const response = await fetch(p, {
           method: m,
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

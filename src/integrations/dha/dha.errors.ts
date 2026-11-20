@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * DHA / AfyaConnect — errors
  *
  * Errors are designed to be safe to persist and to show an administrator.

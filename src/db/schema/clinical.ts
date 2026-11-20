@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Schema: Encounters, appointments, queues, vitals, diagnoses, procedures
  *
  * Extracted from `../schema.ts`, which re-exports every table defined here so

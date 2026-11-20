@@ -14,8 +14,8 @@ const executablePath = process.env.CHROME_EXECUTABLE_PATH ?? '';
 if (
   process.env.BROWSER_SMOKE_SYNTHETIC !== 'YES' ||
   host !== '127.0.0.1' ||
-  !/^jalicare_p5_synthetic_test_[a-f0-9]{10}$/.test(database) ||
-  !process.env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER ||
+  !/^syrona_p5_synthetic_test_[a-f0-9]{10}$/.test(database) ||
+  !process.env.SYRONA_TEST_PG_SYSTEM_IDENTIFIER ||
   !process.env.BROWSER_SMOKE_PG_DATA_DIRECTORY ||
   !executablePath
 )
@@ -49,7 +49,7 @@ try {
     identity.name === database &&
       ['127.0.0.1/32', '127.0.0.1'].includes(identity.address) &&
       identity.directory === process.env.BROWSER_SMOKE_PG_DATA_DIRECTORY &&
-      identity.cluster === process.env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER &&
+      identity.cluster === process.env.SYRONA_TEST_PG_SYSTEM_IDENTIFIER &&
       identity.migrations === 74,
     'Synthetic database identity mismatch.',
   );
@@ -248,7 +248,7 @@ try {
     );
     check(!interceptionFailure, 'Synthetic transport interception failed.');
   }
-  const storageName = `jalicare:inventory:receipt:${manager.id}:${facility}`;
+  const storageName = `syrona:inventory:receipt:${manager.id}:${facility}`;
   const stock = async () =>
     (await pool.query('SELECT current_stock FROM inventory_items WHERE id=$1', [item])).rows[0]
       .current_stock;

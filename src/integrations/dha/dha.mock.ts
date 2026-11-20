@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * DHA / AfyaConnect — mock fixtures
  *
  * Deterministic responses for local development. Nothing in this file is

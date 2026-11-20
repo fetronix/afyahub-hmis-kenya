@@ -1,4 +1,4 @@
-# Contributing to JaliCare
+# Contributing to Syrona Medical Center
 
 This is a clinical system. A bug here can bill a patient the wrong amount,
 show one facility another facility's records, or lose a prescription. The
@@ -90,7 +90,7 @@ describeDb('invoices', () => {
 ```
 
 `describeDb` skips cleanly when no database is reachable and fails loudly when
-`JALICARE_REQUIRE_DB=1`, which is how CI is configured.
+`SYRONA_REQUIRE_DB=1`, which is how CI is configured.
 
 ### Component tests
 

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — synthetic fixed-asset fixture (development only).
+ * Syrona Medical Center HMIS — synthetic fixed-asset fixture (development only).
  *
  * Creates a clearly-labelled synthetic facility with the chart-of-accounts
  * slice, open financial period, asset category and one capitalised asset the
@@ -21,8 +21,8 @@ import * as schema from '../src/db/schema.ts';
 import { createAsset, createCategory } from '../src/assets/fixed-assets.service.ts';
 import { hashPassword } from '../src/utils/password.ts';
 
-const SLUG = 'jalicare-synthetic-assets';
-const TENANT_NAME = 'JaliCare Synthetic Fixed Asset Tenant';
+const SLUG = 'syrona-synthetic-assets';
+const TENANT_NAME = 'Syrona Medical Center Synthetic Fixed Asset Tenant';
 const FACILITY_CODE = 'SYNTH-FA-01';
 const USERNAME = 'synthetic.assets';
 const PASSWORD_ENV = 'SYNTH_ASSET_PASSWORD';

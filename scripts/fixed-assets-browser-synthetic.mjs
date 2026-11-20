@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — fixed-asset browser acceptance.
+ * Syrona Medical Center HMIS — fixed-asset browser acceptance.
  *
  * Signs in through the real login form as a synthetic asset officer, opens
  * Fixed Assets from the sidebar and walks the register, a capitalised asset's

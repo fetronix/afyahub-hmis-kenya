@@ -409,7 +409,7 @@ export async function inboxRequest(
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query("SELECT pg_advisory_xact_lock(hashtext('jalicare-notification-scan'), $1)", [
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('syrona-notification-scan'), $1)", [
       facility.id,
     ]);
     const timezone = await getTimezone(client, facility);

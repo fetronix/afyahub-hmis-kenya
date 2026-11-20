@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Migration status — read-only.
  *
  * Answers two questions before and after you run `npm run db:migrate`:

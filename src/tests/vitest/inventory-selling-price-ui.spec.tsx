@@ -195,7 +195,7 @@ describe('Facility inventory selling-price controls', () => {
     );
     expect(mocked.context.triggerRefresh).not.toHaveBeenCalled();
     const firstKey = mocked.api.receiveBatch.mock.calls[0][1].idempotencyKey as string;
-    const retained = window.localStorage.getItem('jalicare:inventory:receipt:7:10');
+    const retained = window.localStorage.getItem('syrona:inventory:receipt:7:10');
     expect(retained).toContain(firstKey);
     expect(retained).not.toContain('SYN-LOT');
     expect(retained).not.toContain('7.50');
@@ -210,7 +210,7 @@ describe('Facility inventory selling-price controls', () => {
     await waitFor(() => expect(mocked.api.receiveBatch).toHaveBeenCalledTimes(2));
     expect(mocked.api.receiveBatch.mock.calls[1][1].idempotencyKey).toBe(firstKey);
     await waitFor(() =>
-      expect(window.localStorage.getItem('jalicare:inventory:receipt:7:10')).toBeNull(),
+      expect(window.localStorage.getItem('syrona:inventory:receipt:7:10')).toBeNull(),
     );
     expect(mocked.context.showToast).toHaveBeenCalledWith(
       expect.stringContaining('Previous receipt retrieved:'),
@@ -261,7 +261,7 @@ describe('Facility inventory selling-price controls', () => {
 
   it('keeps a not-found retry until an audited cancellation fences delayed receipt requests', async () => {
     window.localStorage.setItem(
-      'jalicare:inventory:receipt:7:10',
+      'syrona:inventory:receipt:7:10',
       JSON.stringify({
         key: 'synthetic-pending-receipt',
         itemId: 55,
@@ -282,7 +282,7 @@ describe('Facility inventory selling-price controls', () => {
         { tone: 'warning' },
       ),
     );
-    expect(window.localStorage.getItem('jalicare:inventory:receipt:7:10')).not.toBeNull();
+    expect(window.localStorage.getItem('syrona:inventory:receipt:7:10')).not.toBeNull();
     await user.type(
       screen.getByLabelText('Reason to close an unrecorded retry'),
       'Synthetic review',
@@ -296,7 +296,7 @@ describe('Facility inventory selling-price controls', () => {
       }),
     );
     await waitFor(() =>
-      expect(window.localStorage.getItem('jalicare:inventory:receipt:7:10')).toBeNull(),
+      expect(window.localStorage.getItem('syrona:inventory:receipt:7:10')).toBeNull(),
     );
     expect(mocked.api.receiveBatch).not.toHaveBeenCalled();
     expect(mocked.context.showToast).toHaveBeenCalledWith(
@@ -306,7 +306,7 @@ describe('Facility inventory selling-price controls', () => {
 
   it('refuses a recorded receipt status that does not match the pending item', async () => {
     window.localStorage.setItem(
-      'jalicare:inventory:receipt:7:10',
+      'syrona:inventory:receipt:7:10',
       JSON.stringify({
         key: 'synthetic-pending-receipt',
         itemId: 55,
@@ -328,7 +328,7 @@ describe('Facility inventory selling-price controls', () => {
         { tone: 'warning' },
       ),
     );
-    expect(window.localStorage.getItem('jalicare:inventory:receipt:7:10')).not.toBeNull();
+    expect(window.localStorage.getItem('syrona:inventory:receipt:7:10')).not.toBeNull();
     expect(mocked.context.triggerRefresh).not.toHaveBeenCalled();
   });
 

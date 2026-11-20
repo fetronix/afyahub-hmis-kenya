@@ -5,7 +5,7 @@
 | Document | AUTHENTICATION_AND_AUTHORISATION |
 | Version | 1.0 |
 | Last reviewed | 2026-11-18 |
-| Applies to | JaliCare HMIS 0.1.0, commit `9d7274c` |
+| Applies to | Syrona Medical Center HMIS 0.1.0, commit `9d7274c` |
 | Audience | Engineers, security reviewers, administrators |
 | Status | Verified against `src/auth/`, `src/portal/`, `src/utils/password.ts` and the API inventory |
 
@@ -32,7 +32,7 @@ portal route fails for the same reason.
    for **15 minutes**; a successful login clears the counter.
 3. On success a session token is generated, only its SHA-256 hash is stored, and the plain token is
    returned to the client.
-4. The client stores the token under `jalicare_session_token` in `localStorage` (or in memory when
+4. The client stores the token under `syrona_session_token` in `localStorage` (or in memory when
    storage is unavailable) and sends it as a Bearer token.
 
 `login_attempts` records attempts for operational review. The `/api/auth` route family also has an

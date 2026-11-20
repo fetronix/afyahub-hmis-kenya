@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — private insurance schema.
+ * Syrona Medical Center HMIS — private insurance schema.
  * Definitions are re-exported by ../schema.ts for existing callers and drizzle-kit.
  */
 

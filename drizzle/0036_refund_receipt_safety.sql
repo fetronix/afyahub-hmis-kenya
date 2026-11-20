@@ -8,7 +8,7 @@ BEGIN
      OR to_regclass('billing_refunds_invoice_idx') IS NOT NULL
      OR to_regclass('billing_refunds_payment_idx') IS NOT NULL
      OR EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
-                WHERE n.nspname=current_schema() AND p.proname='jalicare_refund_guard') THEN
+                WHERE n.nspname=current_schema() AND p.proname='syrona_refund_guard') THEN
     RAISE EXCEPTION 'Refund workflow objects already exist without this journal entry; review their definitions';
   END IF;
 END $$;
@@ -48,7 +48,7 @@ CREATE INDEX IF NOT EXISTS "billing_refunds_invoice_idx" ON "billing_refunds" ("
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "billing_refunds_payment_idx" ON "billing_refunds" ("payment_id", "id");
 --> statement-breakpoint
-CREATE FUNCTION "jalicare_refund_guard"() RETURNS trigger AS $$
+CREATE FUNCTION "syrona_refund_guard"() RETURNS trigger AS $$
 DECLARE
   original_amount numeric(10,2);
   original_method text;
@@ -89,4 +89,4 @@ END;
 $$ LANGUAGE plpgsql;
 --> statement-breakpoint
 CREATE TRIGGER "billing_refunds_guard" BEFORE INSERT OR UPDATE OR DELETE ON "billing_refunds"
-  FOR EACH ROW EXECUTE FUNCTION "jalicare_refund_guard"();
+  FOR EACH ROW EXECUTE FUNCTION "syrona_refund_guard"();

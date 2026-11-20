@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Schema: Medications, wards, beds, admissions, transfers, nursing, theatre
  *
  * Extracted from `../schema.ts`, which re-exports every table defined here so

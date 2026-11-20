@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Patient record access log
  *
  * Kenya's Data Protection Act asks a data controller to know who

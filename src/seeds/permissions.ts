@@ -1,6 +1,6 @@
 import { isFacilityFinancialPermission } from '../auth/permission-boundaries.ts';
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Permission Seed
  *
  * Seeds the system-wide permission catalogue and grants the seeded
@@ -118,14 +118,14 @@ const PERMISSIONS = [
     code: 'platform.read',
     name: 'View Platform',
     module: 'platform',
-    description: 'View platform-wide JaliCare administration information.',
+    description: 'View platform-wide Syrona Medical Center administration information.',
   },
 
   {
     code: 'platform.manage',
     name: 'Manage Platform',
     module: 'platform',
-    description: 'Manage global JaliCare platform configuration.',
+    description: 'Manage global Syrona Medical Center platform configuration.',
   },
 
   {
@@ -1040,7 +1040,7 @@ const PERMISSIONS = [
     name: 'Prepare & Validate Private Insurance Claims',
     module: 'insurance',
     description:
-      'Assemble, review, correct, and validate private insurance claims from JaliCare invoices and clinical records.',
+      'Assemble, review, correct, and validate private insurance claims from Syrona Medical Center invoices and clinical records.',
   },
 
   {
@@ -1818,7 +1818,7 @@ const PERMISSIONS = [
 async function seedPermissions(): Promise<void> {
   console.log('');
   console.log('==============================================');
-  console.log('JaliCare HMIS - Permission Seeder');
+  console.log('Syrona Medical Center HMIS - Permission Seeder');
   console.log('==============================================');
 
   console.log(`Preparing ${PERMISSIONS.length} permissions...`);

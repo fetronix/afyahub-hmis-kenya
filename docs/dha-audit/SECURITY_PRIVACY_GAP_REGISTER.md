@@ -1,7 +1,7 @@
 # Security and Privacy Gap Register
 
 **Audit date:** 21 October 2026 · **Last revised:** 22 October 2026 (revision 4, patient portal round) · **Commit:** `9d504b3` base, `23a636d` working tree
-**Scope:** the Jalicare HMIS repository and its documented deployment.
+**Scope:** the Syrona Medical Center HMIS repository and its documented deployment.
 
 Each row separates three things that are often conflated:
 
@@ -19,7 +19,7 @@ A green tick in the product is not evidence for the third column.
 | Question | Answer |
 |---|---|
 | Is a registration recorded in the repository? | **No.** No certificate, number, entity name or ODPC reference exists in any file. |
-| Who is the responsible entity? | **Unknown from the code.** The product is "JaliCare"; the operating entity must be named by the organisation, not inferred from a repository. |
+| Who is the responsible entity? | **Unknown from the code.** The product is "Syrona Medical Center"; the operating entity must be named by the organisation, not inferred from a repository. |
 | Controller or processor? | Depends on the deployment: a facility running its own installation is the controller; a vendor hosting it on their behalf is a processor. Both may need registration for the roles they hold. |
 | What evidence is required? | ODPC registration certificate for the responsible entity, naming the role (controller / processor), plus the registration number and date. |
 | Status | **BLOCKED — external.** |
@@ -121,7 +121,7 @@ access control as unproven in the parts not yet read.
 | Write path | `logAuditEvent()` on sensitive writes (facility modules, staff status, roles, claims, DHA calls) |
 | Read path | `GET /api/audit-logs` requires `audit.read`, scoped |
 | Immutability (application) | No route updates or deletes audit rows |
-| Immutability (database) | **Trigger written, not applied.** Migration `0017` installs `jalicare_audit_is_append_only()` with row and statement triggers on UPDATE/DELETE, plus `REVOKE UPDATE, DELETE, TRUNCATE`. INSERT is accepted. The migration has not been executed. |
+| Immutability (database) | **Trigger written, not applied.** Migration `0017` installs `syrona_audit_is_append_only()` with row and statement triggers on UPDATE/DELETE, plus `REVOKE UPDATE, DELETE, TRUNCATE`. INSERT is accepted. The migration has not been executed. |
 | Record *views* | **Fixed.** `patient_record_access_logs` had exactly one writer — the patient-update route, labelled `EXPORT` / `FHIR` — and the FHIR endpoint wrote nothing. Reads now log `VIEW`, edits `UPDATE`, FHIR logs an `EXPORT` on the `FHIR` channel, each with a purpose from a fixed list, written before the response is sent. |
 | Portal audit coverage (2026-10-22) | Eight patient read paths log with `accessChannel = 'PATIENT_PORTAL'`; card lookup logs under the staff session; every portal administration action writes `audit_logs`; **reading the portal audit trail is itself audited** | `portal-records.service.ts`, `portal-admin.service.ts` |
 

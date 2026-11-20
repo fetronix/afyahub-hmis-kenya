@@ -102,7 +102,7 @@ describe('Express API routing for tenants, facilities, audit logs, and unmatched
         id: userId,
         uid: 'usr-test-001',
         username: 'platform.admin',
-        email: 'admin@jalicare.test',
+        email: 'admin@syrona.test',
         fullName: 'Platform Admin',
         tenantId: options.tenantId,
         facilityId: options.facilityId,
@@ -352,8 +352,8 @@ describe('Express API routing for tenants, facilities, audit logs, and unmatched
     const previousPublicUrl = process.env.PUBLIC_APP_URL;
 
     process.env.NODE_ENV = 'production';
-    process.env.CORS_ORIGINS = 'https://hmis.jalicare.co.ke';
-    process.env.PUBLIC_APP_URL = 'https://hmis.jalicare.co.ke';
+    process.env.CORS_ORIGINS = 'https://hmis.syrona.co.ke';
+    process.env.PUBLIC_APP_URL = 'https://hmis.syrona.co.ke';
 
     let prodServer: Server | null = null;
 
@@ -370,7 +370,7 @@ describe('Express API routing for tenants, facilities, audit logs, and unmatched
           id: 1,
           uid: 'usr-prod-1',
           username: 'superadmin',
-          email: 'admin@jalicare.co.ke',
+          email: 'admin@syrona.co.ke',
           fullName: 'Super Admin',
           tenantId: null,
           facilityId: null,

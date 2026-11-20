@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Typed Frontend Client for Private Insurance & Multi-Insurer Engine
+ * Syrona Medical Center HMIS — Typed Frontend Client for Private Insurance & Multi-Insurer Engine
  *
  * Uses relative `/api/insurance/...` paths and `getSessionToken()` from `./client.ts`.
  */
@@ -194,7 +194,7 @@ export interface PrivateBenefitValidationResult {
   payerCode: string;
   serviceDescription: string;
   serviceCategory: string;
-  jaliCareItemCode?: string | null;
+  syronaItemCode?: string | null;
   payerServiceCode: string | null;
   mappingStatus?: string;
   benefitPackage: string | null;

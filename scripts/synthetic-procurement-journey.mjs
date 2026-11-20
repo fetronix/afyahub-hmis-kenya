@@ -20,7 +20,7 @@ if (process.env.SYNTHETIC_JOURNEY_CONFIRM !== 'yes')
 if (process.env.NODE_ENV === 'production')
   throw new Error('The synthetic journey refuses production.');
 if (!/synth/i.test(database))
-  throw new Error('Refusing to run: SQL_DB_NAME must look synthetic (for example jalicare_synth).');
+  throw new Error('Refusing to run: SQL_DB_NAME must look synthetic (for example syrona_synth).');
 for (const key of ['SYNTH_PROCUREMENT_PASSWORD', 'SYNTH_PROCUREMENT_APPROVER_PASSWORD']) {
   if (!process.env[key]) throw new Error(`${key} is required (the value is never printed).`);
 }

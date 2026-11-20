@@ -12,8 +12,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const TEST_COMPOSE_FILE = 'docker-compose.test.yml';
-const TEST_DB = 'jalicare_synthetic_test';
-const TEST_USER = 'jalicare_test';
+const TEST_DB = 'syrona_synthetic_test';
+const TEST_USER = 'syrona_test';
 
 // Never pass application, payer, database, Node, npm or COMPOSE_* settings
 // through from the caller. Docker settings are used only by the Docker CLI.
@@ -194,7 +194,7 @@ export async function runDockerBootstrap({
   );
 
   // Every run gets a new project, password, encryption key and private HOME.
-  const project = `jalicare-test-${randomBytes(10).toString('hex')}`;
+  const project = `syrona-test-${randomBytes(10).toString('hex')}`;
   const label = `label=com.docker.compose.project=${project}`;
   for (const args of [
     ['ps', '--all', '--quiet', '--filter', label],
@@ -215,7 +215,7 @@ export async function runDockerBootstrap({
     }
   }
   const password = randomBytes(24).toString('hex');
-  const home = mkdtempSync(join(tmpdir(), 'jalicare-test-'));
+  const home = mkdtempSync(join(tmpdir(), 'syrona-test-'));
   const composeEnv = { ...dockerEnv, POSTGRES_PASSWORD: password };
   const testEnv = {
     ...system,
@@ -224,7 +224,7 @@ export async function runDockerBootstrap({
     npm_config_userconfig: join(home, 'user.npmrc'),
     npm_config_globalconfig: join(home, 'global.npmrc'),
     NODE_ENV: 'test',
-    JALICARE_REQUIRE_DB: '1',
+    SYRONA_REQUIRE_DB: '1',
     SQL_HOST: '127.0.0.1',
     SQL_DB_NAME: TEST_DB,
     SQL_ADMIN_USER: TEST_USER,
@@ -323,7 +323,7 @@ export async function runDockerBootstrap({
     if (!/^[0-9]{1,20}$/.test(clusterIdentifier)) {
       throw new Error('The isolated PostgreSQL cluster identity was not valid.');
     }
-    testEnv.JALICARE_TEST_PG_SYSTEM_IDENTIFIER = clusterIdentifier;
+    testEnv.SYRONA_TEST_PG_SYSTEM_IDENTIFIER = clusterIdentifier;
     await checked(npmCommand, ['run', 'db:migrate', '--', '--yes'], testEnv, 'Database migrations');
     await checked(npmCommand, ['test'], testEnv, 'npm test');
   } catch (error) {

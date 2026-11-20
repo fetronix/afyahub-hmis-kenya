@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Platform Administration Router Coordinator
+ * Syrona Medical Center HMIS — Platform Administration Router Coordinator
  *
  * Mounted at `/api/platform` behind authentication. Domain route modules live
  * under `src/routes/platform/`:

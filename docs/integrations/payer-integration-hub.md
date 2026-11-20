@@ -51,7 +51,7 @@ For each insurer and each facility obtain its signed provider agreement, written
 
 ## Testing
 
-`npm run typecheck`, `npm run lint`, `npm test`, `npm run build` and `npm run build:server` are the project checks. Database-backed tests require a **disposable** PostgreSQL test database and `JALICARE_REQUIRE_DB=1`; see `src/tests/vitest/payer-hub.db.spec.ts`, `private-insurance.db.spec.ts`, and `sha-eclaims.db.spec.ts`. Their payer responses and patients are synthetic; they are not sandbox tests. See root `reportfidelis.md` for the actual results recorded for this change.
+`npm run typecheck`, `npm run lint`, `npm test`, `npm run build` and `npm run build:server` are the project checks. Database-backed tests require a **disposable** PostgreSQL test database and `SYRONA_REQUIRE_DB=1`; see `src/tests/vitest/payer-hub.db.spec.ts`, `private-insurance.db.spec.ts`, and `sha-eclaims.db.spec.ts`. Their payer responses and patients are synthetic; they are not sandbox tests. See root `reportfidelis.md` for the actual results recorded for this change.
 
 ## Security follow-up
 

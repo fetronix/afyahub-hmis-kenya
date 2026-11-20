@@ -5,7 +5,7 @@
 | Document | FRONTEND_ARCHITECTURE |
 | Version | 1.0 |
 | Last reviewed | 2026-11-18 |
-| Applies to | JaliCare HMIS 0.1.0, commit `9d7274c` |
+| Applies to | Syrona Medical Center HMIS 0.1.0, commit `9d7274c` |
 | Audience | Frontend engineers |
 | Status | Verified against `src/App.tsx`, `src/context/HmisContext.tsx`, `src/components/Sidebar.tsx` and `src/api/clients/http.ts` |
 
@@ -59,7 +59,7 @@ does not hold. `requires` mappings such as `analytics: ['reports.read']` live in
 ## API access
 
 `src/api/clients/http.ts` holds the session token under the local-storage key
-`jalicare_session_token` (in-memory when storage is unavailable) and attaches it as
+`syrona_session_token` (in-memory when storage is unavailable) and attaches it as
 `Authorization: Bearer <token>`. Domain clients under `src/api/clients/` wrap `fetch` with typed
 request and response shapes.
 
@@ -73,7 +73,7 @@ request and response shapes.
 ## Portal
 
 `PatientPortalApp` is a separate component tree with its own token storage
-(`jalicare_portal_token`), its own expiry (`jalicare_portal_expiry`) and its own API client
+(`syrona_portal_token`), its own expiry (`syrona_portal_expiry`) and its own API client
 (`src/api/portal-client.ts`). It shares no session state with the staff shell, which mirrors the
 server-side separation of `sessions` and `patient_portal_sessions`.
 

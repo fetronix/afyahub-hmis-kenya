@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Queries: Wards, beds, admissions, transfers, nursing notes, theatre, bed-day accrual
  *
  * Extracted from `../queries.ts`, which re-exports every function here so that
@@ -391,7 +391,7 @@ export async function createAdmissionScoped(
             'Clinical read permission is required to link an existing encounter.',
             403,
           );
-        // Encounter timestamps are stored without a timezone. JaliCare writes
+        // Encounter timestamps are stored without a timezone. Syrona Medical Center writes
         // new timestamps as UTC; interpret them explicitly rather than using
         // the Node host timezone. Historical origin still requires review.
         const [encounter] = await tx

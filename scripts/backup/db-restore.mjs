@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * JaliCare HMIS — restore an archive into a target database.
+ * Syrona Medical Center HMIS — restore an archive into a target database.
  *
- *   node scripts/backup/db-restore.mjs --archive backups/x.jcbak --target jalicare_restore_20261027 --create
+ *   node scripts/backup/db-restore.mjs --archive backups/x.jcbak --target syrona_restore_20261027 --create
  *
  * SAFETY
  * ------

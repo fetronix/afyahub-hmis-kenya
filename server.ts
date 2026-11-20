@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Production entry point
  *
  * This file is bundled to `build/server.js` by `npm run build:deploy` and
@@ -71,7 +71,7 @@ async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
 
-  console.log(`Received ${signal}; shutting down JaliCare HMIS...`);
+  console.log(`Received ${signal}; shutting down Syrona Medical Center HMIS...`);
 
   /*
    * A shutdown that hangs is worse than one that is abrupt: cPanel will
@@ -112,7 +112,7 @@ async function shutdown(signal: string): Promise<void> {
     /* Idle clients keep the pool alive; end() would wait forever for them. */
     await pool.end();
 
-    console.log('JaliCare HMIS shutdown completed.');
+    console.log('Syrona Medical Center HMIS shutdown completed.');
   } catch (error) {
     console.error('Error during server shutdown:', error);
     process.exitCode = 1;
@@ -150,7 +150,7 @@ async function startServer(): Promise<void> {
   app = await createApp();
 
   httpServer = app.listen(port, HOST, () => {
-    console.log(`JaliCare HMIS listening on http://${HOST}:${port}`);
+    console.log(`Syrona Medical Center HMIS listening on http://${HOST}:${port}`);
   });
 
   /*

@@ -205,7 +205,7 @@ export const logger: Logger = pino({
   level,
   base: {
     /* The service name, so a shared log store can filter by it. */
-    service: 'jalicare-hmis',
+    service: 'syrona-hmis',
     env: process.env.NODE_ENV ?? 'development',
   },
   redact: {
@@ -304,7 +304,7 @@ export function patientRef(patientId: number | string): string {
     );
   }
 
-  const secret = key ?? 'jalicare-development-log-salt';
+  const secret = key ?? 'syrona-development-log-salt';
 
   return `hmac:${createHmac('sha256', secret).update(String(patientId)).digest('hex').slice(0, 16)}`;
 }

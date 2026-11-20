@@ -64,7 +64,7 @@ Then run real authorized sandbox tests for success, failure, cancellation, dupli
 
 ## Reproducing local synthetic checks
 
-Use only a pre-authorized, isolated synthetic PostgreSQL database whose name includes `synthetic` and `test`; inject connection settings securely, and do not reset an existing database. The full DB test suite uses `JALICARE_REQUIRE_DB=1 npx vitest run --maxWorkers=1`. After client and server builds, the guarded browser smoke is `BROWSER_SMOKE_SYNTHETIC=YES CHROME_EXECUTABLE_PATH=<local-chromium> node scripts/payment-settlement-browser-synthetic.mjs`; it also requires Puppeteer-compatible Chromium, OpenSSL, local browser libraries and the synthetic DB connection environment. The script creates additive synthetic fixtures, uses a short-lived self-signed local TLS proxy and never calls a provider. It is not suitable for production data or a real network verification.
+Use only a pre-authorized, isolated synthetic PostgreSQL database whose name includes `synthetic` and `test`; inject connection settings securely, and do not reset an existing database. The full DB test suite uses `SYRONA_REQUIRE_DB=1 npx vitest run --maxWorkers=1`. After client and server builds, the guarded browser smoke is `BROWSER_SMOKE_SYNTHETIC=YES CHROME_EXECUTABLE_PATH=<local-chromium> node scripts/payment-settlement-browser-synthetic.mjs`; it also requires Puppeteer-compatible Chromium, OpenSSL, local browser libraries and the synthetic DB connection environment. The script creates additive synthetic fixtures, uses a short-lived self-signed local TLS proxy and never calls a provider. It is not suitable for production data or a real network verification.
 
 ## Changed files and operational evidence
 
@@ -73,4 +73,4 @@ Use only a pre-authorized, isolated synthetic PostgreSQL database whose name inc
 - `src/accounting/payment-settlement-recovery.service.ts`, `src/routes/accounting.routes.ts`, `src/api/client-sprint.client.ts`, `src/components/modules/{PaymentSettlementWork,AccountingModule}.tsx` — scoped finance work and reviewed retry.
 - `src/billing/payments.service.ts` — sanitized duplicate-reference conflict handling.
 - `src/tests/integration/billing-posting.db.spec.ts`, `src/tests/vitest/{payment-hub.db,payment-lifecycle,payment-settlement-work-ui}.spec.*`, `scripts/payment-settlement-browser-synthetic.mjs` — local synthetic automated and browser evidence.
-- This report, the accounting runbook, and the historical-report cross-link document scope and limits. Local scratch logs are under `/home/user/jalicare-integration-20261106/`; they contain synthetic data only and are not provider evidence.
+- This report, the accounting runbook, and the historical-report cross-link document scope and limits. Local scratch logs are under `/home/user/syrona-integration-20261106/`; they contain synthetic data only and are not provider evidence.

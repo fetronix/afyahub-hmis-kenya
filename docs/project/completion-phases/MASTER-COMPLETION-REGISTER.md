@@ -456,7 +456,7 @@ compose file remain unverified configuration.
 The full suite initially failed two files; both were investigated. One was a real
 Batch 1 gap — `api-domain-clients.spec.ts` did not cover the new approval-policy
 client, so its collision guard had stopped measuring what it claims. Fixed. The
-other was an unset `JALICARE_TEST_PG_SYSTEM_IDENTIFIER` safety guard; satisfied,
+other was an unset `SYRONA_TEST_PG_SYSTEM_IDENTIFIER` safety guard; satisfied,
 not bypassed.
 
 ## Git checkpoint

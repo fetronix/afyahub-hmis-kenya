@@ -747,7 +747,7 @@ try {
         'Platform account was offered facility-financial navigation.',
       );
       const financeStatus = await platform.evaluate(async (facilityId) => {
-        const token = localStorage.getItem('jalicare_session_token');
+        const token = localStorage.getItem('syrona_session_token');
         const response = await fetch(`/api/invoices?facilityId=${facilityId}`, {
           headers: { Authorization: `Bearer ${token}` },
         });

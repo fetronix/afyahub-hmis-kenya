@@ -6,7 +6,7 @@ const queryPath = path.join(root, "src", "db", "queries.ts");
 const appPath = path.join(root, "src", "app.ts");
 
 if (!fs.existsSync(queryPath) || !fs.existsSync(appPath)) {
-  throw new Error("Run this script from the JaliCare project root.");
+  throw new Error("Run this script from the Syrona Medical Center project root.");
 }
 
 let queries = fs.readFileSync(queryPath, "utf8");

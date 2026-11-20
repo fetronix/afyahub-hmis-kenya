@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * DHA readiness — scoring
  *
  * The score is a convenience over the register, never a substitute for

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Database queries - the barrel
  *
  * The query functions live in `src/db/queries/<domain>.ts`, grouped by the

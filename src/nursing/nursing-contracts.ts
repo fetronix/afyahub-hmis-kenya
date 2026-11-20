@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Nursing contracts: vital-sign reference ranges and shift definitions.
  *
  * Deliberately free of database imports so the clinical flagging rules

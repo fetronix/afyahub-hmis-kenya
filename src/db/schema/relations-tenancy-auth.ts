@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — relations tenancy auth schema.
+ * Syrona Medical Center HMIS — relations tenancy auth schema.
  * Definitions are re-exported by ../schema.ts for existing callers and drizzle-kit.
  */
 

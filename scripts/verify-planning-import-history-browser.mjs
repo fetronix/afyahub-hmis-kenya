@@ -73,7 +73,7 @@ const read = async (endpoint) =>
           (endpoint.includes('?') ? '&' : '?') +
           'facilityId=' +
           facilityId,
-        { headers: { Authorization: 'Bearer ' + localStorage.getItem('jalicare_session_token') } },
+        { headers: { Authorization: 'Bearer ' + localStorage.getItem('syrona_session_token') } },
       );
       if (!r.ok) throw Error('Verification read failed ' + r.status);
       return r.json();

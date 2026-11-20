@@ -1,6 +1,6 @@
 # Outstanding-work register — Phases 1 to 4
 
-Preserved from the [completion register](../JALICARE-COMPLETION-REGISTER.md), which remains the
+Preserved from the [completion register](../SYRONA-COMPLETION-REGISTER.md), which remains the
 authoritative record. **No phase below is complete.** This document restates what each phase still
 owes so that Phase 6 work cannot be mistaken for a finished foundation.
 

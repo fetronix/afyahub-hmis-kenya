@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Schema: Professional credentials, DHA bookkeeping, and patient portal
  *
  * Extracted from `../schema.ts`, which re-exports every table defined here so

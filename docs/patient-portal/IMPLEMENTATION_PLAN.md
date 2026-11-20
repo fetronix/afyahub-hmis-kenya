@@ -27,8 +27,8 @@ its reason, in `PATIENT_PORTAL_IMPLEMENTATION.md` §8.
 | Audit | `audit_logs`, append-only since 0017 | Yes |
 | Notifications | **None configured** — no SMS or email provider anywhere in the repository | New provider interface that reports `NOT_CONFIGURED` |
 
-**Stack note:** the brief says "if Jalicare uses SQLite and Drizzle ORM, preserve that".
-It does not. Jalicare is **PostgreSQL** + Drizzle. That architecture is preserved; no
+**Stack note:** the brief says "if Syrona Medical Center uses SQLite and Drizzle ORM, preserve that".
+It does not. Syrona Medical Center is **PostgreSQL** + Drizzle. That architecture is preserved; no
 SQLite is introduced.
 
 ---

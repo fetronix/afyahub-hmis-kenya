@@ -156,7 +156,7 @@ export const users = pgTable(
     id: serial('id').primaryKey(),
 
     /*
-      Internal immutable JaliCare user identifier.
+      Internal immutable Syrona Medical Center user identifier.
 
       Example:
       usr_01HXYZ...

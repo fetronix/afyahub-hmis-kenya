@@ -1,4 +1,4 @@
-# JaliCare HMIS — Truehost cPanel deployment
+# Syrona Medical Center HMIS — Truehost cPanel deployment
 
 Practical guide for cPanel **Setup Node.js App** on Truehost.
 
@@ -12,7 +12,7 @@ Practical guide for cPanel **Setup Node.js App** on Truehost.
 | `<local-checkout>` | where you build the artifacts on your own machine |
 
 The installation this guide was written against ran
-`https://jalicare.co.ke` under cPanel with Node 24. Every path below is
+`https://syrona.co.ke` under cPanel with Node 24. Every path below is
 written as `<app-root>` so the guide applies to any account; substitute your
 own.
 
@@ -157,8 +157,8 @@ hosting limitation, not an application change.
 | ------------------------ | ----------------------------- |
 | Node.js version          | `24` (or the highest offered) |
 | Application mode         | `production`                  |
-| Application root         | `jalicare`                    |
-| Application URL          | `jalicare.co.ke`              |
+| Application root         | `syrona`                    |
+| Application URL          | `syrona.co.ke`              |
 | Application startup file | `build/server.js`             |
 
 The startup file is `build/server.js`, **not** `server.ts` and not
@@ -185,7 +185,7 @@ put them in a file that is committed.
 | `SQL_ADMIN_PASSWORD`          | the password you set in cPanel                                                                          |
 | `SQL_SSL`                     | `false` for a database on the same host                                                                 |
 | `SQL_SSL_REJECT_UNAUTHORIZED` | `true`                                                                                                  |
-| `APP_BASE_URL`                | `https://jalicare.co.ke`                                                                                |
+| `APP_BASE_URL`                | `https://syrona.co.ke`                                                                                |
 | `DEFAULT_TIMEZONE`            | `Africa/Nairobi` — applied at startup to `process.env.TZ`, so it governs every date the process formats |
 | `TZ`                          | `Africa/Nairobi` — the host-level equivalent; `DEFAULT_TIMEZONE` wins when both are set                 |
 | `TRUST_PROXY`                 | `true` — the app sits behind cPanel's proxy                                                             |
@@ -223,7 +223,7 @@ cPanel → Setup Node.js App → **Restart**.
 Then check **stderr/stdout logs** in the same panel. A healthy start prints:
 
 ```
-JaliCare HMIS listening on http://0.0.0.0:<port>
+Syrona Medical Center HMIS listening on http://0.0.0.0:<port>
 ```
 
 A wrong startup file, a missing dependency or a bad `.env` fails here and
@@ -237,9 +237,9 @@ is a new process against the same limit.
 Run these from any machine (they need no database access):
 
 ```bash
-curl -s -o /dev/null -w '%{http_code}\n' https://jalicare.co.ke/
-curl -s https://jalicare.co.ke/api/health
-curl -s -o /dev/null -w '%{http_code}\n' https://jalicare.co.ke/dashboard
+curl -s -o /dev/null -w '%{http_code}\n' https://syrona.co.ke/
+curl -s https://syrona.co.ke/api/health
+curl -s -o /dev/null -w '%{http_code}\n' https://syrona.co.ke/dashboard
 ```
 
 Expected:

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Schema: Maternity, labour, deliveries, postnatal care, and immunisation
  *
  * Extracted from `../schema.ts`, which re-exports every table defined here so

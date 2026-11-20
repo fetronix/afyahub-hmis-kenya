@@ -104,7 +104,7 @@ describe('Refund request and independent review UI', () => {
     await user.click(screen.getByRole('button', { name: 'Submit refund request' }));
     await waitFor(() => expect(mocked.api.createRefundRequest).toHaveBeenCalledTimes(1));
     const sent = mocked.api.createRefundRequest.mock.calls[0]![0];
-    const key = 'jalicare:refund-request:pending:7:10';
+    const key = 'syrona:refund-request:pending:7:10';
     const stored = window.localStorage.getItem(key)!;
     expect(JSON.parse(stored)).toEqual({ key: sent.idempotencyKey, invoiceId: 8, paymentId: 12 });
     expect(stored).not.toContain('20.00');

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Facility module provisioning
  *
  * Before this route existed the only way to change `enabled_modules`

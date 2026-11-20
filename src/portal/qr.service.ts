@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Digital patient card
  *
  * A QR code that helps a staff member find a patient they are already

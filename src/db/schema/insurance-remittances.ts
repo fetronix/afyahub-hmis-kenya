@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — insurance remittances schema.
+ * Syrona Medical Center HMIS — insurance remittances schema.
  * Definitions are re-exported by ../schema.ts for existing callers and drizzle-kit.
  */
 

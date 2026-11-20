@@ -181,7 +181,7 @@ try {
         const r = await fetch(`/api/patient-documents/patients/${p}${suffix}`, {
           method: meta ? 'POST' : 'GET',
           headers: {
-            Authorization: `Bearer ${localStorage.getItem('jalicare_session_token')}`,
+            Authorization: `Bearer ${localStorage.getItem('syrona_session_token')}`,
             ...(meta
               ? {
                   'Content-Type': 'application/pdf',

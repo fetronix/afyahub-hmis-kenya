@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * SHA / DHA HIE v1, AfyaConnect, AfyaLink & Kenya eClaims FHIR R4 v0.1.0 — Gateway Configuration
  *
  * OFFICIAL SPECIFICATION SOURCES (VERIFIED 2026)

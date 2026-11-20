@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Migration journal: one reading of drizzle/, shared by every script
  *
  * WHY THIS EXISTS

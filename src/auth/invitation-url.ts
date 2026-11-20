@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Invitation Base URL Resolution
  *
  * Resolves the public origin/base URL used when issuing or reissuing

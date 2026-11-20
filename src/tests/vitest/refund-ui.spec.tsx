@@ -31,7 +31,7 @@ vi.mock('../../context/HmisContext.tsx', () => ({ useHmis: () => mocked.context 
 vi.mock('../../api/client.ts', () => ({ api: mocked.api }));
 import { RefundsPanel } from '../../components/modules/RefundsPanel.tsx';
 
-const key = 'jalicare:refund:pending:7:10';
+const key = 'syrona:refund:pending:7:10';
 const result = {
   refund: {
     id: 99,

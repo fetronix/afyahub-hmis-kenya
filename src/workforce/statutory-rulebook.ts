@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Published statutory rule catalogue.
  *
  * This module holds *reference data*, not calculation logic. It is the set of

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Maternity / MCH Service Facade
+ * Syrona Medical Center HMIS — Maternity / MCH Service Facade
  *
  * Domain workflows live under `src/maternity/services/`:
  *   - `shared.ts` — domain error, scope guards, input/date helpers

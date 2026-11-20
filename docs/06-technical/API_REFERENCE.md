@@ -25,7 +25,7 @@ One process serves both the JSON API and the single-page application. `POST /api
 returns a session token. Clients send it as `Authorization: Bearer <token>` on every request;
 the server stores only the SHA-256 hash of the token in `sessions`, and the session expires eight
 hours after issue. The browser SPA keeps the token in `localStorage` under
-`jalicare_session_token`. The patient portal uses a separate token, a separate table
+`syrona_session_token`. The patient portal uses a separate token, a separate table
 (`patient_portal_sessions`) and a separate middleware (`requirePortalAuth`), so a portal token
 cannot call staff endpoints and vice versa.
 

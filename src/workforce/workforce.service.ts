@@ -6,7 +6,7 @@ import {
   type PayrollReadinessPeriod,
 } from './payroll-readiness.ts';
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Workforce service — HR records, attendance, leave and payroll.
  *
  * SCOPE AND SAFETY RULES

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Tariff words — the vocabulary a price list is written in
  *
  * No imports, no database, no policy. Just the question "do these two

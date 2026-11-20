@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — financial statement data loading.
+ * Syrona Medical Center HMIS — financial statement data loading.
  *
  * One pass over the posted ledger for the reporting window, the comparative
  * window and the opening position, plus the schedules a statement needs to be

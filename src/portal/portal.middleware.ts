@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Patient portal middleware
  *
  * One job: turn a bearer token into `req.portalSession`, or refuse.

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Patient portal — policy
  *
  * Every rule in this file is pure: no database, no clock it cannot be

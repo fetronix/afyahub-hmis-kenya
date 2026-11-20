@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Schema: workforce — employees, attendance, leave, rosters and payroll.
  *
  * Every table is facility-scoped. `tenant_id` is carried alongside

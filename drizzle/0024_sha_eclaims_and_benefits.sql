@@ -10,7 +10,7 @@
 --   1. Never stores OAuth client secrets, tokens or raw credentials.
 --   2. Masks patient identity hints in verification history; full
 --      identifiers stay sealed on `patients`.
---   3. Preserves original JaliCare `billing_invoices`, `billing_items`,
+--   3. Preserves original Syrona Medical Center `billing_invoices`, `billing_items`,
 --      `facility_service_tariffs` and clinical records untouched.
 --   4. Stores monetary figures as `numeric(12, 2)`.
 --   5. Records `source` and `is_simulated` on every external decision

@@ -15,7 +15,7 @@ import {
 import { relations } from 'drizzle-orm';
 
 /* ============================================================
-   JALICARE HMIS
+   SYRONA MEDICAL CENTER HMIS
    Database Schema
    Multi-Tenant Healthcare Management Platform
    ============================================================
@@ -474,7 +474,7 @@ export const users = pgTable(
     id: serial('id').primaryKey(),
 
     /*
-      Internal immutable JaliCare user identifier.
+      Internal immutable Syrona Medical Center user identifier.
 
       Example:
       usr_01HXYZ...
@@ -1363,7 +1363,7 @@ export const patientFacilities = pgTable(
    19. PATIENT ACCOUNTS
    ============================================================
 
-   Connects a patient clinical identity to a JaliCare user.
+   Connects a patient clinical identity to a Syrona Medical Center user.
 
    Authentication credentials remain in users.
 
@@ -3846,7 +3846,7 @@ export const auditLogs = pgTable(
     facilityId: integer('facility_id'),
 
     /*
-      JaliCare UID rather than Firebase UID.
+      Syrona Medical Center UID rather than Firebase UID.
     */
 
     userId: text('user_id'),
@@ -5170,6 +5170,6 @@ export const publicHealthReportsRelations =
 
 
 /* ============================================================
-   END OF JALICARE SCHEMA
+   END OF SYRONA SCHEMA
    ============================================================ */
 

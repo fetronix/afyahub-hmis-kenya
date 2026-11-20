@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Private Insurance Remittance Import, Reconciliation & Dashboard KPIs
+ * Syrona Medical Center HMIS — Private Insurance Remittance Import, Reconciliation & Dashboard KPIs
  *
  * Imports insurer remittance advices (Britam, PACIS, etc.) and reconciles
  * remitted amounts against `private_insurance_claims` and `billing_invoices`
@@ -378,7 +378,7 @@ export async function reconcilePrivateRemittance(params: {
       if (!invoice) {
         throw new PrivateInsuranceError(
           'INVOICE_NOT_FOUND',
-          'Linked JaliCare invoice not found.',
+          'Linked Syrona Medical Center invoice not found.',
           404,
         );
       }

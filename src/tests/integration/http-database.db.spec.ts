@@ -88,7 +88,7 @@ describeDb('End-to-End HTTP + PostgreSQL Integration (Auth, Platform, Tenancy & 
         tenantId: null,
         facilityId: null,
         username: superUsername,
-        email: `${superUsername}@e2e.jalicare.local`,
+        email: `${superUsername}@e2e.syrona.local`,
         fullName: 'E2E Super Admin',
         passwordHash: await hashPassword(password),
         accountStatus: 'ACTIVE',
@@ -196,7 +196,7 @@ describeDb('End-to-End HTTP + PostgreSQL Integration (Auth, Platform, Tenancy & 
       body: {
         name: `E2E County Network ${suffix}`,
         slug: `e2e-network-${suffix}`,
-        contactEmail: `ops-${suffix}@e2e.jalicare.local`,
+        contactEmail: `ops-${suffix}@e2e.syrona.local`,
       },
     });
     expect(tenantRes.status).toBe(201);
@@ -266,7 +266,7 @@ describeDb('End-to-End HTTP + PostgreSQL Integration (Auth, Platform, Tenancy & 
         tenantId,
         facilityId: facilityAId,
         username: facilityUsername,
-        email: `${facilityUsername}@e2e.jalicare.local`,
+        email: `${facilityUsername}@e2e.syrona.local`,
         fullName: 'E2E Facility A Admin',
         passwordHash: await hashPassword(password),
         accountStatus: 'ACTIVE',

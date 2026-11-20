@@ -58,7 +58,7 @@ test, no browser automation.**
   invalidation and is incremented on forced reset; the current check is `status = 'ACTIVE'` plus
   `expires_at` plus `revoked_at`.
 - The patient token key in `localStorage` is different from the staff key
-  (`jalicare_portal_token` vs `jalicare_session_token`), and the staff client and the portal client
+  (`syrona_portal_token` vs `syrona_session_token`), and the staff client and the portal client
   are separate modules with separate `fetch` wrappers.
 
 ### Known session limitation
@@ -138,7 +138,7 @@ reactivated, revoked, password reset forced, settings changed, card issued, card
 grant redeemed, and **portal audit trail read**.
 
 Immutability is not re-implemented here. Migration 0017 installed
-`jalicare_audit_is_append_only()` with row and statement triggers and `REVOKE UPDATE, DELETE,
+`syrona_audit_is_append_only()` with row and statement triggers and `REVOKE UPDATE, DELETE,
 TRUNCATE`. The portal adds no bypass. (0017 itself has still not been applied — see the deployment
 guide.)
 

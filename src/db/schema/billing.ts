@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Schema: Service tariffs, invoices, items, payments, and insurance claims
  *
  * Extracted from `../schema.ts`, which re-exports every table defined here so

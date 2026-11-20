@@ -11,7 +11,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const host = process.env.SQL_HOST ?? '';
 const database = process.env.SQL_DB_NAME ?? '';
 const executablePath = process.env.CHROME_EXECUTABLE_PATH ?? '';
-const expectedCluster = process.env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER ?? '';
+const expectedCluster = process.env.SYRONA_TEST_PG_SYSTEM_IDENTIFIER ?? '';
 const expectedDataDirectory = process.env.BROWSER_SMOKE_PG_DATA_DIRECTORY ?? '';
 const fixturesOnly = process.env.REPORT_FIXTURES_ONLY === 'YES';
 if (

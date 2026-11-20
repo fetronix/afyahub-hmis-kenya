@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Insurer Configuration & Capability Service
+ * Syrona Medical Center HMIS — Insurer Configuration & Capability Service
  *
  * Manages Britam, PACIS, SmartLink-routed payers, and additional private
  * insurers per facility. Never invents endpoints or exposes secrets.

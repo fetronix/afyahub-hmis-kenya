@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — stock control.
+ * Syrona Medical Center HMIS — stock control.
  *
  * Three operations change stock on hand outside receiving and dispensing:
  *

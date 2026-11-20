@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * DHA / AfyaConnect — eligibility and coverage service
  *
  * Implements exactly what the published documentation describes:

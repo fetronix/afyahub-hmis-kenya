@@ -230,7 +230,7 @@ export const authClient = {
       });
     } catch {
       throw new ApiError(
-        'Unable to reach the JaliCare HMIS server. Check your connection or try again shortly.',
+        'Unable to reach the Syrona Medical Center HMIS server. Check your connection or try again shortly.',
         503,
         'SERVICE_UNAVAILABLE',
       );
@@ -243,7 +243,7 @@ export const authClient = {
     if (isHtmlPayload(contentType, rawBody)) {
       if (response.status === 502 || response.status === 503 || response.status === 504) {
         throw new ApiError(
-          'The JaliCare HMIS service is temporarily unavailable. Please try again shortly.',
+          'The Syrona Medical Center HMIS service is temporarily unavailable. Please try again shortly.',
           response.status,
           'SERVICE_UNAVAILABLE',
         );

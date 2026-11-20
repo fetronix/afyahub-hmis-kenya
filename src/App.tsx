@@ -64,14 +64,14 @@ const AppContent: React.FC = () => {
   useBudgetingEntry(isAuthenticated, activeModule, setActiveModule);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
-      return window.localStorage.getItem('jalicare.sidebar.collapsed') === '1';
+      return window.localStorage.getItem('syrona.sidebar.collapsed') === '1';
     } catch {
       return false;
     }
   });
   useEffect(() => {
     try {
-      window.localStorage.setItem('jalicare.sidebar.collapsed', sidebarCollapsed ? '1' : '0');
+      window.localStorage.setItem('syrona.sidebar.collapsed', sidebarCollapsed ? '1' : '0');
     } catch {
       /* A blocked storage preference must not prevent navigation. */
     }
@@ -99,7 +99,13 @@ const AppContent: React.FC = () => {
           </div>
 
           <div className="text-center">
-            <h1 className="font-display text-xl text-ink">JaliCare HMIS</h1>
+            <img
+              src="/assets/syrona-medical-center-logo-plaque.png"
+              alt="Syrona Medical Center"
+              className="mx-auto mb-3 h-12 w-auto select-none rounded-lg object-contain"
+            />
+
+            <h1 className="font-display text-xl text-ink">Syrona Medical Center HMIS</h1>
 
             <p className="text-sm text-slate-500 mt-1">Verifying your secure session...</p>
           </div>

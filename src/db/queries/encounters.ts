@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Queries: Clinical encounters and the references they validate
  *
  * Extracted from `../queries.ts`, which re-exports every function here so that

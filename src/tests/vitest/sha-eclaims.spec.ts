@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * SHA eClaims, DHA HIE v1 & Kenya eClaims FHIR R4 IG v0.1.0 — Unit & Contract Suite
  *
  * Exercises (strictly mocked / synthetic — distinguished from live sandbox tests):

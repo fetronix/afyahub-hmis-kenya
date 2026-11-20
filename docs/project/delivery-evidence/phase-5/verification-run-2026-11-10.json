@@ -7,7 +7,7 @@
     "engine": "PostgreSQL 18.6 (embedded, npm-bundled binaries)",
     "host": "127.0.0.1",
     "port": 55432,
-    "name": "jalicare_synthetic_test",
+    "name": "syrona_synthetic_test",
     "class": "synthetic, disposable",
     "migrationsApplied": 78,
     "migrationStatus": "READY - every migration is applied and 0009 is intact",

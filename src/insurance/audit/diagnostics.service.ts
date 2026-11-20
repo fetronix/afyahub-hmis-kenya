@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Private Insurance Audit & Integration Diagnostics
+ * Syrona Medical Center HMIS — Private Insurance Audit & Integration Diagnostics
  *
  * Writes append-only audit trail entries (`audit_logs`) and integration
  * diagnostic rows (`insurance_integration_diagnostics`) with strict

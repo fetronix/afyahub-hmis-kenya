@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Backfill inpatient permissions for existing tenant staff roles.
  *
  * WHY THIS EXISTS

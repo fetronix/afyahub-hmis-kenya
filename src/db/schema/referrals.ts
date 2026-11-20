@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Schema: Referrals, referral documents, and health-record exchange
  *
  * Extracted from `../schema.ts`, which re-exports every table defined here so

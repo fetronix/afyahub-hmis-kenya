@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Matching source text without matching its layout
  *
  * WHY THIS EXISTS

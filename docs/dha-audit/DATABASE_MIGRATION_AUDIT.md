@@ -150,7 +150,7 @@ before each `CREATE TRIGGER`), so a second run is a no-op rather than an error.
 
 | Change | Effect |
 |---|---|
-| `jalicare_audit_is_append_only()` + row trigger + statement trigger on `audit_logs` | `UPDATE`, `DELETE` and `TRUNCATE` raise; `INSERT` is untouched |
+| `syrona_audit_is_append_only()` + row trigger + statement trigger on `audit_logs` | `UPDATE`, `DELETE` and `TRUNCATE` raise; `INSERT` is untouched |
 | `REVOKE UPDATE, DELETE, TRUNCATE ON audit_logs` | Removes the privilege even if a future trigger is dropped |
 | `patient_allergies` | Tenant, facility and patient foreign keys; `allergen_type`, `allergen`, `reaction`, `severity`, `status`, `recorded_by_user_id`, `resolved_at` |
 | `patients.national_id_bidx`, `patients.sha_number_bidx` | Nullable text columns for the HMAC blind index |
@@ -216,8 +216,8 @@ this audit. It is granted by re-running `db:seed:permissions`, which is idempote
 Commands (execute these yourself; this audit ran none of them):
 
 ```bash
-pg_dump --format=custom --file=jalicare-$(date +%F).dump "$DATABASE_URL"
-pg_restore --list jalicare-$(date +%F).dump | head   # proves the file is readable
+pg_dump --format=custom --file=syrona-$(date +%F).dump "$DATABASE_URL"
+pg_restore --list syrona-$(date +%F).dump | head   # proves the file is readable
 
 npm run db:status          # what is pending, per the journal
 npm run db:migrate         # the project runner

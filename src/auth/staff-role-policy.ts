@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Which roles a facility may hand out — the rule, without a database
  *
  * Kept apart from staff-roles.service so the rule can be exercised by

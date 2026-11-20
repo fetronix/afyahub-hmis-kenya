@@ -390,7 +390,7 @@ try {
   await cdp.send('Fetch.disable');
   cdp.off('Fetch.requestPaused', dropResponse);
   const local = await page.evaluate(() => {
-    const key = Object.keys(localStorage).find((k) => k.startsWith('jalicare:pharmacy:pending:'));
+    const key = Object.keys(localStorage).find((k) => k.startsWith('syrona:pharmacy:pending:'));
     if (!key) return null;
     const p = JSON.parse(localStorage.getItem(key));
     return { fields: Object.keys(p).sort(), prescriptionId: p.prescriptionId };
@@ -437,7 +437,7 @@ try {
   check(after === 1, 'Duplicate dispense recorded during recovery');
   check(
     await page.evaluate(
-      () => !Object.keys(localStorage).some((k) => k.startsWith('jalicare:pharmacy:pending:')),
+      () => !Object.keys(localStorage).some((k) => k.startsWith('syrona:pharmacy:pending:')),
     ),
     'Pending identity was not cleared after recorded result',
   );
@@ -595,7 +595,7 @@ try {
   await cdp.send('Fetch.disable');
   cdp.off('Fetch.requestPaused', dropRefund);
   const refundPending = await page.evaluate(() => {
-    const k = Object.keys(localStorage).find((x) => x.startsWith('jalicare:refund:pending:'));
+    const k = Object.keys(localStorage).find((x) => x.startsWith('syrona:refund:pending:'));
     if (!k) return null;
     const p = JSON.parse(localStorage.getItem(k));
     return { fields: Object.keys(p).sort(), invoiceId: p.invoiceId, paymentId: p.paymentId };
@@ -783,7 +783,7 @@ try {
   await cdp.send('Fetch.disable');
   cdp.off('Fetch.requestPaused', dropPayment);
   const pending = await page.evaluate(() => {
-    const key = Object.keys(localStorage).find((x) => x.startsWith('jalicare:payment:pending:'));
+    const key = Object.keys(localStorage).find((x) => x.startsWith('syrona:payment:pending:'));
     if (!key) return null;
     const value = JSON.parse(localStorage.getItem(key));
     return { fields: Object.keys(value).sort(), invoiceId: value.invoiceId };
@@ -950,7 +950,7 @@ try {
   cdp.off('Fetch.requestPaused', dropLedger);
   const ledgerPending = await page.evaluate(() => {
     const key = Object.keys(localStorage).find((x) =>
-      x.startsWith('jalicare:billing-journal:pending:'),
+      x.startsWith('syrona:billing-journal:pending:'),
     );
     if (!key) return null;
     const value = JSON.parse(localStorage.getItem(key));
@@ -1073,7 +1073,7 @@ try {
       await page
         ?.evaluate(() =>
           Object.keys(localStorage)
-            .filter((k) => k.startsWith('jalicare:refund:pending:'))
+            .filter((k) => k.startsWith('syrona:refund:pending:'))
             .map((k) => Object.keys(JSON.parse(localStorage.getItem(k))).sort()),
         )
         .catch(() => []),

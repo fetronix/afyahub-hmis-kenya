@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Nursing & Bedside Care service
  *
  * Handles ward vitals, nursing notes, shift handover and the inpatient

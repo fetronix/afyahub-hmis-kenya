@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Private Insurance Multi-Payer Module (Britam & PACIS First)
+ * Syrona Medical Center HMIS — Private Insurance Multi-Payer Module (Britam & PACIS First)
  * Unit, Adapter, Financial, Validation, Security & SmartLink Fixture Suite
  */
 

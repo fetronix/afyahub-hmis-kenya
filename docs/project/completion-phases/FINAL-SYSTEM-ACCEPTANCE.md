@@ -30,7 +30,7 @@
 | Batch 9 baseline | integration boundary suites, pre-change   | **110 passed (110)**                            |
 
 The full suite is green **with** the synthetic-cluster attestation supplied
-(`JALICARE_TEST_PG_SYSTEM_IDENTIFIER`). It was not "made green" by skipping or
+(`SYRONA_TEST_PG_SYSTEM_IDENTIFIER`). It was not "made green" by skipping or
 weakening: the two initial failures were a genuine missing client-coverage entry
 (fixed) and an unset safety guard (satisfied, not bypassed).
 

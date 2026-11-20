@@ -39,7 +39,7 @@ export type ValidatedRequest<TBody = unknown, TQuery = unknown, TParams = unknow
 
 /**
  * Scrub any accidental stack frames, file paths, SQL fragments, or bearer
- * tokens from a validation message. Messages in JaliCare schemas never echo
+ * tokens from a validation message. Messages in Syrona Medical Center schemas never echo
  * raw user input.
  */
 function safeIssueMessage(raw: string, fallback: string): string {

@@ -194,7 +194,7 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
 
   const handleResolveClientRegistry = async () => {
     if (!selectedPatientId) {
-      showToast('Select an existing JaliCare patient first.', 'warning');
+      showToast('Select an existing Syrona Medical Center patient first.', 'warning');
       return;
     }
     setResolvingCr(true);
@@ -226,7 +226,7 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
 
   const handleLookupHieUtilization = async () => {
     if (!selectedPatientId) {
-      showToast('Select an existing JaliCare patient first.', 'warning');
+      showToast('Select an existing Syrona Medical Center patient first.', 'warning');
       return;
     }
     setLoadingHieLookup(true);
@@ -254,7 +254,7 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
   const handleRunEligibilityCheck = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPatientId) {
-      showToast('Select an existing JaliCare patient first.', 'warning');
+      showToast('Select an existing Syrona Medical Center patient first.', 'warning');
       return;
     }
     setCheckingElig(true);
@@ -303,7 +303,7 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
   const handleValidateBenefit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPatientId) {
-      showToast('Select an existing JaliCare patient first.', 'warning');
+      showToast('Select an existing Syrona Medical Center patient first.', 'warning');
       return;
     }
     setValidatingBenefit(true);
@@ -374,11 +374,11 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
         </button>
       </div>
 
-      {/* Shared JaliCare Patient & Encounter Context Bar (prevents duplicate registration) */}
+      {/* Shared Syrona Medical Center Patient & Encounter Context Bar (prevents duplicate registration) */}
       <div className="panel p-4 bg-white">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
-            <label className="field-label">Search Existing JaliCare Patient</label>
+            <label className="field-label">Search Existing Syrona Medical Center Patient</label>
             <div className="relative">
               <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
               <input
@@ -400,7 +400,7 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
               }}
               className="field-input"
             >
-              <option value="">— Select registered JaliCare patient —</option>
+              <option value="">— Select registered Syrona Medical Center patient —</option>
               {filteredPatients.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.firstName} {p.lastName} ({p.mrn})
@@ -854,13 +854,13 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
                   Validate SHA Benefit & Tariff Coverage
                 </h3>
                 <p className="text-xs text-slate-600 mt-0.5">
-                  Validates a specific JaliCare service against approved effective-dated SHA rules,
+                  Validates a specific Syrona Medical Center service against approved effective-dated SHA rules,
                   facility KEPH level, referral notes, and preauthorization requirements.
                 </p>
               </div>
 
               <div>
-                <label className="field-label">JaliCare Facility Service Tariff</label>
+                <label className="field-label">Syrona Medical Center Facility Service Tariff</label>
                 <select
                   value={selectedTariffId}
                   onChange={(e) => {
@@ -1000,7 +1000,7 @@ export const EligibilityAndBenefitsWorkspace: React.FC<Props> = ({
 
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
                       <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                        <div className="text-slate-500">JaliCare Facility Tariff</div>
+                        <div className="text-slate-500">Syrona Medical Center Facility Tariff</div>
                         <div className="font-semibold text-navy-900 mt-0.5">
                           {formatMoneyOrDash(benefitResult.facilityTariffAmount)}
                         </div>

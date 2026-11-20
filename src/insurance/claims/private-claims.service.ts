@@ -6,12 +6,12 @@ import {
   markClaimDispatchUncertain,
 } from './claim-dispatch-guard.ts';
 /**
- * JaliCare HMIS — Private Insurance Claim Generation, Validation, Submission & Lifecycle
+ * Syrona Medical Center HMIS — Private Insurance Claim Generation, Validation, Submission & Lifecycle
  *
  * Generates multi-insurer claims (Britam, PACIS, etc.) directly from existing
- * JaliCare invoices, invoice lines, encounters, diagnoses, lab/pharmacy/procedure
+ * Syrona Medical Center invoices, invoice lines, encounters, diagnoses, lab/pharmacy/procedure
  * records, member policies, and preauthorizations WITHOUT altering original
- * JaliCare invoices or marking them paid.
+ * Syrona Medical Center invoices or marking them paid.
  */
 
 import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
@@ -108,7 +108,7 @@ export function evaluatePrivateClaimValidation(
       code: 'DUPLICATE_ACTIVE_CLAIM',
       severity: 'ERROR',
       field: 'invoiceId',
-      message: `An active ${ctx.payerCode} claim already exists for this JaliCare invoice.`,
+      message: `An active ${ctx.payerCode} claim already exists for this Syrona Medical Center invoice.`,
     });
   }
 
@@ -278,7 +278,7 @@ export function evaluatePrivateClaimValidation(
         code: 'UNMAPPED_SERVICE_LINE',
         severity: 'ERROR',
         field: `lines[${line.lineNumber}]`,
-        message: `Line #${line.lineNumber} ("${line.itemDescription}") has mapping status ${line.mappingStatus} for ${ctx.payerCode}. Map the JaliCare service code before submitting.`,
+        message: `Line #${line.lineNumber} ("${line.itemDescription}") has mapping status ${line.mappingStatus} for ${ctx.payerCode}. Map the Syrona Medical Center service code before submitting.`,
       });
     }
 
@@ -580,7 +580,7 @@ export async function preparePrivateInsuranceClaim(params: {
   if (!Number.isInteger(invoiceId) || invoiceId <= 0) {
     throw new PrivateInsuranceError(
       'INVALID_INVOICE_ID',
-      'Valid JaliCare invoiceId is required.',
+      'Valid Syrona Medical Center invoiceId is required.',
       400,
     );
   }
@@ -607,7 +607,7 @@ export async function preparePrivateInsuranceClaim(params: {
   if (!invoice) {
     throw new PrivateInsuranceError(
       'INVOICE_NOT_FOUND',
-      'JaliCare invoice not found in facility.',
+      'Syrona Medical Center invoice not found in facility.',
       404,
     );
   }
@@ -1185,7 +1185,7 @@ export async function preparePrivateInsuranceClaim(params: {
       toStatus: 'DRAFT',
       source: 'CLAIM_PREPARATION',
       actorUserId: params.actorUserId,
-      reason: `Prepared from JaliCare invoice ${invoice.invoiceNumber} without modifying original invoice.`,
+      reason: `Prepared from Syrona Medical Center invoice ${invoice.invoiceNumber} without modifying original invoice.`,
       metadata: { invoiceId: invoice.id, payerCode: payerRow.payerCode },
     });
 

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Queries: MOH public-health reports and the audit trail
  *
  * Extracted from `../queries.ts`, which re-exports every function here so that

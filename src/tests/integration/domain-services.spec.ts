@@ -695,7 +695,7 @@ describe('Domain Services: Extracted Maternity & Staff-Roles Modules + Portal Cl
     await portalClient.portalApi.sharing();
     await portalClient.portalApi.accessHistory();
 
-    store.set('jalicare_session_token', 'staff_admin_tok');
+    store.set('syrona_session_token', 'staff_admin_tok');
     await portalClient.portalAdminApi.overview();
     await portalClient.portalAdminApi.accounts({ search: 'Amina', status: 'ACTIVE', limit: 20 });
     await portalClient.portalAdminApi.audit({ limit: 10, offset: 0 });

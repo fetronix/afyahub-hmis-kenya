@@ -1,4 +1,4 @@
-# JaliCare readiness baseline and Priority 1 work register
+# Syrona Medical Center readiness baseline and Priority 1 work register
 
 > **Historical snapshot:** Subsequent implementation and current verification are recorded in [Implementation progress and remaining release gates](./IMPLEMENTATION_PROGRESS_2026-10-30.md). Where they differ, use the newer report; neither is facility acceptance.
 

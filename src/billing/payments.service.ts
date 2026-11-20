@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Payment settlement service
  *
  * Posts money against an invoice and says what that money did:

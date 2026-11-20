@@ -1,6 +1,6 @@
 # Security policy
 
-JaliCare HMIS holds patient records for Kenyan health facilities. A defect in
+Syrona Medical Center HMIS holds patient records for Kenyan health facilities. A defect in
 it can disclose clinical data, mix one facility's records into another's, or
 bill a patient the wrong amount. Reports are taken seriously and handled
 privately until they are fixed.

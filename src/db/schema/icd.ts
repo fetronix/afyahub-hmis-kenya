@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — icd schema.
+ * Syrona Medical Center HMIS — icd schema.
  * Definitions are re-exported by ../schema.ts for existing callers and drizzle-kit.
  */
 

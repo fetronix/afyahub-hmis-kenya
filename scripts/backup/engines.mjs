@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — the two backup engines.
+ * Syrona Medical Center HMIS — the two backup engines.
  *
  * See `backup-lib.mjs` for why there are two. In short: `pgdump` is the
  * production answer and needs the PostgreSQL client tools; `logical` is the

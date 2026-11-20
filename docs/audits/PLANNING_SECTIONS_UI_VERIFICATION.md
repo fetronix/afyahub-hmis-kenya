@@ -116,4 +116,4 @@ Use a **new, authorized, disposable loopback PostgreSQL test database only**; ne
 2. With `SYRONA_SOURCE_DIR` pointing to the supplied CSV folder, run `BUDGET_BROWSER_SYNTHETIC=YES npx tsx scripts/seed-planning-sections-browser.ts`. The scripts enforce loopback/synthetic safeguards. They create random synthetic identities and store temporary credentials in the ignored `.tmp-tools` directory; do not publish that file.
 3. Start the built application against that disposable database (default verification port 4193).
 4. Set `CHROME_EXECUTABLE_PATH` to an installed compatible Chromium and run `BUDGET_BROWSER_SYNTHETIC=YES node scripts/verify-planning-sections-browser.mjs`. Optional `BUDGET_BROWSER_BASE_URL`, `BUDGET_BROWSER_ARGS`, and `PLANNING_SECTIONS_EVIDENCE_DIR` configure the loopback test runner.
-5. Run the six test files with `JALICARE_REQUIRE_DB=1` and the same source-folder variable. The official-source database tests must not be skipped.
+5. Run the six test files with `SYRONA_REQUIRE_DB=1` and the same source-folder variable. The official-source database tests must not be skipped.

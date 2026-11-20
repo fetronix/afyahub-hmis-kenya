@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — fixed-asset depreciation, pure functions.
+ * Syrona Medical Center HMIS — fixed-asset depreciation, pure functions.
  *
  * Rules encoded here:
  *

@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 function cleanCheckoutRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), 'jalicare-clean-checkout-'));
+  const root = mkdtempSync(join(tmpdir(), 'syrona-clean-checkout-'));
   fixtureRoots.push(root);
   mkdirSync(join(root, 'scripts'));
   writeFileSync(join(root, TEST_COMPOSE_FILE), 'synthetic compose file');
@@ -84,9 +84,9 @@ const inheritedEnv = {
   SHA_MODE: 'production',
   SHA_CLIENT_SECRET: 'not-a-test-secret',
   COMPOSE_FILE: 'docker-compose.yml',
-  COMPOSE_PROJECT_NAME: 'jalicare',
+  COMPOSE_PROJECT_NAME: 'syrona',
   NODE_OPTIONS: '--require=some-real-config',
-  JALICARE_TEST_PG_SYSTEM_IDENTIFIER: '1',
+  SYRONA_TEST_PG_SYSTEM_IDENTIFIER: '1',
   HTTP_PROXY: 'http://proxy.example.test:8080',
 };
 const silent = () => undefined;
@@ -100,7 +100,7 @@ describe('fresh Docker test bootstrap', () => {
     expect(compose).toMatch(/^\s+db:\s*$/m);
     expect(compose).toContain('image: postgres:16');
     expect(compose).toMatch(/^\s+POSTGRES_PASSWORD:\s*$/m);
-    expect(compose).toContain('POSTGRES_DB: jalicare_synthetic_test');
+    expect(compose).toContain('POSTGRES_DB: syrona_synthetic_test');
     expect(compose).toContain("'127.0.0.1::5432'");
     expect(compose).toContain('tmpfs:');
     expect(compose).not.toMatch(/^\s*volumes:/m);
@@ -143,10 +143,10 @@ describe('fresh Docker test bootstrap', () => {
     expect(env).toMatchObject({
       SQL_HOST: '127.0.0.1',
       SQL_PORT: '49123',
-      SQL_DB_NAME: 'jalicare_synthetic_test',
-      SQL_ADMIN_USER: 'jalicare_test',
-      JALICARE_REQUIRE_DB: '1',
-      JALICARE_TEST_PG_SYSTEM_IDENTIFIER: '7539141296746153100',
+      SQL_DB_NAME: 'syrona_synthetic_test',
+      SQL_ADMIN_USER: 'syrona_test',
+      SYRONA_REQUIRE_DB: '1',
+      SYRONA_TEST_PG_SYSTEM_IDENTIFIER: '7539141296746153100',
       SHA_MODE: 'mock',
       DHA_MODE: 'mock',
       DHA_ALLOW_PRODUCTION: 'false',
@@ -158,8 +158,8 @@ describe('fresh Docker test bootstrap', () => {
       calls[up].args[calls[up].args.indexOf('-p') + 1],
     );
     expect(calls[attestation].args.join(' ')).not.toContain(env.SQL_ADMIN_PASSWORD);
-    expect(env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER).not.toBe(
-      inheritedEnv.JALICARE_TEST_PG_SYSTEM_IDENTIFIER,
+    expect(env.SYRONA_TEST_PG_SYSTEM_IDENTIFIER).not.toBe(
+      inheritedEnv.SYRONA_TEST_PG_SYSTEM_IDENTIFIER,
     );
     expect(env.SHA_CLIENT_SECRET).toBeUndefined();
     expect(env.NODE_OPTIONS).toBeUndefined();
@@ -186,7 +186,7 @@ describe('fresh Docker test bootstrap', () => {
       ).rejects.toMatchObject({ exitCode: 7 });
       const up = calls.find((call) => call.args.includes('up'))!;
       const down = calls.find((call) => call.args.includes('down'))!;
-      expect(up.args[up.args.indexOf('-p') + 1]).toMatch(/^jalicare-test-[a-f0-9]{20}$/);
+      expect(up.args[up.args.indexOf('-p') + 1]).toMatch(/^syrona-test-[a-f0-9]{20}$/);
       expect(down.args[down.args.indexOf('-p') + 1]).toBe(up.args[up.args.indexOf('-p') + 1]);
       if (failure !== 'test' && failure !== 'down') {
         expect(calls.some((call) => call.args.join(' ') === 'test')).toBe(false);
@@ -198,7 +198,7 @@ describe('fresh Docker test bootstrap', () => {
   );
 
   it('refuses local configuration without altering it', () => {
-    const root = mkdtempSync(join(tmpdir(), 'jalicare-bootstrap-spec-'));
+    const root = mkdtempSync(join(tmpdir(), 'syrona-bootstrap-spec-'));
     try {
       mkdirSync(join(root, 'scripts'));
       writeFileSync(join(root, TEST_COMPOSE_FILE), 'synthetic');

@@ -71,7 +71,7 @@ export function createSystemRouter(): express.Router {
   router.get('/health', (req, res) => {
     res.json({
       status: 'healthy',
-      system: 'JaliCare Kenya HMIS',
+      system: 'Syrona Medical Center Kenya HMIS',
       dhaReadiness: 'Not assessed',
       timestamp: new Date().toISOString(),
     });

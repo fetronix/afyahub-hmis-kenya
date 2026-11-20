@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — fixed-asset schema.
+ * Syrona Medical Center HMIS — fixed-asset schema.
  *
  * `fixed_assets` and `fixed_asset_movements` predate this module and live in
  * financial-ledger.ts. Migration 0075 added category defaults, maintenance

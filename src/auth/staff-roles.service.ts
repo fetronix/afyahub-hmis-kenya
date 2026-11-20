@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Staff Directory & Role Assignment Facade
+ * Syrona Medical Center HMIS — Staff Directory & Role Assignment Facade
  *
  * Domain workflows live under `src/auth/staff-roles/`:
  *   - `shared.ts` — `StaffRoleError`, assignability policy & catalogue loader

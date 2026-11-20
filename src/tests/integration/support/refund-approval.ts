@@ -19,7 +19,7 @@ export async function assertSyntheticRefundTestDb() {
   const target = {
     host: process.env.SQL_HOST ?? '',
     name: process.env.SQL_DB_NAME ?? '',
-    containerClusterIdentifier: process.env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER,
+    containerClusterIdentifier: process.env.SYRONA_TEST_PG_SYSTEM_IDENTIFIER,
   };
   assertSyntheticTarget(target);
   const identity = await pool.query(

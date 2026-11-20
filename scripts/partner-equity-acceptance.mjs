@@ -138,7 +138,7 @@ const row = async (id) =>
     )
   ).rows[0];
 const http = async (session, path, method = 'GET', body, raw = false) => {
-  const token = await session.page.evaluate(() => localStorage.getItem('jalicare_session_token'));
+  const token = await session.page.evaluate(() => localStorage.getItem('syrona_session_token'));
   const r = await fetch(base + path, {
     method,
     headers: {

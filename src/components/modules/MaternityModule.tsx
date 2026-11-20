@@ -1,6 +1,6 @@
 import { PageHeader } from '../ui/layout.tsx';
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Maternity & MCH
  *
  * Coordinator for the five maternal and child health clinical workflows:

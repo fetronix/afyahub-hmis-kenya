@@ -1,4 +1,4 @@
-# JaliCare existing HR / payroll — implementation and verification
+# Syrona Medical Center existing HR / payroll — implementation and verification
 
 Session date: **27 October 2026**. The sandbox clock and some pre-existing repository documents have later dates; those are not the business-rule effective date. Branch: `arena/e088f11d-afyahub-hmis-kenya`; starting HEAD `0111b5502e1a8d8a21faf53845360122275727df`.
 

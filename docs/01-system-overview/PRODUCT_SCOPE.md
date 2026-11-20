@@ -5,7 +5,7 @@
 | Document | PRODUCT_SCOPE |
 | Version | 1.0 |
 | Last reviewed | 2026-11-18 |
-| Applies to | JaliCare HMIS 0.1.0, commit `9d7274c` |
+| Applies to | Syrona Medical Center HMIS 0.1.0, commit `9d7274c` |
 | Audience | Product owners, procurement, delivery managers, facility administrators |
 | Status | Verified against the module catalogue and generated inventories |
 

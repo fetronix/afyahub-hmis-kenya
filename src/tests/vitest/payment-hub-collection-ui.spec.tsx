@@ -25,7 +25,7 @@ import {
   collectionStatusNotice,
 } from '../../payment-hub/collection-status.ts';
 
-const storageKey = 'jalicare:mpesa:pending:7:11';
+const storageKey = 'syrona:mpesa:pending:7:11';
 const recorded = (status = 'PENDING', resultCode: string | null = null) => ({
   recovery: 'RECORDED',
   transaction: {

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — stock control schema (migration 0077).
+ * Syrona Medical Center HMIS — stock control schema (migration 0077).
  *
  * `inventory_items` and `inventory_batches` keep the running quantity and the
  * batch lots. This file adds the append-only evidence around them:

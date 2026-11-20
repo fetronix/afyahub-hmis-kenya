@@ -21,7 +21,7 @@ describe('Auth-validation', () => {
       identifier: 'admin',
       password: 'ValidTestPassword123!',
       ipAddress: '127.0.0.1',
-      userAgent: 'JaliCare-Test',
+      userAgent: 'Syrona Medical Center-Test',
     });
 
     expect(login.identifier === 'admin', 'Valid identifier accepted').toBe(true);
@@ -34,9 +34,9 @@ describe('Auth-validation', () => {
     |--------------------------------------------------------------------------
     */
 
-    const identifier = validateIdentifier('  ADMIN@JALICARE.CO.KE  ');
+    const identifier = validateIdentifier('  ADMIN@SYRONA.CO.KE  ');
 
-    expect(identifier === 'admin@jalicare.co.ke', 'Identifier is normalized').toBe(true);
+    expect(identifier === 'admin@syrona.co.ke', 'Identifier is normalized').toBe(true);
 
     /*
     |--------------------------------------------------------------------------
@@ -152,9 +152,9 @@ describe('Auth-validation', () => {
     |--------------------------------------------------------------------------
     */
 
-    const email = validateEmail('  ADMIN@JALICARE.CO.KE ');
+    const email = validateEmail('  ADMIN@SYRONA.CO.KE ');
 
-    expect(email === 'admin@jalicare.co.ke', 'Email is normalized').toBe(true);
+    expect(email === 'admin@syrona.co.ke', 'Email is normalized').toBe(true);
 
     /*
     |--------------------------------------------------------------------------

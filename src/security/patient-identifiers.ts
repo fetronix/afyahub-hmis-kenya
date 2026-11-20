@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Patient identifier sealing
  *
  * Two columns on `patients` are direct identifiers: `national_id` and

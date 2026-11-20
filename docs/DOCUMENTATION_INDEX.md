@@ -1,4 +1,4 @@
-# JaliCare HMIS — Documentation Index
+# Syrona Medical Center HMIS — Documentation Index
 
 **Document set:** JC-PKG-001 · version 1.0 · issued 19 November 2026
 **Repository:** `fetronix/afyahub-hmis-kenya` · branch `arena/e088f11d-afyahub-hmis-kenya` · base commit `0111b55`
@@ -11,13 +11,13 @@ This index says what each deliverable contains, who it is for, and how the piece
 
 | # | File | What it is | Read it if you are |
 | --- | --- | --- | --- |
-| 1 | `docs/JALICARE_COMPLETE_SYSTEM_DOCUMENTATION.docx` | The full volume: 29 chapters plus an evidence appendix, 97 figures, 91 tables | Anyone who needs the whole picture |
-| 2 | `docs/JALICARE_COMPLETE_SYSTEM_DOCUMENTATION.md` | The same volume as readable Markdown, generated from the same chapter sources | Reading in a browser, reviewing a diff, or searching text |
-| 3 | `docs/JALICARE_USER_MANUAL.docx` | Operator edition: the clinical, billing, stores, workforce, reporting and configuration chapters | Reception, clinical, nursing, pharmacy, cashier, stores, HR and payroll staff |
-| 4 | `docs/JALICARE_TECHNICAL_MANUAL.docx` | Architecture, accounting and reporting engines, security, deployment and verification | Engineers, DBAs, system administrators, technical reviewers |
-| 5 | `docs/JALICARE_TEST_AND_VERIFICATION_REPORT.docx` | The test register, the completion register and the evidence appendix | Reviewers, auditors, facility management signing off |
-| 6 | `docs/JALICARE_REPORT_CATALOGUE.xlsx` | All 144 catalogue entries: status, engine, dependency, filters, outputs, permission | Report owners and anyone promising a report to a regulator |
-| 7 | `docs/JALICARE_DOCUMENTATION_TRACEABILITY_MATRIX.xlsx` | Each requirement mapped to where it is answered, with open items | Whoever is checking that the brief was met |
+| 1 | `docs/SYRONA_COMPLETE_SYSTEM_DOCUMENTATION.docx` | The full volume: 29 chapters plus an evidence appendix, 97 figures, 91 tables | Anyone who needs the whole picture |
+| 2 | `docs/SYRONA_COMPLETE_SYSTEM_DOCUMENTATION.md` | The same volume as readable Markdown, generated from the same chapter sources | Reading in a browser, reviewing a diff, or searching text |
+| 3 | `docs/SYRONA_USER_MANUAL.docx` | Operator edition: the clinical, billing, stores, workforce, reporting and configuration chapters | Reception, clinical, nursing, pharmacy, cashier, stores, HR and payroll staff |
+| 4 | `docs/SYRONA_TECHNICAL_MANUAL.docx` | Architecture, accounting and reporting engines, security, deployment and verification | Engineers, DBAs, system administrators, technical reviewers |
+| 5 | `docs/SYRONA_TEST_AND_VERIFICATION_REPORT.docx` | The test register, the completion register and the evidence appendix | Reviewers, auditors, facility management signing off |
+| 6 | `docs/SYRONA_REPORT_CATALOGUE.xlsx` | All 144 catalogue entries: status, engine, dependency, filters, outputs, permission | Report owners and anyone promising a report to a regulator |
+| 7 | `docs/SYRONA_DOCUMENTATION_TRACEABILITY_MATRIX.xlsx` | Each requirement mapped to where it is answered, with open items | Whoever is checking that the brief was met |
 
 Supporting directories:
 

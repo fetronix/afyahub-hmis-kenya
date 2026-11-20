@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Inpatient status contracts and domain errors.
  *
  * This module is deliberately free of database imports so that the

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Payer-Independent Private Insurance Eligibility Service
+ * Syrona Medical Center HMIS — Payer-Independent Private Insurance Eligibility Service
  *
  * Supports:
  * 1. Adapter-backed eligibility verification when configured & supported.

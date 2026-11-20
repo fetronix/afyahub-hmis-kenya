@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Typed Frontend Client for SHA eClaims, Eligibility, Benefits, Preauthorization & Remittance
  *
  * Uses relative `/api/insurance/sha/...` paths and the authenticated Bearer

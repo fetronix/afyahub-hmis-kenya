@@ -558,7 +558,7 @@ describe('Patient portal — policy and identifier tests', () => {
     const first = generateQrCode();
     const second = generateQrCode();
 
-    expect(first.startsWith(QR_PREFIX), 'A card code carries the JaliCare prefix').toBe(true);
+    expect(first.startsWith(QR_PREFIX), 'A card code carries the Syrona Medical Center prefix').toBe(true);
     expect(first !== second, 'Two card codes differ').toBe(true);
     expect(isPlausibleQrCode(first), 'A generated code passes the shape check').toBe(true);
     expect(

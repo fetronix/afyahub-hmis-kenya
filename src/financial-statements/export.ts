@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — PDF and Excel export of a generated statement set.
+ * Syrona Medical Center HMIS — PDF and Excel export of a generated statement set.
  *
  * The export reads the *archived* payload, so what a reviewer approved is
  * exactly what a reader downloads. A draft carries a visible provisional
@@ -126,7 +126,7 @@ function pdfDocument(options: PdfOptions): Promise<Buffer> {
       Title: `${statement === 'ALL' ? 'Financial statements' : TITLES[statement]} ${payload.meta.periodEnd}`,
       Author: payload.meta.facilityName,
       Subject: 'Financial statements',
-      Creator: 'JaliCare HMIS',
+      Creator: 'Syrona Medical Center HMIS',
     },
   });
 

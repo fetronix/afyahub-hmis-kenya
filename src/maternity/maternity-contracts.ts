@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Maternity / MCH contracts
  *
  * Pure functions and vocabularies. Nothing here touches the database, so

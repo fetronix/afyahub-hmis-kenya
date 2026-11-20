@@ -12,7 +12,7 @@ import { sql } from 'drizzle-orm';
 import { facilities, tenants } from './tenancy.ts';
 import { users } from './auth.ts';
 
-/** Canonical JaliCare identities. Codes are internal, not payer codes. */
+/** Canonical Syrona Medical Center identities. Codes are internal, not payer codes. */
 export const masterServices = pgTable(
   'master_services',
   {

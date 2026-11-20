@@ -9,7 +9,7 @@
 
 | Question | Answer |
 |---|---|
-| Does Jalicare have a DHA integration? | **A partially implemented adapter, exercised only against local fixtures.** |
+| Does Syrona Medical Center have a DHA integration? | **A partially implemented adapter, exercised only against local fixtures.** |
 | Has it ever exchanged data with DHA? | **No evidence.** No sandbox credential was available, and no live call was made. |
 | Is production enabled? | **No.** `DHA_ALLOW_PRODUCTION` defaults to false, and production requires a base URL DHA has not published. |
 | Is the FHIR layer complete? | **No.** One read-only `Patient` resource. |

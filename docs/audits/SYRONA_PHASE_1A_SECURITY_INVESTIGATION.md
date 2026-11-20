@@ -1,4 +1,4 @@
-# JaliCare HMIS — Phase 1A Security Investigation and Risk Assessment
+# Syrona Medical Center HMIS — Phase 1A Security Investigation and Risk Assessment
 
 **Investigation date:** 7 November 2026, Africa/Nairobi
 
@@ -59,7 +59,7 @@ The checks below describe the workspace **before creation of this report**:
 - Current branch: `arena/e088f11d-afyahub-hmis-kenya`. Local HEAD: `0111b5502e1a8d8a21faf53845360122275727df`.
 - Git status relative to that older local index: **129 modified tracked files, one deleted tracked file, 643 untracked files, and zero staged files**. The deleted path is `src/tests/auth-api.test.ts`. There is no visible stash. These counts do not by themselves mean that 773 files contain new interrupted work.
 - The published branch points to `ec55ae0f5b2af6fde24a77297f7530a7de2a7f73`; that commit object was not present in the local object database. A read-only GitHub API recursive-tree comparison recomputed Git blob SHA-1 and executable mode for **all 1,001 published files** against the working files: every one matched, with no changed, missing or extra visible nonignored file relative to that published tree. This comparison inspected the actual contents, not just the old-index status.
-- GitHub commit metadata shows that the changes from audited application revision `db412a6` through `9b4c7c5` and `ec55ae0` affected only `docs/audits/JALICARE_COMPLETE_SYSTEM_AUDIT.md`. The matching working application files are therefore the audited baseline.
+- GitHub commit metadata shows that the changes from audited application revision `db412a6` through `9b4c7c5` and `ec55ae0` affected only `docs/audits/SYRONA_COMPLETE_SYSTEM_AUDIT.md`. The matching working application files are therefore the audited baseline.
 - The interrupted `OutpatientModule.tsx` change described earlier as +97/-25, and any other post-publication remediation, are **not visible as differences from the published tree**. Local reflog/stash inspection and `git fsck --no-reflogs --unreachable` revealed no recoverable stash or unreachable commit in this checkout. Ignored locations, other environments, provider snapshots or external copies were not exhaustively searched; recovery elsewhere cannot be ruled out. No Git fetch, checkout, reset, stash, clean, staging, history rewrite or overwrite of existing work was performed as part of the investigation.
 - No PostgreSQL process or listening PostgreSQL port was observed, no `PG_VERSION` marker was found within the limited searched locations, and PostgreSQL executables and `node_modules` were not available on the inspected PATH/workspace. Earlier temporary test logs/cluster were not found in the limited search. **This does not prove that no other local or remote test database exists.** No database was connected to, started, reset, queried or changed.
 
@@ -73,10 +73,10 @@ The repository was confirmed public through GitHub metadata. The following archi
 
 | Historical archive path | Introduction commit |
 | --- | --- |
-| `backups/database/jalicaredb-pre-tariffs-20261018-004117.dump` | `f5abd3d2f16624c4620274c3abec076d7edc78f9` |
-| `backups/database/jalicaredb-before-tariff-migration-20261018-103020.dump` | `f5abd3d2f16624c4620274c3abec076d7edc78f9` |
-| `backups/jalicaredb-before-patient-guardian-20261019.dump` | `8380d3ca7087c25e55a58eb00dba03d9a681144a` |
-| `local-backups/jalicaredb-before-subscription-migration-20261016-035706.dump` | `6e03e0180e567a5e224102befa3f7105fdd367f3` |
+| `backups/database/syronadb-pre-tariffs-20261018-004117.dump` | `f5abd3d2f16624c4620274c3abec076d7edc78f9` |
+| `backups/database/syronadb-before-tariff-migration-20261018-103020.dump` | `f5abd3d2f16624c4620274c3abec076d7edc78f9` |
+| `backups/syronadb-before-patient-guardian-20261019.dump` | `8380d3ca7087c25e55a58eb00dba03d9a681144a` |
+| `local-backups/syronadb-before-subscription-migration-20261016-035706.dump` | `6e03e0180e567a5e224102befa3f7105fdd367f3` |
 
 The archives are absent from the published current tree, but reachable historical objects remain accessible. `docs/security/DATA-EXPOSURE.md:8-26,43-93` records a prior controlled inspection of patient-related tables, Argon2 password hashes and token-like material. This Phase 1A did not extract, open, download or copy the archives and does not reproduce any data or credential values. The earlier document is evidence of an earlier inspection, not an independent fresh content check here.
 
@@ -267,16 +267,16 @@ No test suites, migrations, dedicated secret-scanning tools or database commands
 | Secrets, encryption and audit | Backup path guard, `src/tests/vitest/field-crypto.spec.ts` and `src/tests/vitest/logger.spec.ts` cover specific pure-code cases. | Add harmless synthetic canaries for current tree **and history**, free-text/error redaction, no-secret output, key absence, field coverage, restore/re-encryption and audit transaction failures. Do not commit or emit actual credentials. |
 | Clinical workflow evidence | Historical `src/tests/integration/clinical-workflows-acceptance.db.spec.ts:1214` exercises a synthetic API path; prior lab identity and browser evidence is recorded in `docs/audits/laboratory-facility-identity.md`. | Extend to browser → API → isolated synthetic PostgreSQL, wrong-context and permission failures, preserving no-order-time charge, selected service identity and financial history. Do not claim real facility or payment-provider acceptance. |
 
-`src/tests/vitest/support/global-setup.ts:40-47` and `src/tests/vitest/support/db.ts:18-20,64-72` distinguish missing PostgreSQL skips from `JALICARE_REQUIRE_DB=1` failures. Any future DB tests require a newly created, independently attested **synthetic** database and explicit approval; do not reuse/reset an unknown database or run migrations in this phase.
+`src/tests/vitest/support/global-setup.ts:40-47` and `src/tests/vitest/support/db.ts:18-20,64-72` distinguish missing PostgreSQL skips from `SYRONA_REQUIRE_DB=1` failures. Any future DB tests require a newly created, independently attested **synthetic** database and explicit approval; do not reuse/reset an unknown database or run migrations in this phase.
 
 ## 8. Prior results versus this investigation
 
 | Evidence | Result | Scope and limitation |
 | --- | --- | --- |
 | **Phase 1A, 7 November** | **No tests run; no fresh passes, failures or skipped tests.** | Source, Git metadata, historical CI metadata and bounded in-memory heuristics only; no database connection, browser, provider or production check. |
-| 6 November audit, no database | 172 passed / 56 skipped files; 1,664 passed / 458 skipped tests; zero assertion failures. | Skipped database tests are not passes. `docs/audits/JALICARE_COMPLETE_SYSTEM_AUDIT.md:236-255`. |
-| 6 November no-DB coverage | Original audit: exit 1, 32.69% statements / 26.66% branches / 37.18% functions / 33.02% lines. Independent follow-up: exit 1, 32.71% / 26.66% / 37.18% / 33.04%. | Separate no-DB runs failed coverage thresholds; they are not DB-enabled regression results (`JALICARE_COMPLETE_SYSTEM_AUDIT.md:244-246,269-270`). |
-| Earlier same-application synthetic PostgreSQL work | 228 files / 2,122 tests passed; separately reported coverage 64.06% / 60.12% / 64.51% / 65.19%; 71/71 migrations on a new synthetic DB. | Historical synthetic evidence, not re-run in Phase 1A and not proof of production state (`JALICARE_COMPLETE_SYSTEM_AUDIT.md:255-261`). |
+| 6 November audit, no database | 172 passed / 56 skipped files; 1,664 passed / 458 skipped tests; zero assertion failures. | Skipped database tests are not passes. `docs/audits/SYRONA_COMPLETE_SYSTEM_AUDIT.md:236-255`. |
+| 6 November no-DB coverage | Original audit: exit 1, 32.69% statements / 26.66% branches / 37.18% functions / 33.02% lines. Independent follow-up: exit 1, 32.71% / 26.66% / 37.18% / 33.04%. | Separate no-DB runs failed coverage thresholds; they are not DB-enabled regression results (`SYRONA_COMPLETE_SYSTEM_AUDIT.md:244-246,269-270`). |
+| Earlier same-application synthetic PostgreSQL work | 228 files / 2,122 tests passed; separately reported coverage 64.06% / 60.12% / 64.51% / 65.19%; 71/71 migrations on a new synthetic DB. | Historical synthetic evidence, not re-run in Phase 1A and not proof of production state (`SYRONA_COMPLETE_SYSTEM_AUDIT.md:255-261`). |
 | Published CI | GitHub run [42289930299](https://github.com/fetronix/afyahub-hmis-kenya/actions/runs/42289930299), head `ec55ae0`, reports success for all seven jobs: formatting, PostgreSQL migrations/specs, typecheck/lint, PostgreSQL coverage, dependency audit, fresh-checkout Docker bootstrap and production build. | Read-only job metadata checked in this phase; job success does not prove untested portal edge cases, provider behavior or deployed settings. |
 | Prior audit diagnostics | Mocked patient-switch FHIR mismatch; fake-pool lab-scope, multi-facility policy and note observations. | Synthetic mocks/fake SQL only; not a real database, production disclosure or proof of actual clinician-only content. |
 | Prior audit static/build/dependency checks | Typecheck, configured formatting, lint, backup guard, builds and mock dry-run passed; lint had 91 warnings. Production npm dependency audit reported zero vulnerabilities; full dependency audit reported four moderate advisories. | Historical snapshot only; not re-run here, not a penetration test, and project `format:check` does not include `docs/`. |

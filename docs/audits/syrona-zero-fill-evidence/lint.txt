@@ -1,5 +1,5 @@
 
-> jalicare-hmis@0.1.0 lint
+> syrona-hmis@0.1.0 lint
 > eslint .
 
 

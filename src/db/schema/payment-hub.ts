@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — payment hub schema.
+ * Syrona Medical Center HMIS — payment hub schema.
  * Definitions are re-exported by ../schema.ts for existing callers and drizzle-kit.
  */
 

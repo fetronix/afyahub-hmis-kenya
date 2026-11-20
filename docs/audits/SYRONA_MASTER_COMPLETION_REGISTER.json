@@ -147,7 +147,7 @@
       "authority": "secondary client requirements"
     },
     "S03": {
-      "pathOrOrigin": "docs/audits/JALICARE_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md",
+      "pathOrOrigin": "docs/audits/SYRONA_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md",
       "locator": "§4 SY01–SY18; module matrices and §11 recommendations",
       "authority": "secondary client requirements and engineering assessment"
     },
@@ -187,12 +187,12 @@
       "authority": "secondary supplied screenshot and historical synthetic acceptance"
     },
     "S11": {
-      "pathOrOrigin": "docs/audits/JALICARE_BANK_PAYMENTS_IMPLEMENTATION_2026-10-27.md",
+      "pathOrOrigin": "docs/audits/SYRONA_BANK_PAYMENTS_IMPLEMENTATION_2026-10-27.md",
       "locator": "Manual declaration, independent verification/settlement; provider limitations",
       "authority": "historical synthetic acceptance"
     },
     "S12": {
-      "pathOrOrigin": "docs/audits/JALICARE_PAYROLL_CONFIGURATION_READINESS_2026-10-27.md",
+      "pathOrOrigin": "docs/audits/SYRONA_PAYROLL_CONFIGURATION_READINESS_2026-10-27.md",
       "locator": "Effective-dated statutory versions, configured chart, test-only readiness",
       "authority": "historical synthetic acceptance and external policy dependencies"
     },
@@ -202,7 +202,7 @@
       "authority": "superseded engineering register"
     },
     "S14": {
-      "pathOrOrigin": "docs/audits/JALICARE_PHASE_1A_SECURITY_INVESTIGATION.md",
+      "pathOrOrigin": "docs/audits/SYRONA_PHASE_1A_SECURITY_INVESTIGATION.md",
       "locator": "Historical exposure and findings; current fixes must be reconciled, not assumed absent",
       "authority": "historical security investigation"
     },
@@ -257,7 +257,7 @@
       "authority": "technical recommendation"
     },
     "S25": {
-      "pathOrOrigin": "docs/audits/JALICARE_COMPLETE_SYSTEM_AUDIT.md",
+      "pathOrOrigin": "docs/audits/SYRONA_COMPLETE_SYSTEM_AUDIT.md",
       "locator": "§C.1 emergency/custody/safety crosswalk and §G platform/professional verification; older leads checked against current source",
       "authority": "engineering scope leads, not signed client requirements"
     },
@@ -282,7 +282,7 @@
     {
       "path": "docs/RECOVERY_PRESERVATION_VERIFICATION_REPORT.md",
       "sha256": "dae259f66a933d3a684379fe9efac6ba0d8abdc04420e5ddc9b2c9e01206b9c3",
-      "title": "JaliCare HMIS — Recovery, Preservation and Verification Baseline",
+      "title": "Syrona Medical Center HMIS — Recovery, Preservation and Verification Baseline",
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
@@ -364,63 +364,63 @@
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
-      "path": "docs/audits/JALICARE_ACCOUNTING_WORKSPACE_REDESIGN_2026-10-27.md",
+      "path": "docs/audits/SYRONA_ACCOUNTING_WORKSPACE_REDESIGN_2026-10-27.md",
       "sha256": "7037bcf40b14c851087216db9f0ad6caee61d45072bdb7b482898135544d0b3a",
-      "title": "JaliCare — Accounting & Finance workspace redesign",
+      "title": "Syrona Medical Center — Accounting & Finance workspace redesign",
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
-      "path": "docs/audits/JALICARE_BANK_PAYMENTS_ASSESSMENT_2026-10-27.md",
+      "path": "docs/audits/SYRONA_BANK_PAYMENTS_ASSESSMENT_2026-10-27.md",
       "sha256": "638c74f4c00023eb82b14cfba07f128801fe1fd5de04edbf902fe2aef0858653",
-      "title": "JALICARE HMIS — bank-only payments assessment and implementation plan",
+      "title": "SYRONA MEDICAL CENTER HMIS — bank-only payments assessment and implementation plan",
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
-      "path": "docs/audits/JALICARE_BANK_PAYMENTS_IMPLEMENTATION_2026-10-27.md",
+      "path": "docs/audits/SYRONA_BANK_PAYMENTS_IMPLEMENTATION_2026-10-27.md",
       "sha256": "cd7a1521eb2c5e24768720d4e6a78a48b93873cdfa6a2e29cc080df843d0db7e",
       "title": "Bank Payments & Reconciliation — implementation and validation",
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
-      "path": "docs/audits/JALICARE_COMPLETE_SYSTEM_AUDIT.md",
+      "path": "docs/audits/SYRONA_COMPLETE_SYSTEM_AUDIT.md",
       "sha256": "8d9b48a80bef8729020ae87aa976b76fbfa35fa3f93c6aca8ef1579b8c28f9e2",
-      "title": "JALICARE HMIS — complete system-wide implementation audit",
+      "title": "SYRONA MEDICAL CENTER HMIS — complete system-wide implementation audit",
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
-      "path": "docs/audits/JALICARE_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md",
+      "path": "docs/audits/SYRONA_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md",
       "sha256": "2a2a0f96b96109c310d3718b83282b7444ab2357b3a9483c3bd8f56e1fb4330d",
-      "title": "JaliCare HMIS / AfyaHub Kenya — Master System Completion Audit",
+      "title": "Syrona Medical Center HMIS / AfyaHub Kenya — Master System Completion Audit",
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
-      "path": "docs/audits/JALICARE_PAYROLL_COMPLETION_2026-10-27.md",
+      "path": "docs/audits/SYRONA_PAYROLL_COMPLETION_2026-10-27.md",
       "sha256": "c57087488338f6fe3ac81d8fb5f90ca684a211697acf38fd7f71b81786add3e7",
-      "title": "JaliCare existing HR / payroll — implementation and verification",
+      "title": "Syrona Medical Center existing HR / payroll — implementation and verification",
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
-      "path": "docs/audits/JALICARE_PAYROLL_CONFIGURATION_READINESS_2026-10-27.md",
+      "path": "docs/audits/SYRONA_PAYROLL_CONFIGURATION_READINESS_2026-10-27.md",
       "sha256": "410e56a0651cb10d6f880622f62876edf1638753f86556f37f3c52d14672664e",
-      "title": "JaliCare — Payroll configuration and readiness",
+      "title": "Syrona Medical Center — Payroll configuration and readiness",
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
-      "path": "docs/audits/JALICARE_PHASE_1A_SECURITY_INVESTIGATION.md",
+      "path": "docs/audits/SYRONA_PHASE_1A_SECURITY_INVESTIGATION.md",
       "sha256": "2385cd083aa39f3458071167a2cbb71d75f9263219121f4218b1012f2de1190b",
-      "title": "JaliCare HMIS — Phase 1A Security Investigation and Risk Assessment",
+      "title": "Syrona Medical Center HMIS — Phase 1A Security Investigation and Risk Assessment",
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
-      "path": "docs/audits/JALICARE_RECOVERY_PRESERVATION_VERIFICATION_2026-11-13.md",
+      "path": "docs/audits/SYRONA_RECOVERY_PRESERVATION_VERIFICATION_2026-11-13.md",
       "sha256": "381b70ed20b84c859cc9883312bb2c31562b289156c8a712851b0725077831c1",
-      "title": "JaliCare HMIS — Recovery, Preservation and Verification Baseline",
+      "title": "Syrona Medical Center HMIS — Recovery, Preservation and Verification Baseline",
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
       "path": "docs/audits/MASTER_READINESS_BASELINE_2026-10-30.md",
       "sha256": "086af5b7bbd113c79ba631fb3590507056465f088680cf034e87845393d43ffc",
-      "title": "JaliCare readiness baseline and Priority 1 work register",
+      "title": "Syrona Medical Center readiness baseline and Priority 1 work register",
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
@@ -616,9 +616,9 @@
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
-      "path": "docs/audits/jalicare-medsmart-gap-analysis-2026-11-03.md",
+      "path": "docs/audits/syrona-medsmart-gap-analysis-2026-11-03.md",
       "sha256": "f158bf0deaa11a5b61bb32e215acd21611045a4572e83e56808ab1d73e60bbcb",
-      "title": "JaliCare HMIS — MedSmart checklist gap analysis",
+      "title": "Syrona Medical Center HMIS — MedSmart checklist gap analysis",
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
@@ -702,7 +702,7 @@
     {
       "path": "docs/dashboard/IMPLEMENTATION_REPORT.md",
       "sha256": "e48199bc98b3402e99190e42d90c6513c4a144775ae581a784cf5b8c0e63966f",
-      "title": "JaliCare hospital dashboard redesign — implementation report",
+      "title": "Syrona Medical Center hospital dashboard redesign — implementation report",
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
@@ -720,7 +720,7 @@
     {
       "path": "docs/deployment/truehost-cpanel.md",
       "sha256": "7d227e831a5f7429f9921e7b227dbb83ecdba39e1d423917bbbef715ba498a5b",
-      "title": "JaliCare HMIS — Truehost cPanel deployment",
+      "title": "Syrona Medical Center HMIS — Truehost cPanel deployment",
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
@@ -754,9 +754,9 @@
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
-      "path": "docs/dha-audit/JALICARE_DHA_READINESS_AUDIT.md",
+      "path": "docs/dha-audit/SYRONA_DHA_READINESS_AUDIT.md",
       "sha256": "1aa9fd6c4782c75dc6d561de8b4ab2a9dbfc7c1121bcd43d7b954db992e19e28",
-      "title": "JaliCare HMIS — DHA Readiness Audit",
+      "title": "Syrona Medical Center HMIS — DHA Readiness Audit",
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
@@ -886,15 +886,15 @@
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
-      "path": "docs/project/JALICARE-COMPLETION-REGISTER.md",
+      "path": "docs/project/SYRONA-COMPLETION-REGISTER.md",
       "sha256": "a9793acabc36465158993e7cec2835d2b34d2b22bfed16cf3dead081b01d8f44",
-      "title": "JaliCare completion programme — plan and evidence register",
+      "title": "Syrona Medical Center completion programme — plan and evidence register",
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
       "path": "docs/project/audits/FULL-SYSTEM-AUDIT-2026-10-27.md",
       "sha256": "bcb79cd7b20d334d18ccc5b64ed362b1f373347823a3f9b6fd13e434c3d11560",
-      "title": "JaliCare HMIS / AfyaHub Kenya — Full System Audit and Completion Assessment",
+      "title": "Syrona Medical Center HMIS / AfyaHub Kenya — Full System Audit and Completion Assessment",
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     },
     {
@@ -1056,7 +1056,7 @@
     {
       "path": "docs/ui/ENTERPRISE_UI_IMPLEMENTATION_REPORT.md",
       "sha256": "c10c58d068981e8cb31b666c400949af3dbf529485a7532cd24a94aca8442f0e",
-      "title": "JaliCare enterprise UI/UX implementation",
+      "title": "Syrona Medical Center enterprise UI/UX implementation",
       "review": "Document headings/gap/limitation inventory; selected primary/secondary leads fully reviewed and source-reconciled in S01–S27. Not all old prose accepted as current truth."
     }
   ],
@@ -3179,7 +3179,7 @@
           "businessRules": "src/components/modules/SpecialtyModule.tsx",
           "persistence": "src/db/schema/clinical.ts",
           "permissions": "src/auth/authorization.middleware.ts",
-          "tests": "docs/audits/JALICARE_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md"
+          "tests": "docs/audits/SYRONA_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md"
         },
         "observed": "SpecialtyModule states old dental forms were local examples and now provides navigation; generic adjustments are not procedure-linked consumption.",
         "verificationLevel": "Current source inspection; test paths are coverage, not proof of execution. See fresh and historical evidence ledgers.",
@@ -3219,7 +3219,7 @@
           "businessRules": "src/components/modules/SpecialtyModule.tsx",
           "persistence": "src/db/schema/clinical.ts",
           "permissions": "src/auth/authorization.middleware.ts",
-          "tests": "docs/audits/JALICARE_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md"
+          "tests": "docs/audits/SYRONA_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md"
         },
         "observed": "Optical/ENT tabs are honest navigation, not saved specialist records.",
         "verificationLevel": "Current source inspection; test paths are coverage, not proof of execution. See fresh and historical evidence ledgers.",
@@ -7034,7 +7034,7 @@
           "businessRules": "src/components/modules/SpecialtyModule.tsx",
           "persistence": "src/db/schema/clinical.ts",
           "permissions": "src/auth/authorization.middleware.ts",
-          "tests": "docs/audits/JALICARE_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md"
+          "tests": "docs/audits/SYRONA_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md"
         },
         "observed": "No dedicated ambulance lifecycle UI/API/schema found; an insurer ambulance benefit code is not dispatch.",
         "verificationLevel": "Current source inspection; test paths are coverage, not proof of execution. See fresh and historical evidence ledgers.",
@@ -7075,7 +7075,7 @@
           "businessRules": "src/components/modules/SpecialtyModule.tsx",
           "persistence": "src/db/schema/clinical.ts",
           "permissions": "src/auth/authorization.middleware.ts",
-          "tests": "docs/audits/JALICARE_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md"
+          "tests": "docs/audits/SYRONA_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md"
         },
         "observed": "Inpatient deceased discharge context exists; no dedicated mortuary custody lifecycle found.",
         "verificationLevel": "Current source inspection; test paths are coverage, not proof of execution. See fresh and historical evidence ledgers.",
@@ -7115,7 +7115,7 @@
           "businessRules": "src/components/modules/SpecialtyModule.tsx",
           "persistence": "src/db/schema/clinical.ts",
           "permissions": "src/auth/authorization.middleware.ts",
-          "tests": "docs/audits/JALICARE_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md"
+          "tests": "docs/audits/SYRONA_MASTER_SYSTEM_COMPLETION_AUDIT_2026-11-13.md"
         },
         "observed": "Generic lab/inventory exist; no dedicated blood-product/transfusion chain found in current schema/routes.",
         "verificationLevel": "Current source inspection; test paths are coverage, not proof of execution. See fresh and historical evidence ledgers.",

@@ -94,7 +94,7 @@ A missing migration cannot explain a navigation button being filtered out: that 
 
 ## Actual authenticated frontend verification
 
-Unlike the earlier in-memory component demonstration, this investigation ran the **built JaliCare SPA served by the actual production Express entry point**, with normal login, real sessions, real authorization and PostgreSQL. Test records/accounts were disposable and explicitly synthetic; the frontend and APIs were **not mocked, intercepted or replaced**.
+Unlike the earlier in-memory component demonstration, this investigation ran the **built Syrona Medical Center SPA served by the actual production Express entry point**, with normal login, real sessions, real authorization and PostgreSQL. Test records/accounts were disposable and explicitly synthetic; the frontend and APIs were **not mocked, intercepted or replaced**.
 
 **14 checks passed** in `scripts/partner-equity-visibility-smoke.mjs`:
 
@@ -102,7 +102,7 @@ Unlike the earlier in-memory component demonstration, this investigation ran the
 - Normal unentitled login: Accounting → Financial Reports displays the access explanation, no equity button and no equity data requests.
 - Normal preparer login: actual navigation mounts the actual workspace; scoped list/register HTTP calls return 200.
 - Opening the screen creates no statement. Explicit browser creation returns 201 and persists the original net loss in PostgreSQL.
-- Actual 14-row grid is rendered; screenshots include the real JaliCare sidebar, report navigation and grid.
+- Actual 14-row grid is rendered; screenshots include the real Syrona Medical Center sidebar, report navigation and grid.
 - A separate normal reader login sees the persisted statement, no editable equity cells, no enabled preparation action and no equity export action.
 - Page reload and renavigation retrieve the saved record.
 - No uncaught frontend runtime errors; every equity HTTP request succeeded.

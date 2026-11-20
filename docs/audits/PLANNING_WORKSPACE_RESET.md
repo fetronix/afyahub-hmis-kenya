@@ -2,7 +2,7 @@
 
 ## Safety statement
 
-This implements an application workflow; **no live JaliCare database was inspected, queried, reset or migrated**. All database verification used a newly created, loopback-only disposable PostgreSQL 18.6 database named `planning_reset_synthetic_test`, guarded by explicit synthetic-test environment checks. No production reset or production migration was executed.
+This implements an application workflow; **no live Syrona Medical Center database was inspected, queried, reset or migrated**. All database verification used a newly created, loopback-only disposable PostgreSQL 18.6 database named `planning_reset_synthetic_test`, guarded by explicit synthetic-test environment checks. No production reset or production migration was executed.
 
 ## How an administrator accesses it
 

@@ -8,7 +8,7 @@ export const API_BASE = '/api';
  *
  * The server stores only the SHA-256 hash of this token.
  */
-const SESSION_TOKEN_KEY = 'jalicare_session_token';
+const SESSION_TOKEN_KEY = 'syrona_session_token';
 let memorySessionToken: string | null = null;
 
 function hasBrowserStorage(): boolean {
@@ -250,7 +250,7 @@ export async function fetchJson<T>(url: string, options?: RequestInit): Promise<
     }
 
     throw new ApiError(
-      'Unable to reach the JaliCare HMIS server. Check your connection or try again shortly.',
+      'Unable to reach the Syrona Medical Center HMIS server. Check your connection or try again shortly.',
       503,
       'SERVICE_UNAVAILABLE',
     );
@@ -294,7 +294,7 @@ export async function fetchJson<T>(url: string, options?: RequestInit): Promise<
     if (isHtmlPayload(contentType, rawErrorBody)) {
       if (res.status === 502 || res.status === 503 || res.status === 504) {
         throw new ApiError(
-          'The JaliCare HMIS service is temporarily unavailable. Please try again shortly.',
+          'The Syrona Medical Center HMIS service is temporarily unavailable. Please try again shortly.',
           res.status,
           'SERVICE_UNAVAILABLE',
         );
@@ -329,7 +329,7 @@ export async function fetchJson<T>(url: string, options?: RequestInit): Promise<
 
     if (res.status === 502 || res.status === 503 || res.status === 504) {
       throw new ApiError(
-        'The JaliCare HMIS service is temporarily unavailable. Please try again shortly.',
+        'The Syrona Medical Center HMIS service is temporarily unavailable. Please try again shortly.',
         res.status,
         'SERVICE_UNAVAILABLE',
       );

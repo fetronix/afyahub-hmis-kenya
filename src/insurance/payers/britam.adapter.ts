@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Dedicated Britam Insurance Connector (`britam_direct`)
+ * Syrona Medical Center HMIS — Dedicated Britam Insurance Connector (`britam_direct`)
  *
  * Safeguards enforced:
  * - No undocumented Britam direct API specification exists in this repository.
@@ -8,7 +8,7 @@
  * - If a facility integrates with Britam via an approved third-party gateway
  *   (e.g. SmartLink), that must be configured with `integrationType = 'THIRD_PARTY_GATEWAY'`
  *   and `adapterKey = 'smartlink_gateway'`, never disguised as a direct Britam API.
- * - All internal JaliCare workflows (member policies, manual eligibility evidence,
+ * - All internal Syrona Medical Center workflows (member policies, manual eligibility evidence,
  *   service mappings, benefit rules, preauth tracking, invoice claim generation,
  *   and remittance reconciliation) operate cleanly while external API specs are pending.
  */
@@ -77,7 +77,7 @@ function unsupportedForBritam(
     adapterKey: 'britam_direct',
     message:
       `Direct Britam API operation "${operation}" is awaiting official Britam technical specification and authorized provider credentials. ` +
-      'Use JaliCare internal manual/file workflows or configure an approved third-party gateway if authorized by Britam.',
+      'Use Syrona Medical Center internal manual/file workflows or configure an approved third-party gateway if authorized by Britam.',
     requiredFromInsurer: [...missing, ...BRITAM_REQUIRED_ONBOARDING_ITEMS],
   };
 }

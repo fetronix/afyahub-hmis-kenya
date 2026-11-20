@@ -1,4 +1,4 @@
-import { Baby, Building2, ChevronLeft, ChevronRight, Cross, X } from 'lucide-react';
+import { Baby, Building2, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { api } from '../api/client.ts';
 import { useHmis, ModuleId } from '../context/HmisContext.tsx';
@@ -387,12 +387,22 @@ export const Sidebar: React.FC<{ collapsed: boolean; onToggleCollapse: () => voi
         <div
           className={`flex h-[76px] shrink-0 items-center ${collapsed ? 'md:justify-center md:px-2' : ''} gap-3 px-6`}
         >
-          <span className="brand-mark flex h-11 w-11 shrink-0 items-center justify-center rounded-[15px] text-white">
-            <Cross className="h-7 w-7" strokeWidth={3} />
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center">
+            <img
+              src="/assets/syrona-emblem.png"
+              alt="Syrona Medical Center"
+              draggable={false}
+              className="h-10 w-10 select-none object-contain"
+            />
           </span>
           <div className={`min-w-0 leading-tight ${collapsed ? 'md:hidden' : ''}`}>
-            <div className="text-[19px] font-bold tracking-[-.03em]">JaliCare</div>
-            <div className="mt-0.5 text-[12px] font-medium text-[#c9d7ef]">HMIS Kenya</div>
+            <div className="truncate text-[17px] font-bold tracking-[-.02em]">Syrona</div>
+            <div className="truncate text-[11.5px] font-semibold tracking-[.04em] text-[#c9d7ef]">
+              Medical Center
+            </div>
+            <div className="mt-0.5 truncate text-[9.5px] font-semibold uppercase tracking-[.16em] text-[#8ba5c9]">
+              HMIS
+            </div>
           </div>
           <button
             onClick={() => setIsMobileMenuOpen(false)}
@@ -483,7 +493,7 @@ export const Sidebar: React.FC<{ collapsed: boolean; onToggleCollapse: () => voi
             )}
           </button>
           <div className={`px-2 pt-2 text-[10px] text-[#7387a7] ${collapsed ? 'md:hidden' : ''}`}>
-            JaliCare HMIS · v0.1.0
+            Syrona Medical Center HMIS · v0.1.0
           </div>
         </div>
       </aside>

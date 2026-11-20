@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * SHA eClaims, Eligibility, Benefits, Preauthorization & Remittance — PostgreSQL Integration Suite
  *
  * Exercises end-to-end persistence, transactions, tenant/facility isolation,
@@ -125,7 +125,7 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
   let facilityRegistryCode = '';
 
   beforeAll(async () => {
-    const dbName = process.env.SQL_DB_NAME ?? 'jalicare_test';
+    const dbName = process.env.SQL_DB_NAME ?? 'syrona_test';
     if (!dbName.includes('test')) {
       throw new Error(`Refusing to run DB integration tests against non-test DB "${dbName}".`);
     }
@@ -350,7 +350,7 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
   });
 
   it('verifies eligibility, enforces tenant isolation, governs DRAFT->APPROVED rules, locks approved preauth scope, and reconciles eClaims to invoices', async () => {
-    // 1. Configure facility payer settings & tariff mapping (preserving JaliCare tariff at 8500.00)
+    // 1. Configure facility payer settings & tariff mapping (preserving Syrona Medical Center tariff at 8500.00)
     const payerConfiguration = await upsertFacilityPayerConfig(scopeA, {
       facilityRegistryCode,
       accreditationLevel: 'Level 4',
@@ -1083,7 +1083,7 @@ describeDb('SHA eClaims end-to-end PostgreSQL workflow & tenant isolation', () =
     expect(resubmitted.submissions).toHaveLength(2);
     expect(resubmitted.previousSubmissionRef).toBeTruthy();
 
-    // Adjudicate as ADJUDICATED -> record remittance -> reconcile against JaliCare invoice!
+    // Adjudicate as ADJUDICATED -> record remittance -> reconcile against Syrona Medical Center invoice!
     const adjudicated = await recordClaimAdjudicationDecision(scopeA, prepared.id, {
       targetStatus: 'ADJUDICATED',
       approvedAmount: '7000.00',

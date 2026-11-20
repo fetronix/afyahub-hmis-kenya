@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Patient portal — invitations and activation
  *
  * This module owns the two moments where a mistake would link a portal
@@ -532,7 +532,7 @@ export async function issueInvitation(
   const outcome: DeliveryOutcome = await sendNotification({
     channel,
     to: contact.value,
-    subject: 'Your JaliCare patient portal invitation',
+    subject: 'Your Syrona Medical Center patient portal invitation',
     body: message,
   });
 

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — Private Insurance Benefits, Limits & Copayments Engine
+ * Syrona Medical Center HMIS — Private Insurance Benefits, Limits & Copayments Engine
  *
  * Evaluates insurer-specific benefit categories, service limits, exclusions,
  * deductibles, copayments, coinsurance, and preauthorization rules without
@@ -356,14 +356,14 @@ export async function validatePrivateServiceBenefit(params: {
     tariff = found;
   }
 
-  const jaliCareItemCode = String(params.input.localCode ?? tariff?.code ?? '').trim();
+  const syronaItemCode = String(params.input.localCode ?? tariff?.code ?? '').trim();
   const serviceDescription = String(
     params.input.serviceDescription ?? tariff?.description ?? '',
   ).trim();
   if (!serviceDescription) {
     throw new PrivateInsuranceError(
       'SERVICE_DESCRIPTION_REQUIRED',
-      'Select a JaliCare tariff or provide serviceDescription.',
+      'Select a Syrona Medical Center tariff or provide serviceDescription.',
       400,
     );
   }
@@ -469,7 +469,7 @@ export async function validatePrivateServiceBenefit(params: {
   const matchingMapping = mappings.find(
     (m) =>
       (tariff && m.tariffId === tariff.id) ||
-      (jaliCareItemCode && m.localCode.toUpperCase() === jaliCareItemCode.toUpperCase()),
+      (syronaItemCode && m.localCode.toUpperCase() === syronaItemCode.toUpperCase()),
   );
 
   let mappingStatus: 'MAPPED' | 'INACTIVE_MAPPING' | 'UNMAPPED' = 'UNMAPPED';
@@ -516,7 +516,7 @@ export async function validatePrivateServiceBenefit(params: {
   }
   if (mappingStatus !== 'MAPPED') {
     missingRequirements.push(
-      `JaliCare service "${jaliCareItemCode || serviceDescription}" is ${mappingStatus} for ${payerRow.payerCode}.`,
+      `Syrona Medical Center service "${syronaItemCode || serviceDescription}" is ${mappingStatus} for ${payerRow.payerCode}.`,
     );
   }
 
@@ -669,7 +669,7 @@ export async function validatePrivateServiceBenefit(params: {
 
   return {
     ...saved,
-    jaliCareItemCode: jaliCareItemCode || null,
+    syronaItemCode: syronaItemCode || null,
     mappingStatus,
     patientContributionEstimate:
       estimatedCoveredAmount !== null

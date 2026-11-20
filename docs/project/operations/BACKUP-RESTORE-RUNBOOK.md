@@ -1,6 +1,6 @@
 # Backup, Restore and Disaster Recovery — Runbook
 
-**Scope:** the PostgreSQL database that holds all JaliCare HMIS data. Covers taking
+**Scope:** the PostgreSQL database that holds all Syrona Medical Center HMIS data. Covers taking
 a backup, proving it, restoring it, and what to do when the host is gone.
 
 **Last verified:** 2026-10-27 — restore drill passed (230 tables, 84 rows, contents
@@ -43,10 +43,10 @@ openssl rand -base64 32
 ## 3. Routine backup
 
 ```bash
-export BACKUP_DIR=/srv/jalicare/backups
-export BACKUP_ENCRYPTION_KEY_FILE=/etc/jalicare/backup.key
-export SQL_HOST=127.0.0.1 SQL_PORT=5432 SQL_DB_NAME=jalicare \
-       SQL_ADMIN_USER=jalicare_backup SQL_ADMIN_PASSWORD='…'
+export BACKUP_DIR=/srv/syrona/backups
+export BACKUP_ENCRYPTION_KEY_FILE=/etc/syrona/backup.key
+export SQL_HOST=127.0.0.1 SQL_PORT=5432 SQL_DB_NAME=syrona \
+       SQL_ADMIN_USER=syrona_backup SQL_ADMIN_PASSWORD='…'
 
 npm run db:backup
 ```
@@ -54,12 +54,12 @@ npm run db:backup
 Output (`--json` for machine-readable):
 
 ```
-backup OK  /srv/jalicare/backups/jalicare-20261027T021500.jcbak
+backup OK  /srv/syrona/backups/syrona-20261027T021500.jcbak
   engine    pgdump (encrypted)
-  database  jalicare
+  database  syrona
   size      18432112 bytes stored, 18431004 bytes payload
   sha256    9f2c…
-  manifest  /srv/jalicare/backups/jalicare-20261027T021500.jcbak.manifest.json
+  manifest  /srv/syrona/backups/syrona-20261027T021500.jcbak.manifest.json
 ```
 
 Exit status is 0 only on success. A scheduler that checks only the exit code is
@@ -81,10 +81,10 @@ and that is stated in every manifest it writes.
 
 ```cron
 # 02:15 daily, log to the facility's log directory
-15 2 * * * cd /home/<account>/jalicare && \
-  /usr/bin/env BACKUP_DIR=/srv/jalicare/backups \
-  BACKUP_ENCRYPTION_KEY_FILE=/etc/jalicare/backup.key \
-  SQL_DB_NAME=jalicare SQL_ADMIN_USER=jalicare_backup SQL_ADMIN_PASSWORD="$(cat /etc/jalicare/db.pass)" \
+15 2 * * * cd /home/<account>/syrona && \
+  /usr/bin/env BACKUP_DIR=/srv/syrona/backups \
+  BACKUP_ENCRYPTION_KEY_FILE=/etc/syrona/backup.key \
+  SQL_DB_NAME=syrona SQL_ADMIN_USER=syrona_backup SQL_ADMIN_PASSWORD="$(cat /etc/syrona/db.pass)" \
   /usr/local/bin/node scripts/backup/db-backup.mjs >> /home/<account>/logs/backup.log 2>&1
 ```
 
@@ -120,8 +120,8 @@ migrations → restores the archive into it → compares every table's row count
 a content hash of every row against the source → drops the drill database.
 
 ```
-drill source   jalicare@127.0.0.1:5432/jalicare
-drill target   jalicare_drill_20261027t021500z
+drill source   syrona@127.0.0.1:5432/syrona
+drill target   syrona_drill_20261027t021500z
 engine         pgdump
 
 drill PASSED
@@ -146,16 +146,16 @@ compared too.
 
 ```bash
 # 1. create the empty database
-createdb -h 127.0.0.1 -U postgres jalicare_restore_20261027
+createdb -h 127.0.0.1 -U postgres syrona_restore_20261027
 
 # 2. pgdump archives: restore directly
 node scripts/backup/db-restore.mjs \
-  --archive /srv/jalicare/backups/jalicare-20261027T021500.jcbak \
-  --target jalicare_restore_20261027
+  --archive /srv/syrona/backups/syrona-20261027T021500.jcbak \
+  --target syrona_restore_20261027
 
 # logical archives: build the schema first, at the recorded migration count
-SQL_DB_NAME=jalicare_restore_20261027 npm run db:migrate
-node scripts/backup/db-restore.mjs --archive … --target jalicare_restore_20261027
+SQL_DB_NAME=syrona_restore_20261027 npm run db:migrate
+node scripts/backup/db-restore.mjs --archive … --target syrona_restore_20261027
 ```
 
 ### Built-in refusals

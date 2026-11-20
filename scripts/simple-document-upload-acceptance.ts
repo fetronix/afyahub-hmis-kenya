@@ -168,7 +168,7 @@ try {
         const r = await fetch(url, {
           method: body ? 'POST' : 'GET',
           headers: {
-            Authorization: `Bearer ${localStorage.getItem('jalicare_session_token')}`,
+            Authorization: `Bearer ${localStorage.getItem('syrona_session_token')}`,
             ...(body ? { 'Content-Type': 'application/json' } : {}),
           },
           body: body ? JSON.stringify(body) : undefined,
@@ -190,7 +190,7 @@ try {
         const r = await fetch(`/api/patient-documents/patients/${patient}`, {
           method: 'POST',
           headers: {
-            Authorization: `Bearer ${localStorage.getItem('jalicare_session_token')}`,
+            Authorization: `Bearer ${localStorage.getItem('syrona_session_token')}`,
             'Content-Type': 'application/pdf',
             'X-Document-Metadata': encodeURIComponent(
               JSON.stringify({
@@ -279,7 +279,7 @@ try {
   await click(staff, 'Close preview');
   const retrieved = await staff.evaluate(async (url) => {
     const r = await fetch(url, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('jalicare_session_token')}` },
+      headers: { Authorization: `Bearer ${localStorage.getItem('syrona_session_token')}` },
     });
     return { status: r.status, bytes: Array.from(new Uint8Array(await r.arrayBuffer())) };
   }, `${docsUrl}/${general.id}/file`);

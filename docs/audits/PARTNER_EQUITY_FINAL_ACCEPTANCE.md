@@ -125,7 +125,7 @@ npx vitest run --maxWorkers=2 \
  src/tests/vitest/budget-navigation-ui.spec.tsx
 
 # Separate migrated disposable database for the DB suite:
-JALICARE_REQUIRE_DB=1 EQUITY_SYNTHETIC=YES \
+SYRONA_REQUIRE_DB=1 EQUITY_SYNTHETIC=YES \
  SQL_HOST=127.0.0.1 SQL_PORT=<disposable-port> SQL_DB_NAME=equity_synthetic_test \
  SQL_ADMIN_USER=<disposable-user> SQL_ADMIN_PASSWORD=<disposable-password> SQL_SSL=false \
  npx vitest run --maxWorkers=2 src/tests/partner-equity.db.spec.ts

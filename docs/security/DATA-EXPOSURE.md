@@ -14,10 +14,10 @@ in its history:
 
 | File | First added in |
 |---|---|
-| `backups/database/jalicaredb-pre-tariffs-20261018-004117.dump` | `f5abd3d` |
-| `backups/jalicaredb-before-patient-guardian-20261019.dump` | `8380d3c` |
-| `jalicaredb-before-tariff-migration-20261018-103020.dump` | `f5abd3d` |
-| `local-backups/jalicaredb-before-subscription-migration-20261016-035706.dump` | `6e03e01` |
+| `backups/database/syronadb-pre-tariffs-20261018-004117.dump` | `f5abd3d` |
+| `backups/syronadb-before-patient-guardian-20261019.dump` | `8380d3c` |
+| `syronadb-before-tariff-migration-20261018-103020.dump` | `f5abd3d` |
+| `local-backups/syronadb-before-subscription-migration-20261016-035706.dump` | `6e03e01` |
 
 All four reference the `patients` and `patient_identifiers` tables. On
 2026-11-03, repository metadata identified this repository as **public**,

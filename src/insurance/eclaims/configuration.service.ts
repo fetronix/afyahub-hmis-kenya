@@ -1,8 +1,8 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Payer Configuration, Service Code Mappings & Versioned Benefit Rules Service
  *
- * Strictly preserves JaliCare's `facility_service_tariffs` untouched while
+ * Strictly preserves Syrona Medical Center's `facility_service_tariffs` untouched while
  * maintaining explicit, effective-dated payer service mappings and versioned
  * benefit rules (`DRAFT` -> `APPROVED` -> `RETIRED`).
  */
@@ -283,7 +283,7 @@ export async function upsertServiceCodeMapping(
     if (!tariff) {
       throw new InsuranceDomainError(
         'TARIFF_NOT_FOUND',
-        'Selected JaliCare facility tariff does not exist in this facility.',
+        'Selected Syrona Medical Center facility tariff does not exist in this facility.',
         404,
       );
     }

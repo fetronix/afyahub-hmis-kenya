@@ -11,7 +11,7 @@
  * code, not just the library functions.
  *
  * Safety: this file only ever writes to the database named by SQL_DB_NAME,
- * which in CI is `jalicare_test` on a throwaway service container. It refuses
+ * which in CI is `syrona_test` on a throwaway service container. It refuses
  * to run against a database whose name does not contain `test`, so a
  * misconfigured local .env cannot point it at a real installation.
  */
@@ -26,7 +26,7 @@ import { describeDb, testPool } from './support/db.ts';
 const ROOT = resolve(import.meta.dirname, '..', '..', '..');
 
 function databaseName(): string {
-  return process.env.SQL_DB_NAME ?? 'jalicare_test';
+  return process.env.SQL_DB_NAME ?? 'syrona_test';
 }
 
 function run(script: string, args: string[] = []): { code: number; out: string } {

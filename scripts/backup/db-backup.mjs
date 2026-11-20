@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * JaliCare HMIS — take a database backup.
+ * Syrona Medical Center HMIS — take a database backup.
  *
  *   npm run db:backup
- *   node scripts/backup/db-backup.mjs --engine logical --out /srv/jalicare/backups
+ *   node scripts/backup/db-backup.mjs --engine logical --out /srv/syrona/backups
  *
  * Exits non-zero on any failure, so a scheduler that only checks the exit status
  * will not record a failed backup as a success. A backup that wrote no file, or

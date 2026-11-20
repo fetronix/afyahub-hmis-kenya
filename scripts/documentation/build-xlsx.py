@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Builds the two Excel deliverables from repository facts.
 
-* docs/JALICARE_REPORT_CATALOGUE.xlsx — every catalogue entry with its status,
+* docs/SYRONA_REPORT_CATALOGUE.xlsx — every catalogue entry with its status,
   parsed from `src/reporting/report-catalogue.ts` by
   `scripts/documentation/parse-catalogue.py` into docs/documentation/report-catalogue.csv.
-* docs/JALICARE_DOCUMENTATION_TRACEABILITY_MATRIX.xlsx — each requirement of
+* docs/SYRONA_DOCUMENTATION_TRACEABILITY_MATRIX.xlsx — each requirement of
   this documentation issue mapped to where it is answered and what supports it.
 """
 from __future__ import annotations
@@ -77,9 +77,9 @@ def build_report_catalogue() -> None:
     cover.sheet_view.showGridLines = False
     cover.column_dimensions["B"].width = 26
     cover.column_dimensions["C"].width = 96
-    cover["B2"] = "JaliCare HMIS — Report Catalogue"
+    cover["B2"] = "Syrona Medical Center HMIS — Report Catalogue"
     cover["B2"].font = Font(name="Calibri", bold=True, size=22, color=INK)
-    cover["B3"] = "Companion to JALICARE_COMPLETE_SYSTEM_DOCUMENTATION.docx, Chapter 23"
+    cover["B3"] = "Companion to SYRONA_COMPLETE_SYSTEM_DOCUMENTATION.docx, Chapter 23"
     cover["B3"].font = Font(name="Calibri", size=12, italic=True, color="4A5C66")
     facts = [
         ("Document ID", "JC-CAT-001"),
@@ -191,7 +191,7 @@ def build_report_catalogue() -> None:
     body(engine_sheet)
     add_table(engine_sheet, "Engines", 3)
 
-    out = DOCS / "JALICARE_REPORT_CATALOGUE.xlsx"
+    out = DOCS / "SYRONA_REPORT_CATALOGUE.xlsx"
     workbook.save(out)
     print("wrote", out.relative_to(ROOT), "rows:", len(rows), "engines:", len(grouped))
 
@@ -199,12 +199,12 @@ def build_report_catalogue() -> None:
 TRACEABILITY = [
     ("R-01", "Describe the actual repository and running application, not generic healthcare text",
      "All chapters; Ch29 §29.7", "Source paths cited per chapter; captures of the running build", "Met"),
-    ("R-02", "Complete system documentation as one volume", "JALICARE_COMPLETE_SYSTEM_DOCUMENTATION.docx",
+    ("R-02", "Complete system documentation as one volume", "SYRONA_COMPLETE_SYSTEM_DOCUMENTATION.docx",
      "29 chapters plus evidence appendix", "Met"),
-    ("R-03", "Separate user manual", "JALICARE_USER_MANUAL.docx", "Operator edition of the module chapters", "Met"),
-    ("R-04", "Separate technical manual", "JALICARE_TECHNICAL_MANUAL.docx",
+    ("R-03", "Separate user manual", "SYRONA_USER_MANUAL.docx", "Operator edition of the module chapters", "Met"),
+    ("R-04", "Separate technical manual", "SYRONA_TECHNICAL_MANUAL.docx",
      "Architecture, data, reporting, security, deployment, verification", "Met"),
-    ("R-05", "Test and verification report", "JALICARE_TEST_AND_VERIFICATION_REPORT.docx",
+    ("R-05", "Test and verification report", "SYRONA_TEST_AND_VERIFICATION_REPORT.docx",
      "Ch27 register, Ch28 completion register, evidence appendix", "Met"),
     ("R-06", "Architecture chapter with diagrams", "Ch2", "Figures 2.1 and 2.2; dependency table", "Met"),
     ("R-07", "Every dashboard KPI explained with its source", "Ch4", "Table 4.1", "Met"),
@@ -219,7 +219,7 @@ TRACEABILITY = [
     ("R-15", "Inventory and procurement", "Ch20", "Event-to-ledger table and sequence", "Met"),
     ("R-16", "HR and workforce", "Ch21", "Screens and absence table", "Met"),
     ("R-17", "Insurance and integrations without credentials", "Ch22", "Provider status table", "Met"),
-    ("R-18", "Reporting centre with full report catalogue", "Ch23; JALICARE_REPORT_CATALOGUE.xlsx",
+    ("R-18", "Reporting centre with full report catalogue", "Ch23; SYRONA_REPORT_CATALOGUE.xlsx",
      "144 entries; 24 available; 20 engines", "Met"),
     ("R-19", "Administration and configuration", "Ch24", "Configuration tabs and permissions", "Met"),
     ("R-20", "Security, privacy and audit without unproven compliance claims", "Ch25",
@@ -283,7 +283,7 @@ OPEN_ITEMS = [
              "connectivity from the build environment.", "Integrations",
      "Recorded as BLOCKED in Ch27 §27.10 and partial in Ch28 §28.3."),
     ("G-02", "116 catalogue reports have no engine and cannot be exported.", "Reporting",
-     "Listed individually in JALICARE_REPORT_CATALOGUE.xlsx and Ch23 §23.2."),
+     "Listed individually in SYRONA_REPORT_CATALOGUE.xlsx and Ch23 §23.2."),
     ("G-03", "Six automated tests fail because the radiology consent gate is stricter than older "
              "billing tests assume; twelve further failures were not retriaged.", "Engineering",
      "Named with their messages in Ch27 §27.5; billing with radiology marked not verified."),
@@ -332,7 +332,7 @@ def build_traceability() -> None:
     body(gaps)
     add_table(gaps, "OpenItems", 4)
 
-    out = DOCS / "JALICARE_DOCUMENTATION_TRACEABILITY_MATRIX.xlsx"
+    out = DOCS / "SYRONA_DOCUMENTATION_TRACEABILITY_MATRIX.xlsx"
     workbook.save(out)
     print("wrote", out.relative_to(ROOT), "requirements:", len(TRACEABILITY))
 

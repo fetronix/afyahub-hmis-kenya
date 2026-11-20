@@ -81,7 +81,7 @@ warnings because each was judged non-blocking, not because the rule was disabled
 ### 2.2 Database
 
 - **88 migrations** (`0000` … `0087`) applied cleanly from empty on three separate fresh
-  databases: `jalicare_synthetic_test`, `jalicare_firstrun`, `jalicare_docorder`.
+  databases: `syrona_synthetic_test`, `syrona_firstrun`, `syrona_docorder`.
 - `drizzle/meta/_journal.json` has 88 entries; the newest is
   `0087_claim_dispatch_reconciliation`.
 - Migration runner is transactional, prints the plan, requires `--yes` off localhost, and
@@ -160,7 +160,7 @@ These are real breakages that were reproduced, fixed, and re-verified — not re
 | 3   | `/api/master-tariffs` style clients pointed at **retired** endpoints (service-tariff link router not mounted; `lab-service-diagnostics` route lost in extraction) | 4 client screens called routes that did not exist                                                                       | Mounted `serviceTariffLinksRoutes`; restored `GET /api/billing/lab-service-diagnostics`; re-pointed 4 client methods to `/api/facility-tariffs` | Live 200/201/PATCH on all repaired paths; `client-route-contract.spec.ts` 4/4 |
 | 4   | Patient list returned **500** for a platform admin without a tenant                                                                                               | Unhandled exception on a normal admin screen                                                                            | Typed `ScopeAccessError` codes + 400 mapping                                                                                                    | Live 400/403 matrix above                                                     |
 | 5   | `deploy-artifacts.spec.ts` failed once `bootstrap-admin.js` was added to the build                                                                                | The guard that keeps the checker in step with the build did its job                                                     | Added the artefact to `REQUIRED_ARTIFACTS` **and** the test fixture                                                                             | 11/11 pass                                                                    |
-| 6   | Documented install order was **wrong** — README, CONTRIBUTING, deployment guide and the Truehost guide all ran `db:seed:permissions` before any admin existed     | Documented first run fails with `Global SUPER_ADMIN role was not found` (exit 1)                                        | Not yet fixed — tracked in §7.1                                                                                                                 | Reproduced on `jalicare_docorder`                                             |
+| 6   | Documented install order was **wrong** — README, CONTRIBUTING, deployment guide and the Truehost guide all ran `db:seed:permissions` before any admin existed     | Documented first run fails with `Global SUPER_ADMIN role was not found` (exit 1)                                        | Not yet fixed — tracked in §7.1                                                                                                                 | Reproduced on `syrona_docorder`                                             |
 
 A client↔server route guard (`src/tests/vitest/client-route-contract.spec.ts`) now parses every
 client method and every registered server route and fails if a client method has no route. It

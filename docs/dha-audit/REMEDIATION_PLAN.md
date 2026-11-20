@@ -1,7 +1,7 @@
 # Remediation Plan
 
 **Date:** 21 October 2026 · **Revised:** 22 October 2026 (patient portal round)
-**Basis:** `JALICARE_DHA_READINESS_AUDIT.md`, `SECURITY_PRIVACY_GAP_REGISTER.md`,
+**Basis:** `SYRONA_DHA_READINESS_AUDIT.md`, `SECURITY_PRIVACY_GAP_REGISTER.md`,
 `INTEROPERABILITY_AUDIT.md`, `DATABASE_MIGRATION_AUDIT.md`
 
 Ordered by risk, not by effort. "Owner" distinguishes what the engineering team

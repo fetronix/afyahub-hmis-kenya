@@ -2,7 +2,7 @@
 
 > **STATUS: DRAFT — NOT REVIEWED, NOT APPROVED, NOT SIGNED.**
 >
-> This document was assembled from verified facts about the Jalicare HMIS source
+> This document was assembled from verified facts about the Syrona Medical Center HMIS source
 > code on 21 October 2026. It contains no legal opinion. Sections marked **[TO BE
 > COMPLETED]** require a decision by the responsible organisation or its data
 > protection officer, and must not be filled in by an engineer guessing.
@@ -17,7 +17,7 @@
 
 | Field | Value |
 |---|---|
-| System | Jalicare HMIS |
+| System | Syrona Medical Center HMIS |
 | Version / commit | Branch `arena/14785aa5-afyahub-hmis-kenya`, commits up to and including the audit commit |
 | Responsible entity (controller) | **[TO BE COMPLETED]** — not stated anywhere in the repository |
 | Processor(s) | **[TO BE COMPLETED]** — hosting provider, support provider |
@@ -30,7 +30,7 @@
 
 ## 2. Why a DPIA is required
 
-Jalicare processes **personal health data**, which the Act treats as sensitive
+Syrona Medical Center processes **personal health data**, which the Act treats as sensitive
 personal data. The processing includes:
 
 - recording diagnoses, prescriptions, laboratory results, maternity records and
@@ -81,11 +81,11 @@ scope, meets the threshold for a DPIA.
 
 | Flow | Status |
 |---|---|
-| Browser → Jalicare API | HTTPS **if** TLS is terminated by the deployment; the app serves no TLS itself |
+| Browser → Syrona Medical Center API | HTTPS **if** TLS is terminated by the deployment; the app serves no TLS itself |
 | API → PostgreSQL | TLS configurable (`SQL_SSL`), **off by default** |
-| Jalicare → DHA (eligibility, benefits) | **Disabled.** Mock mode by default; production requires an explicit opt-in and credentials that are not present |
-| Jalicare → national reporting (KHIS/DHIS2) | **Does not exist** |
-| Jalicare → email/SMS | **Does not exist** — no mail or SMS transport in the code |
+| Syrona Medical Center → DHA (eligibility, benefits) | **Disabled.** Mock mode by default; production requires an explicit opt-in and credentials that are not present |
+| Syrona Medical Center → national reporting (KHIS/DHIS2) | **Does not exist** |
+| Syrona Medical Center → email/SMS | **Does not exist** — no mail or SMS transport in the code |
 | Export | `health_record_exports` table exists; no patient-facing export route was found |
 
 ### 3.5 Recipients
@@ -229,4 +229,4 @@ real patients until §7.3 is answered and this DPIA is signed.**
 | Review date | ______________________ |
 
 **Until this table is completed, the DPIA does not exist for compliance purposes,
-and the Jalicare readiness assessment records it as BLOCKED.**
+and the Syrona Medical Center readiness assessment records it as BLOCKED.**

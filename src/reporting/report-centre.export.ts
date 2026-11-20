@@ -28,7 +28,7 @@ function content(result: ReportResult): {
   const definition = REPORT_ENGINES[result.reportId];
   return {
     metadata: [
-      'JaliCare HMIS — Reporting Centre',
+      'Syrona Medical Center HMIS — Reporting Centre',
       result.title,
       `Facility: ${result.facilityName}`,
       `Generated (UTC): ${result.generatedAt}`,
@@ -170,7 +170,7 @@ export async function exportReport(
         ? await excel(data)
         : csv(data);
   return {
-    filename: `jalicare-${result.reportId}-${result.generatedAt.slice(0, 10)}.${format}`,
+    filename: `syrona-${result.reportId}-${result.generatedAt.slice(0, 10)}.${format}`,
     contentType:
       format === 'pdf'
         ? 'application/pdf'

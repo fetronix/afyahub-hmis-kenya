@@ -1,4 +1,4 @@
-# JaliCare HMIS — local and small-production stack
+# Syrona Medical Center HMIS — local and small-production stack
 #
 #   docker compose up -d --build          start
 #   docker compose logs -f app            watch
@@ -24,16 +24,16 @@
 #   and put it in `.env` as FIELD_ENCRYPTION_KEY. The compose file fails
 #   loudly if it is missing rather than starting with a default.
 
-name: jalicare
+name: syrona
 
 services:
   db:
     image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${SQL_ADMIN_USER:-jalicare}
+      POSTGRES_USER: ${SQL_ADMIN_USER:-syrona}
       POSTGRES_PASSWORD: ${SQL_ADMIN_PASSWORD:?SQL_ADMIN_PASSWORD is required - set it in .env}
-      POSTGRES_DB: ${SQL_DB_NAME:-jalicare}
+      POSTGRES_DB: ${SQL_DB_NAME:-syrona}
       # Deterministic collation regardless of the host locale: a database
       # sort order that changes with the host makes ORDER BY results, and
       # therefore tests, depend on where it runs.
@@ -42,7 +42,7 @@ services:
     volumes:
       # Named volume: survives `down`, destroyed by `down -v`. The data lives
       # here, not inside the image.
-      - jalicare-db-data:/var/lib/postgresql/data
+      - syrona-db-data:/var/lib/postgresql/data
     healthcheck:
       # `pg_isready` with the real user and database, so "the port is open"
       # is not mistaken for "this database accepts connections".
@@ -57,7 +57,7 @@ services:
     # found and emptied. Uncomment to inspect it from the host.
     # ports:
     #   - '127.0.0.1:5432:5432'
-    networks: [jalicare]
+    networks: [syrona]
 
   # One-shot migration runner. Uses the same image as the app, so the
   # migration files and the code that produced them can never disagree.
@@ -65,7 +65,7 @@ services:
     build:
       context: .
       target: runner
-    image: jalicare-hmis:latest
+    image: syrona-hmis:latest
     profiles: ['tools']
     restart: 'no'
     depends_on:
@@ -75,8 +75,8 @@ services:
       NODE_ENV: production
       SQL_HOST: db
       SQL_PORT: '5432'
-      SQL_DB_NAME: ${SQL_DB_NAME:-jalicare}
-      SQL_ADMIN_USER: ${SQL_ADMIN_USER:-jalicare}
+      SQL_DB_NAME: ${SQL_DB_NAME:-syrona}
+      SQL_ADMIN_USER: ${SQL_ADMIN_USER:-syrona}
       SQL_ADMIN_PASSWORD: ${SQL_ADMIN_PASSWORD:?SQL_ADMIN_PASSWORD is required}
       SQL_SSL: 'false'
       FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:?FIELD_ENCRYPTION_KEY is required}
@@ -88,13 +88,13 @@ services:
     # changes nothing. To apply, run the same service with `db:migrate`:
     #   docker compose run --rm migrate npm run db:migrate -- --yes
     command: ['npm', 'run', 'db:status']
-    networks: [jalicare]
+    networks: [syrona]
 
   app:
     build:
       context: .
       target: runner
-    image: jalicare-hmis:latest
+    image: syrona-hmis:latest
     restart: unless-stopped
     depends_on:
       db:
@@ -111,8 +111,8 @@ services:
       # database does not need a published port.
       SQL_HOST: db
       SQL_PORT: '5432'
-      SQL_DB_NAME: ${SQL_DB_NAME:-jalicare}
-      SQL_ADMIN_USER: ${SQL_ADMIN_USER:-jalicare}
+      SQL_DB_NAME: ${SQL_DB_NAME:-syrona}
+      SQL_ADMIN_USER: ${SQL_ADMIN_USER:-syrona}
       SQL_ADMIN_PASSWORD: ${SQL_ADMIN_PASSWORD:?SQL_ADMIN_PASSWORD is required}
       # Inside the compose network the traffic never leaves the host.
       # Set 'true' with a managed PostgreSQL that requires TLS.
@@ -132,7 +132,7 @@ services:
     volumes:
       # Uploads live outside the container so a redeploy does not take the
       # scanned documents with it.
-      - jalicare-uploads:/app/uploads
+      - syrona-uploads:/app/uploads
     healthcheck:
       # Same probe the image declares. Kept explicit here so the compose
       # file is readable on its own.
@@ -145,14 +145,14 @@ services:
       timeout: 5s
       retries: 3
       start_period: 40s
-    networks: [jalicare]
+    networks: [syrona]
 
 volumes:
-  jalicare-db-data:
+  syrona-db-data:
     driver: local
-  jalicare-uploads:
+  syrona-uploads:
     driver: local
 
 networks:
-  jalicare:
+  syrona:
     driver: bridge

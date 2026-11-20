@@ -1,6 +1,6 @@
 # 01 — System overview
 
-This area explains what JaliCare HMIS is, what it covers, how it is built and who uses it. Read
+This area explains what Syrona Medical Center HMIS is, what it covers, how it is built and who uses it. Read
 it before the manuals: the manuals assume the vocabulary introduced here.
 
 | Document | Purpose | Audience |

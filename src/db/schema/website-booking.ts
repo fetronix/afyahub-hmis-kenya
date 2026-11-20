@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — website booking schema.
+ * Syrona Medical Center HMIS — website booking schema.
  * Definitions are re-exported by ../schema.ts for existing callers and drizzle-kit.
  */
 

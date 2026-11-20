@@ -46,7 +46,7 @@ receiving/payables tabs rather than replacing them.
 ## Evidence
 
 All figures are from runs performed in this session against PostgreSQL 18.6 with
-all 80 migrations applied to `jalicare_synthetic_test`.
+all 80 migrations applied to `syrona_synthetic_test`.
 
 | Check                                                                | Result                                                      |
 | -------------------------------------------------------------------- | ----------------------------------------------------------- |

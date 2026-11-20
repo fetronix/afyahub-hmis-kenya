@@ -5,13 +5,13 @@
 | Document | SYSTEM_OVERVIEW |
 | Version | 1.0 |
 | Last reviewed | 2026-11-18 |
-| Applies to | JaliCare HMIS 0.1.0, commit `9d7274c` |
+| Applies to | Syrona Medical Center HMIS 0.1.0, commit `9d7274c` |
 | Audience | Everyone — staff, administrators, engineers, buyers |
 | Status | Verified against source, schema and the generated inventories |
 
-## What JaliCare is
+## What Syrona Medical Center is
 
-JaliCare HMIS is a multi-tenant hospital management information system built for Kenyan
+Syrona Medical Center HMIS is a multi-tenant hospital management information system built for Kenyan
 facilities. One deployment serves a group of facilities belonging to one or more
 organisations. It covers the patient journey from registration and appointment through
 outpatient consultation, diagnostics, pharmacy, admission, maternity, theatre and dialysis, to

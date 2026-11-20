@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Patient portal — record release
  *
  * Every function here takes a **portal session**, never a patient id

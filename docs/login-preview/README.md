@@ -11,15 +11,15 @@ signed-out user. Nothing in the application was mocked or altered for the run.
 
 ## Viewports measured
 
-| Viewport | Document width | Horizontal overflow | Elements outside viewport | Key-element collisions | Broken images | Page errors |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1280x720 | 1280 | 0 px | 0 | 0 | 0 | none¹ |
-| 1366x768 | 1366 | 0 px | 0 | 0 | 0 | none¹ |
-| 1440x900 | 1440 | 0 px | 0 | 0 | 0 | none¹ |
-| 1920x1080 | 1920 | 0 px | 0 | 0 | 0 | none¹ |
-| 1024x768 | 1024 | 0 px | 0 | 0 | 0 | none¹ |
-| 768x1024 (stacked) | 768 | 0 px | 0 | 0 | 0 | none¹ |
-| 390x844 (stacked) | 390 | 0 px | 0 | 0 | 0 | none¹ |
+| Viewport           | Document width | Horizontal overflow | Elements outside viewport | Key-element collisions | Broken images | Page errors |
+| ------------------ | -------------- | ------------------- | ------------------------- | ---------------------- | ------------- | ----------- |
+| 1280x720           | 1280           | 0 px                | 0                         | 0                      | 0             | none¹       |
+| 1366x768           | 1366           | 0 px                | 0                         | 0                      | 0             | none¹       |
+| 1440x900           | 1440           | 0 px                | 0                         | 0                      | 0             | none¹       |
+| 1920x1080          | 1920           | 0 px                | 0                         | 0                      | 0             | none¹       |
+| 1024x768           | 1024           | 0 px                | 0                         | 0                      | 0             | none¹       |
+| 768x1024 (stacked) | 768            | 0 px                | 0                         | 0                      | 0             | none¹       |
+| 390x844 (stacked)  | 390            | 0 px                | 0                         | 0                      | 0             | none¹       |
 
 ¹ The only console entry in the headless run is Vite's development HMR client
 (`WebSocket closed without opened`), which does not exist in a production
@@ -51,19 +51,19 @@ component compile outside the dev server.
 
 ## Visual expectations
 
-* Palette is exactly `#142143` (navy), `#1888B5` (cyan), `#F8FAFC` / `#FFFFFF`
+- Palette is exactly `#142143` (navy), `#1888B5` (cyan), `#F8FAFC` / `#FFFFFF`
   (surfaces), `#E2E8F0` (borders); the Sign In button is a flat navy `#142143`
   that darkens to `#0F1933` on hover, with an 8px radius on inputs and buttons.
-* No Biometric or Smart Card buttons exist. The page contains no `JaliCare` or
-  `AfyaHub` string.
-* Below 640px the module list, clinician portrait and script tagline are hidden
+- No Biometric or Smart Card buttons exist, and no `JaliCare` or `AfyaHub` string
+  survives anywhere in the rendered screen.
+- Below 640px the module list, clinician portrait and script tagline are hidden
   so the sign-in form is reachable in the first screen; the trust bar remains.
   From 640px up all brand content is shown.
 
 ## Files
 
-* `login-1280x720.png`, `login-1366x768.png`, `login-1440x900.png`,
+- `login-1280x720.png`, `login-1366x768.png`, `login-1440x900.png`,
   `login-1920x1080.png` — full-viewport screenshots of the four acceptance
   sizes.
-* `measurements.json` — the raw measurements and image-load results quoted
+- `measurements.json` — the raw measurements and image-load results quoted
   above.

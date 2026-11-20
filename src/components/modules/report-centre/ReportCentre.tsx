@@ -186,7 +186,7 @@ export const ReportCentre: React.FC = () => {
       <PageHeader>
         <div className="min-w-0">
           <p className="text-2xs font-bold uppercase tracking-[0.18em] text-brand-700">
-            JaliCare · Facility intelligence
+            Syrona Medical Center · Facility intelligence
           </p>
           <h1 className="ui-page-title mt-1">Reporting Centre</h1>
           <p className="ui-page-description">

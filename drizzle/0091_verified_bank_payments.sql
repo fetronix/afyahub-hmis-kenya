@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS bank_payment_events (
 --> statement-breakpoint
 ALTER TABLE billing_payments ADD COLUMN IF NOT EXISTS bank_payment_record_id integer UNIQUE REFERENCES bank_payment_records(id);
 --> statement-breakpoint
-CREATE FUNCTION jalicare_bank_payment_record_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE FUNCTION syrona_bank_payment_record_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF TG_OP='DELETE' THEN RAISE EXCEPTION 'Bank payment history is immutable' USING ERRCODE='23514'; END IF;
   IF TG_OP='UPDATE' THEN
@@ -106,9 +106,9 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
-CREATE TRIGGER bank_payment_record_guard BEFORE INSERT OR UPDATE OR DELETE ON bank_payment_records FOR EACH ROW EXECUTE FUNCTION jalicare_bank_payment_record_guard();
+CREATE TRIGGER bank_payment_record_guard BEFORE INSERT OR UPDATE OR DELETE ON bank_payment_records FOR EACH ROW EXECUTE FUNCTION syrona_bank_payment_record_guard();
 --> statement-breakpoint
-CREATE FUNCTION jalicare_verified_bank_receipt_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE FUNCTION syrona_verified_bank_receipt_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE f integer; t integer;
 BEGIN
   SELECT facility_id,tenant_id INTO f,t FROM billing_invoices WHERE id=NEW.invoice_id;
@@ -125,11 +125,11 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
-CREATE TRIGGER verified_bank_receipt_guard BEFORE INSERT ON billing_payments FOR EACH ROW EXECUTE FUNCTION jalicare_verified_bank_receipt_guard();
+CREATE TRIGGER verified_bank_receipt_guard BEFORE INSERT ON billing_payments FOR EACH ROW EXECUTE FUNCTION syrona_verified_bank_receipt_guard();
 --> statement-breakpoint
-CREATE FUNCTION jalicare_bank_event_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE FUNCTION syrona_bank_event_immutable() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN RAISE EXCEPTION 'Bank payment events are immutable' USING ERRCODE='23514'; END $$;
-CREATE TRIGGER bank_event_immutable BEFORE UPDATE OR DELETE ON bank_payment_events FOR EACH ROW EXECUTE FUNCTION jalicare_bank_event_immutable();
+CREATE TRIGGER bank_event_immutable BEFORE UPDATE OR DELETE ON bank_payment_events FOR EACH ROW EXECUTE FUNCTION syrona_bank_event_immutable();
 --> statement-breakpoint
 -- Preserve historical rows for explicit review; all new/changed links must be in scope.
 CREATE UNIQUE INDEX IF NOT EXISTS bank_import_parent_scope_idx ON bank_statement_imports(id,bank_account_id,facility_id,tenant_id);
@@ -138,7 +138,7 @@ ALTER TABLE bank_reconciliations ADD CONSTRAINT bank_reconciliation_import_paren
 ALTER TABLE bank_statement_imports ADD CONSTRAINT bank_import_account_parent_scope_fk FOREIGN KEY(bank_account_id,facility_id,tenant_id) REFERENCES bank_accounts(id,facility_id,tenant_id) NOT VALID;
 ALTER TABLE bank_transactions ADD CONSTRAINT bank_transaction_account_parent_scope_fk FOREIGN KEY(bank_account_id,facility_id,tenant_id) REFERENCES bank_accounts(id,facility_id,tenant_id) NOT VALID;
 --> statement-breakpoint
-CREATE FUNCTION jalicare_verified_bank_statement_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+CREATE FUNCTION syrona_verified_bank_statement_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE b bank_payment_records%ROWTYPE;
 BEGIN
   SELECT * INTO b FROM bank_payment_records WHERE statement_transaction_id=OLD.id;
@@ -154,4 +154,4 @@ BEGIN
   END IF;
   RETURN NEW;
 END $$;
-CREATE TRIGGER verified_bank_statement_guard BEFORE UPDATE ON bank_transactions FOR EACH ROW EXECUTE FUNCTION jalicare_verified_bank_statement_guard();
+CREATE TRIGGER verified_bank_statement_guard BEFORE UPDATE ON bank_transactions FOR EACH ROW EXECUTE FUNCTION syrona_verified_bank_statement_guard();

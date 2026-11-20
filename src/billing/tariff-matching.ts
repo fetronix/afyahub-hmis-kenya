@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Tariff matching
  *
  * Pure functions with no database import. The rule that decides which
@@ -11,7 +11,7 @@
  * ---------------------------------------------------------------
  * The problem this solves
  * ---------------------------------------------------------------
- * A facility types its own price list. JaliCare's engine has historically
+ * A facility types its own price list. Syrona Medical Center's engine has historically
  * looked for codes it chose (`OPD-CONSULT`, `LAB-CBC`). A facility that
  * numbers its tariffs (`OPD-001`, `LAB-006`) therefore has a correct price
  * list and bills nothing, with an error naming codes that do not appear
@@ -414,7 +414,7 @@ export function explainMatch<T extends TariffLike>(input: MatchInput<T>): Explan
       return {
         tariff,
         verdict: 'DESCRIPTION_ALSO_MATCHES' as const,
-        note: 'Its description also names this service. JaliCare will not choose between two such rows — link the right one.',
+        note: 'Its description also names this service. Syrona Medical Center will not choose between two such rows — link the right one.',
       };
     }
 

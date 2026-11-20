@@ -21,11 +21,11 @@ import { expect, it } from 'vitest';
 
 import { describeDb } from './vitest/support/db.ts';
 
-const TEST_PASSWORD = 'JaliCareTestPassword2026!';
+const TEST_PASSWORD = 'Syrona Medical CenterTestPassword2026!';
 
 const TEST_IP = '127.0.0.1';
 
-const TEST_USER_AGENT = 'JaliCare-Authentication-Test';
+const TEST_USER_AGENT = 'Syrona Medical Center-Authentication-Test';
 
 function hashSessionToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -38,7 +38,7 @@ describeDb('Authentication service, against a real PostgreSQL', () => {
 
     const temporaryUsername = `auth_test_${crypto.randomUUID().replace(/-/g, '').slice(0, 12)}`;
 
-    const temporaryEmail = `${temporaryUsername}@test.jalicare.local`;
+    const temporaryEmail = `${temporaryUsername}@test.syrona.local`;
 
     try {
       /*
@@ -72,8 +72,8 @@ describeDb('Authentication service, against a real PostgreSQL', () => {
           tenantId: null,
           facilityId: null,
           username: adminUsername,
-          email: `${adminUsername}@test.jalicare.local`,
-          fullName: 'JaliCare Authentication Test Administrator',
+          email: `${adminUsername}@test.syrona.local`,
+          fullName: 'Syrona Medical Center Authentication Test Administrator',
           phone: null,
           designation: 'Platform Administrator',
           passwordHash: await hashPassword(adminPassword),
@@ -202,7 +202,7 @@ describeDb('Authentication service, against a real PostgreSQL', () => {
           facilityId: null,
           username: temporaryUsername,
           email: temporaryEmail,
-          fullName: 'JaliCare Authentication Test User',
+          fullName: 'Syrona Medical Center Authentication Test User',
           phone: null,
           designation: 'Authentication Test Account',
           passwordHash: testPasswordHash,

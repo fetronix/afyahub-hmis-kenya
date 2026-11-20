@@ -214,7 +214,7 @@ md.push('One process serves both the JSON API and the single-page application. `
 md.push('returns a session token. Clients send it as `Authorization: Bearer <token>` on every request;');
 md.push('the server stores only the SHA-256 hash of the token in `sessions`, and the session expires eight');
 md.push('hours after issue. The browser SPA keeps the token in `localStorage` under');
-md.push('`jalicare_session_token`. The patient portal uses a separate token, a separate table');
+md.push('`syrona_session_token`. The patient portal uses a separate token, a separate table');
 md.push('(`patient_portal_sessions`) and a separate middleware (`requirePortalAuth`), so a portal token');
 md.push('cannot call staff endpoints and vice versa.');
 md.push('');

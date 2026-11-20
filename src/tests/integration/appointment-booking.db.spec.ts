@@ -95,7 +95,7 @@ describeDb('Staff appointments (synthetic PostgreSQL and authenticated HTTP)', (
     const target = {
       host: process.env.SQL_HOST ?? '',
       name: process.env.SQL_DB_NAME ?? '',
-      containerClusterIdentifier: process.env.JALICARE_TEST_PG_SYSTEM_IDENTIFIER,
+      containerClusterIdentifier: process.env.SYRONA_TEST_PG_SYSTEM_IDENTIFIER,
     };
     // Check the target before connecting. For container port forwarding, the
     // harness additionally proves that this is its newly started cluster.

@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS
+ * Syrona Medical Center HMIS
  * Schema: Public-health (MOH) reports and the audit trail
  *
  * Extracted from `../schema.ts`, which re-exports every table defined here so
@@ -64,7 +64,7 @@ export const auditLogs = pgTable(
     facilityId: integer('facility_id'),
 
     /*
-      JaliCare UID rather than Firebase UID.
+      Syrona Medical Center UID rather than Firebase UID.
     */
 
     userId: text('user_id'),

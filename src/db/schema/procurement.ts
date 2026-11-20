@@ -1,5 +1,5 @@
 /**
- * JaliCare HMIS — procurement workflow schema (migration 0076).
+ * Syrona Medical Center HMIS — procurement workflow schema (migration 0076).
  *
  * The supplier register, purchase orders and supplier invoices predate this
  * module. This file adds the three gaps in the Phase 5 chain
