@@ -251,6 +251,48 @@
     @apply h-10 w-full rounded-lg border border-slate-300 bg-surface px-3 text-sm text-ink outline-none transition focus:border-brand-500 focus:ring-4 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-500;
   }
 
+  /*
+   * Searchable single select. The trigger reuses .ui-select so it lines up with
+   * every other form control; the panel floats over the form rather than
+   * pushing it down.
+   */
+  .ui-combobox {
+    @apply relative min-w-0;
+  }
+  .ui-combobox-trigger {
+    @apply flex items-center justify-between gap-2 text-left;
+  }
+  .ui-combobox-panel {
+    @apply absolute z-30 mt-1 w-full min-w-56 overflow-hidden rounded-lg border border-slate-300 bg-surface shadow-lg;
+  }
+  .ui-combobox-search {
+    @apply flex items-center gap-2 border-b border-hair px-3 py-2 text-slate-400;
+  }
+  .ui-combobox-search input {
+    @apply min-h-8 w-full min-w-0 border-0 bg-transparent text-sm text-ink outline-none placeholder:text-slate-400;
+  }
+  .ui-combobox-list {
+    @apply max-h-56 overflow-y-auto py-1;
+  }
+  .ui-combobox-option {
+    @apply flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-sm text-ink;
+  }
+  .ui-combobox-option.is-active {
+    @apply bg-slate-100;
+  }
+  .ui-combobox-option.is-selected {
+    @apply font-semibold text-brand-700;
+  }
+  .ui-combobox-option.is-disabled {
+    @apply cursor-not-allowed text-slate-400;
+  }
+  .ui-combobox-option-meta {
+    @apply shrink-0 text-xs font-normal text-muted;
+  }
+  .ui-combobox-message {
+    @apply px-3 py-3 text-xs text-muted;
+  }
+
   .ui-eyebrow {
     @apply text-2xs font-semibold uppercase tracking-[0.16em] text-muted;
   }

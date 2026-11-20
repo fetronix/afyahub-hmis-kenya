@@ -73,8 +73,14 @@ export const hrDesignations = pgTable(
     facilityId: integer('facility_id')
       .references(() => facilities.id)
       .notNull(),
+    /*
+     * Nullable so pre-existing rows recorded before departments were required
+     * keep loading. The API requires a department for every new or edited
+     * designation, so a null here can only be legacy data.
+     */
     departmentId: integer('department_id').references(() => hrDepartments.id),
     title: text('title').notNull(),
+    description: text('description'),
     grade: text('grade'),
     isActive: boolean('is_active').notNull().default(true),
     createdBy: integer('created_by').references(() => users.id),
@@ -83,6 +89,11 @@ export const hrDesignations = pgTable(
   (table) => [
     uniqueIndex('hr_designations_facility_title_idx').on(table.facilityId, table.title),
     index('hr_designations_department_idx').on(table.departmentId),
+    index('hr_designations_facility_active_idx').on(
+      table.facilityId,
+      table.departmentId,
+      table.isActive,
+    ),
   ],
 );
 

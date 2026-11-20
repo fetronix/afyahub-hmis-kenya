@@ -250,6 +250,22 @@ router.post(
   },
 );
 
+router.put(
+  '/api/hr/designations/:id',
+  requirePermission('hr.manage'),
+  async (req: AuthRequest, res: Response) => {
+    const access = await scope(req, res, body(req).facilityId ?? req.query.facilityId);
+    if (!access) return;
+    const id = idParam(req, res, 'designation');
+    if (!id) return;
+    try {
+      res.json(await workforce.updateDesignation(access, id, body(req)));
+    } catch (err) {
+      handleError(res, err, 'PUT /api/hr/designations/:id');
+    }
+  },
+);
+
 /* ============================================================
    EMPLOYEES
    ============================================================ */

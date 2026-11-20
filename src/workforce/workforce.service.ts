@@ -241,7 +241,24 @@ export async function listDepartments(scope: WorkforceScope) {
       ),
     )
     .groupBy(schema.hrEmployees.departmentId);
+  const designationCounts = await db
+    .select({
+      departmentId: schema.hrDesignations.departmentId,
+      total: sql<number>`count(*)::int`,
+      active: sql<number>`count(*) filter (where ${schema.hrDesignations.isActive})::int`,
+    })
+    .from(schema.hrDesignations)
+    .where(
+      and(
+        eq(schema.hrDesignations.tenantId, scope.tenantId),
+        eq(schema.hrDesignations.facilityId, scope.facilityId),
+      ),
+    )
+    .groupBy(schema.hrDesignations.departmentId);
   const byDepartment = new Map(counts.map((row) => [row.departmentId, row.employees]));
+  const designationsByDepartment = new Map(
+    designationCounts.map((row) => [row.departmentId, row]),
+  );
   return rows.map((row) => ({
     id: row.id,
     code: row.code,
@@ -249,6 +266,9 @@ export async function listDepartments(scope: WorkforceScope) {
     description: row.description,
     isActive: row.isActive,
     activeEmployees: byDepartment.get(row.id) ?? 0,
+    /* How many designations belong here, so the department list can say so. */
+    designations: designationsByDepartment.get(row.id)?.total ?? 0,
+    activeDesignations: designationsByDepartment.get(row.id)?.active ?? 0,
   }));
 }
 
@@ -313,57 +333,169 @@ export async function updateDepartment(
 }
 
 export async function listDesignations(scope: WorkforceScope) {
+  const assigned = db
+    .select({
+      designationId: schema.hrEmployees.designationId,
+      employees: sql<number>`count(*)::int`.as('employees'),
+    })
+    .from(schema.hrEmployees)
+    .where(
+      and(
+        eq(schema.hrEmployees.tenantId, scope.tenantId),
+        eq(schema.hrEmployees.facilityId, scope.facilityId),
+        eq(schema.hrEmployees.employmentStatus, 'ACTIVE'),
+      ),
+    )
+    .groupBy(schema.hrEmployees.designationId)
+    .as('assigned');
   return db
     .select({
       id: schema.hrDesignations.id,
       departmentId: schema.hrDesignations.departmentId,
       departmentName: schema.hrDepartments.name,
+      departmentIsActive: schema.hrDepartments.isActive,
       title: schema.hrDesignations.title,
+      description: schema.hrDesignations.description,
       grade: schema.hrDesignations.grade,
       isActive: schema.hrDesignations.isActive,
+      activeEmployees: sql<number>`coalesce(${assigned.employees}, 0)::int`,
     })
     .from(schema.hrDesignations)
     .leftJoin(schema.hrDepartments, eq(schema.hrDesignations.departmentId, schema.hrDepartments.id))
+    .leftJoin(assigned, eq(assigned.designationId, schema.hrDesignations.id))
     .where(
       and(
         eq(schema.hrDesignations.tenantId, scope.tenantId),
         eq(schema.hrDesignations.facilityId, scope.facilityId),
       ),
     )
-    .orderBy(asc(schema.hrDesignations.title));
+    .orderBy(asc(schema.hrDepartments.name), asc(schema.hrDesignations.title));
+}
+
+/**
+ * A designation must name a department that exists in this facility. An inactive
+ * department cannot take new designations: the picker offers active ones, and
+ * accepting a hidden value would be a bypass of that list.
+ */
+async function requireActiveDepartment(tx: Tx, scope: WorkforceScope, departmentId: number) {
+  const [department] = await tx
+    .select({ id: schema.hrDepartments.id, isActive: schema.hrDepartments.isActive })
+    .from(schema.hrDepartments)
+    .where(
+      and(
+        eq(schema.hrDepartments.id, departmentId),
+        eq(schema.hrDepartments.tenantId, scope.tenantId),
+        eq(schema.hrDepartments.facilityId, scope.facilityId),
+      ),
+    )
+    .limit(1);
+  if (!department) fail(404, 'DEPARTMENT_NOT_FOUND', 'Department not found in this facility.');
+  if (!department.isActive)
+    fail(
+      409,
+      'DEPARTMENT_INACTIVE',
+      'That department is inactive. Reactivate it before adding designations to it.',
+    );
+  return department;
+}
+
+function designationFields(input: Record<string, unknown>) {
+  const title = requiredText(input.title, 'Designation title', 120);
+  const departmentId = positiveId(input.departmentId, 'department');
+  const description = optionalText(input.description, 'Description', 500);
+  const grade = optionalText(input.grade, 'Grade', 40);
+  const isActive = input.isActive === undefined ? true : Boolean(input.isActive);
+  return { title, departmentId, description, grade, isActive };
 }
 
 export async function createDesignation(scope: WorkforceScope, input: Record<string, unknown>) {
-  const title = requiredText(input.title, 'Designation title', 120);
-  const grade = optionalText(input.grade, 'Grade', 40);
-  const departmentId = optionalPositiveId(input.departmentId, 'department');
+  const fields = designationFields(input);
   return db.transaction(async (tx) => {
-    if (departmentId) {
-      const [department] = await tx
-        .select({ id: schema.hrDepartments.id })
-        .from(schema.hrDepartments)
-        .where(
-          and(
-            eq(schema.hrDepartments.id, departmentId),
-            eq(schema.hrDepartments.tenantId, scope.tenantId),
-            eq(schema.hrDepartments.facilityId, scope.facilityId),
-          ),
-        )
-        .limit(1);
-      if (!department) fail(404, 'DEPARTMENT_NOT_FOUND', 'Department not found in this facility.');
-    }
+    await requireActiveDepartment(tx, scope, fields.departmentId);
     const [row] = await tx
       .insert(schema.hrDesignations)
       .values({
         tenantId: scope.tenantId,
         facilityId: scope.facilityId,
-        departmentId,
-        title,
-        grade,
+        departmentId: fields.departmentId,
+        title: fields.title,
+        description: fields.description,
+        grade: fields.grade,
+        isActive: fields.isActive,
         createdBy: scope.actorId,
       })
       .returning();
-    await audit(tx, scope, 'hr_designation', row.id, 'CREATE', `Created designation ${title}`);
+    await audit(tx, scope, 'hr_designation', row.id, 'CREATE', `Created designation ${row.title}`);
+    return row;
+  });
+}
+
+export async function updateDesignation(
+  scope: WorkforceScope,
+  id: number,
+  input: Record<string, unknown>,
+) {
+  const fields = designationFields(input);
+  return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(schema.hrDesignations)
+      .where(
+        and(
+          eq(schema.hrDesignations.id, id),
+          eq(schema.hrDesignations.tenantId, scope.tenantId),
+          eq(schema.hrDesignations.facilityId, scope.facilityId),
+        ),
+      )
+      .limit(1);
+    if (!existing) fail(404, 'DESIGNATION_NOT_FOUND', 'Designation not found in this facility.');
+    await requireActiveDepartment(tx, scope, fields.departmentId);
+
+    /*
+     * Moving a designation to another department would leave the people who
+     * hold it recorded under the old one. Refuse while such employees exist
+     * rather than silently producing staff whose designation contradicts their
+     * department; the message names how many need reassigning first.
+     */
+    if (existing.departmentId !== fields.departmentId) {
+      const [mismatch] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schema.hrEmployees)
+        .where(
+          and(
+            eq(schema.hrEmployees.tenantId, scope.tenantId),
+            eq(schema.hrEmployees.facilityId, scope.facilityId),
+            eq(schema.hrEmployees.designationId, id),
+            eq(schema.hrEmployees.employmentStatus, 'ACTIVE'),
+          ),
+        );
+      if ((mismatch?.count ?? 0) > 0)
+        fail(
+          409,
+          'DESIGNATION_IN_USE',
+          `${mismatch.count} active employee(s) hold this designation. Move those employees to the new department first, or create a designation in the target department.`,
+        );
+    }
+
+    const [row] = await tx
+      .update(schema.hrDesignations)
+      .set({
+        departmentId: fields.departmentId,
+        title: fields.title,
+        description: fields.description,
+        grade: fields.grade,
+        isActive: fields.isActive,
+      })
+      .where(
+        and(
+          eq(schema.hrDesignations.id, id),
+          eq(schema.hrDesignations.tenantId, scope.tenantId),
+          eq(schema.hrDesignations.facilityId, scope.facilityId),
+        ),
+      )
+      .returning();
+    if (!row) fail(404, 'DESIGNATION_NOT_FOUND', 'Designation not found in this facility.');
+    await audit(tx, scope, 'hr_designation', id, 'UPDATE', `Updated designation ${row.title}`);
     return row;
   });
 }
@@ -539,11 +671,19 @@ export async function employeeDetail(scope: WorkforceScope, id: number) {
   };
 }
 
+/**
+ * Validates an employee's department and designation as one relationship, not two
+ * lookups: the designation must belong to the chosen department, and a newly
+ * assigned designation must be active. A designation already on the record is
+ * allowed to stay even after it is deactivated, so editing an unaffected field
+ * never fails on legacy data.
+ */
 async function assertDepartmentAndDesignation(
   tx: Tx,
   scope: WorkforceScope,
   departmentId: number | null,
   designationId: number | null,
+  currentDesignationId: number | null = null,
 ) {
   if (departmentId) {
     const [department] = await tx
@@ -561,7 +701,12 @@ async function assertDepartmentAndDesignation(
   }
   if (designationId) {
     const [designation] = await tx
-      .select({ id: schema.hrDesignations.id })
+      .select({
+        id: schema.hrDesignations.id,
+        departmentId: schema.hrDesignations.departmentId,
+        isActive: schema.hrDesignations.isActive,
+        title: schema.hrDesignations.title,
+      })
       .from(schema.hrDesignations)
       .where(
         and(
@@ -572,6 +717,18 @@ async function assertDepartmentAndDesignation(
       )
       .limit(1);
     if (!designation) fail(404, 'DESIGNATION_NOT_FOUND', 'Designation not found in this facility.');
+    if (designation.departmentId !== null && designation.departmentId !== departmentId)
+      fail(
+        409,
+        'DESIGNATION_DEPARTMENT_MISMATCH',
+        `“${designation.title}” belongs to a different department. Choose a designation from the employee's department.`,
+      );
+    if (designationId !== currentDesignationId && !designation.isActive)
+      fail(
+        409,
+        'DESIGNATION_INACTIVE',
+        `“${designation.title}” is inactive and cannot be assigned to an employee.`,
+      );
   }
 }
 
@@ -709,7 +866,30 @@ export async function updateEmployee(
 ) {
   const fields = employeeFields(input);
   return db.transaction(async (tx) => {
-    await assertDepartmentAndDesignation(tx, scope, fields.departmentId, fields.designationId);
+    /*
+     * The designation already on the record is passed through so an employee who
+     * holds a since-deactivated designation can still have other fields edited.
+     * Only a *new* choice has to be active.
+     */
+    const [current] = await tx
+      .select({ designationId: schema.hrEmployees.designationId })
+      .from(schema.hrEmployees)
+      .where(
+        and(
+          eq(schema.hrEmployees.id, id),
+          eq(schema.hrEmployees.tenantId, scope.tenantId),
+          eq(schema.hrEmployees.facilityId, scope.facilityId),
+        ),
+      )
+      .limit(1);
+    if (!current) fail(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found in this facility.');
+    await assertDepartmentAndDesignation(
+      tx,
+      scope,
+      fields.departmentId,
+      fields.designationId,
+      current.designationId,
+    );
     const [row] = await tx
       .update(schema.hrEmployees)
       .set({ ...fields, updatedAt: new Date() })

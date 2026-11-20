@@ -27,15 +27,21 @@ export type HrDepartmentRow = {
   description: string | null;
   isActive: boolean;
   activeEmployees: number;
+  /** Designations recorded against this department, and how many are active. */
+  designations?: number;
+  activeDesignations?: number;
 };
 
 export type HrDesignationRow = {
   id: number;
   departmentId: number | null;
   departmentName: string | null;
+  departmentIsActive?: boolean | null;
   title: string;
+  description?: string | null;
   grade: string | null;
   isActive: boolean;
+  activeEmployees?: number;
 };
 
 export type HrEmployeeRow = {
@@ -402,6 +408,11 @@ export const workforceClient = {
   createHrDesignation: (facilityId: number, body: Record<string, unknown>) =>
     fetchJson<HrDesignationRow>(`${API_BASE}/hr/designations`, {
       method: 'POST',
+      body: JSON.stringify({ ...body, facilityId }),
+    }),
+  updateHrDesignation: (facilityId: number, id: number, body: Record<string, unknown>) =>
+    fetchJson<HrDesignationRow>(`${API_BASE}/hr/designations/${id}`, {
+      method: 'PUT',
       body: JSON.stringify({ ...body, facilityId }),
     }),
 

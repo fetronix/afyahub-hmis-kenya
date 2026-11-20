@@ -1,0 +1,265 @@
+{
+  "runAt": "2026-11-20T10:35:49.522Z",
+  "baseUrl": "http://127.0.0.1:3000",
+  "account": "synthetic.hr",
+  "dataCreated": {
+    "department": {
+      "code": "PHR099",
+      "name": "Pharmacy 913099",
+      "description": "Dispensing and medication review."
+    },
+    "designations": [
+      {
+        "title": "Pharmacist 913099",
+        "department": "Pharmacy 913099",
+        "description": "Dispenses medicines and reviews prescriptions.",
+        "grade": "JG-7"
+      },
+      {
+        "title": "Pharmacy Assistant 913099",
+        "department": "Pharmacy 913099",
+        "description": null,
+        "grade": "JG-5"
+      }
+    ]
+  },
+  "checks": [
+    {
+      "label": "Signed in to the synthetic HR account",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "Opened Departments & roles",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "Department list shows the seeded departments",
+      "status": "PASS",
+      "detail": "8 rows"
+    },
+    {
+      "label": "Nursing, Finance, Laboratory, Pharmacy and Administration are all listed",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "Department description is shown in the list",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "Created department appears in the list",
+      "status": "PASS",
+      "detail": "Pharmacy 913099"
+    },
+    {
+      "label": "Designation dialog opened",
+      "status": "PASS",
+      "detail": "New designation"
+    },
+    {
+      "label": "Department field is a dropdown control, not free text",
+      "status": "PASS",
+      "detail": "BUTTON"
+    },
+    {
+      "label": "Department dropdown lists existing departments",
+      "status": "PASS",
+      "detail": "9 options"
+    },
+    {
+      "label": "The department created a moment ago is offered in the dropdown",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "Department dropdown is searchable",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "Typing filters the department list",
+      "status": "PASS",
+      "detail": "1 of 9"
+    },
+    {
+      "label": "Selected department is shown on the control",
+      "status": "PASS",
+      "detail": "Pharmacy 913099"
+    },
+    {
+      "label": "Created designation is listed under its department",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "Filtering by department narrows the designation list",
+      "status": "PASS",
+      "detail": "1 row"
+    },
+    {
+      "label": "The filtered row shows the designation and its department",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "All designations are listed with their department",
+      "status": "PASS",
+      "detail": "10 rows"
+    },
+    {
+      "label": "Edit designation dialog opened",
+      "status": "PASS",
+      "detail": "Edit designation"
+    },
+    {
+      "label": "Existing department is carried into the edit form",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "Edited designation title is saved and listed",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "Designation is disabled until a department is chosen",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "The new department is available for employee registration",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "Only designations in that department are offered",
+      "status": "PASS",
+      "detail": "Unassigned | Pharmacist 913099 II"
+    },
+    {
+      "label": "The designation created above is offered for that department",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "A designation from another department is not offered",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "A designation can be selected for the employee",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "Changing the department clears the incompatible designation",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "The designation list follows the new department",
+      "status": "PASS",
+      "detail": "Unassigned | Accountant"
+    },
+    {
+      "label": "API returns departments with their ids",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "API refuses a designation with no department",
+      "status": "PASS",
+      "detail": "400 INVALID_ID"
+    },
+    {
+      "label": "Department can be deactivated",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "API refuses a designation in a deactivated department",
+      "status": "PASS",
+      "detail": "409 DEPARTMENT_INACTIVE"
+    },
+    {
+      "label": "An out-of-scope facility cannot read this facility departments",
+      "status": "PASS",
+      "detail": "403"
+    },
+    {
+      "label": "Created designation is returned by the API with its department id",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "Designation stores the department database id, not its name",
+      "status": "PASS",
+      "detail": "44"
+    },
+    {
+      "label": "Designation can be deactivated through the API",
+      "status": "PASS",
+      "detail": ""
+    },
+    {
+      "label": "An unused designation can be moved between departments",
+      "status": "PASS",
+      "detail": "200"
+    },
+    {
+      "label": "Existing employee records are unchanged",
+      "status": "PASS",
+      "detail": ""
+    }
+  ],
+  "screenshots": [
+    {
+      "file": "01-department-list.png",
+      "mode": "viewport"
+    },
+    {
+      "file": "02-create-department-form.png",
+      "mode": "viewport"
+    },
+    {
+      "file": "03-add-designation-department-dropdown.png",
+      "mode": "viewport"
+    },
+    {
+      "file": "04-department-dropdown-search.png",
+      "mode": "viewport"
+    },
+    {
+      "file": "05-add-designation-filled.png",
+      "mode": "viewport"
+    },
+    {
+      "file": "06-designations-filtered-by-department.png",
+      "mode": "viewport"
+    },
+    {
+      "file": "07-designation-list-all.png",
+      "mode": "viewport"
+    },
+    {
+      "file": "08-edit-designation.png",
+      "mode": "viewport"
+    },
+    {
+      "file": "09-employee-registration-scoped-designations.png",
+      "mode": "viewport"
+    },
+    {
+      "file": "10-department-change-clears-designation.png",
+      "mode": "viewport"
+    }
+  ],
+  "summary": {
+    "total": 38,
+    "passed": 38,
+    "failed": 0
+  }
+}

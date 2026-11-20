@@ -750,6 +750,13 @@
       "when": 1796784000000,
       "tag": "0106_financial_period_reopen",
       "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1796870400000,
+      "tag": "0108_hr_designation_department",
+      "breakpoints": true
     }
   ]
 }

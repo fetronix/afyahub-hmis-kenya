@@ -16,7 +16,8 @@ import {
 
 import { api, ApiError } from '../../api/client.ts';
 import { useHmis } from '../../context/HmisContext.tsx';
-import { PrimaryButton, SecondaryButton, SearchBar, Tabs } from '../ui/controls.tsx';
+import { FormField, PrimaryButton, SecondaryButton, SearchBar, Tabs } from '../ui/controls.tsx';
+import { SearchableSelect } from '../ui/searchable-select.tsx';
 import {
   AlertBanner,
   EmptyState,
@@ -44,16 +45,22 @@ type Department = {
   id: number;
   code: string;
   name: string;
+  description?: string | null;
   isActive: boolean;
   activeEmployees: number;
+  designations?: number;
+  activeDesignations?: number;
 };
 type Designation = {
   id: number;
   title: string;
+  description?: string | null;
   grade: string | null;
   departmentId: number | null;
   departmentName: string | null;
+  departmentIsActive?: boolean | null;
   isActive: boolean;
+  activeEmployees?: number;
 };
 type Employee = {
   id: number;
@@ -159,6 +166,8 @@ export const WorkforceModule: React.FC = () => {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [departmentsLoading, setDepartmentsLoading] = useState(true);
+  const [departmentsError, setDepartmentsError] = useState<string | null>(null);
   const [designations, setDesignations] = useState<Designation[]>([]);
   const [attendance, setAttendance] = useState<AttendanceDay | null>(null);
   const [attendanceDate, setAttendanceDate] = useState(today());
@@ -171,29 +180,44 @@ export const WorkforceModule: React.FC = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
+  const [designationDepartmentFilter, setDesignationDepartmentFilter] = useState('');
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
 
   const [employeeModal, setEmployeeModal] = useState<Employee | 'new' | null>(null);
   const [departmentModal, setDepartmentModal] = useState<Department | 'new' | null>(null);
-  const [designationModal, setDesignationModal] = useState(false);
+  const [designationModal, setDesignationModal] = useState<Designation | 'new' | null>(null);
   const [leaveModal, setLeaveModal] = useState(false);
   const [leaveTypeModal, setLeaveTypeModal] = useState(false);
   const [shiftModal, setShiftModal] = useState(false);
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
 
+  const loadDepartments = useCallback(async () => {
+    setDepartmentsLoading(true);
+    try {
+      const rows = await api.getHrDepartments(facilityId);
+      setDepartments(rows as unknown as Department[]);
+      setDepartmentsError(null);
+    } catch (err) {
+      setDepartments([]);
+      setDepartmentsError(
+        err instanceof ApiError ? err.message : 'Departments could not be loaded.',
+      );
+    } finally {
+      setDepartmentsLoading(false);
+    }
+  }, [facilityId]);
+
   const loadCore = useCallback(async () => {
     setError(null);
     try {
-      const [overviewData, employeesData, departmentsData, designationsData] = await Promise.all([
+      const [overviewData, employeesData, designationsData] = await Promise.all([
         api.getWorkforceOverview(facilityId),
         api.getHrEmployees(facilityId),
-        api.getHrDepartments(facilityId),
         api.getHrDesignations(facilityId),
       ]);
       setOverview(overviewData as Overview);
       setEmployees(employeesData as unknown as Employee[]);
-      setDepartments(departmentsData as unknown as Department[]);
       setDesignations(designationsData as unknown as Designation[]);
     } catch (err) {
       setError(
@@ -202,7 +226,9 @@ export const WorkforceModule: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [facilityId]);
+    /* Loaded on its own so a department failure does not hide the rest of the module. */
+    await loadDepartments();
+  }, [facilityId, loadDepartments]);
 
   const loadAttendance = useCallback(
     async (date: string) => {
@@ -245,6 +271,15 @@ export const WorkforceModule: React.FC = () => {
   useEffect(() => {
     if (tab === 'leave') void loadLeave();
   }, [tab, loadLeave, refreshKey]);
+
+  const visibleDesignations = useMemo(() => {
+    if (!designationDepartmentFilter) return designations;
+    if (designationDepartmentFilter === 'UNASSIGNED')
+      return designations.filter((designation) => designation.departmentId === null);
+    return designations.filter(
+      (designation) => String(designation.departmentId ?? '') === designationDepartmentFilter,
+    );
+  }, [designations, designationDepartmentFilter]);
 
   const filteredEmployees = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -475,10 +510,20 @@ export const WorkforceModule: React.FC = () => {
                 </PrimaryButton>
               )}
             </div>
-            {departments.length === 0 ? (
+            {departmentsError ? (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800" role="alert">
+                <p className="font-semibold">Departments could not be loaded.</p>
+                <p className="mt-1">{departmentsError}</p>
+                <SecondaryButton className="mt-2" onClick={() => void loadDepartments()}>
+                  Try again
+                </SecondaryButton>
+              </div>
+            ) : departmentsLoading && departments.length === 0 ? (
+              <LoadingSkeleton />
+            ) : departments.length === 0 ? (
               <EmptyState
                 title="No departments"
-                description="Create departments before registering staff."
+                description="Create departments before registering staff or designations."
               />
             ) : (
               <DataTable className="table-quiet">
@@ -486,6 +531,7 @@ export const WorkforceModule: React.FC = () => {
                   <tr>
                     <th>Code</th>
                     <th>Name</th>
+                    <th className="text-right">Designations</th>
                     <th className="text-right">Active staff</th>
                     <th>Status</th>
                     <th aria-label="Actions" />
@@ -495,14 +541,30 @@ export const WorkforceModule: React.FC = () => {
                   {departments.map((department) => (
                     <tr key={department.id}>
                       <td className="font-mono text-xs">{department.code}</td>
-                      <td>{department.name}</td>
+                      <td>
+                        <div className="min-w-0">
+                          <p className="truncate">{department.name}</p>
+                          {department.description ? (
+                            <p className="truncate text-xs text-muted">{department.description}</p>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="text-right tabular-nums">
+                        {department.designations ?? 0}
+                        {department.designations && department.activeDesignations !== undefined && department.activeDesignations !== department.designations ? (
+                          <span className="text-xs text-muted"> ({department.activeDesignations} active)</span>
+                        ) : null}
+                      </td>
                       <td className="text-right tabular-nums">{department.activeEmployees}</td>
                       <td>
                         <EmployeeStatus status={department.isActive ? 'ACTIVE' : 'INACTIVE'} />
                       </td>
                       <td className="text-right">
                         {canManage && (
-                          <SecondaryButton onClick={() => setDepartmentModal(department)}>
+                          <SecondaryButton
+                            aria-label={`Edit ${department.name}`}
+                            onClick={() => setDepartmentModal(department)}
+                          >
                             <Pencil size={14} />
                           </SecondaryButton>
                         )}
@@ -515,10 +577,10 @@ export const WorkforceModule: React.FC = () => {
           </section>
 
           <section className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold">Designations</h2>
               {canManage && (
-                <PrimaryButton onClick={() => setDesignationModal(true)}>
+                <PrimaryButton onClick={() => setDesignationModal('new')}>
                   <Briefcase size={15} /> Add designation
                 </PrimaryButton>
               )}
@@ -529,24 +591,88 @@ export const WorkforceModule: React.FC = () => {
                 description="Add job titles and grades for this facility."
               />
             ) : (
-              <DataTable className="table-quiet">
-                <thead>
-                  <tr>
-                    <th>Title</th>
-                    <th>Department</th>
-                    <th>Grade</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {designations.map((designation) => (
-                    <tr key={designation.id}>
-                      <td>{designation.title}</td>
-                      <td>{designation.departmentName ?? '—'}</td>
-                      <td>{designation.grade ?? '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </DataTable>
+              <>
+                <FilterToolbar>
+                  <label className="text-xs font-medium text-muted" htmlFor="designation-department-filter">
+                    Department
+                  </label>
+                  <select
+                    id="designation-department-filter"
+                    className="ui-select max-w-56"
+                    value={designationDepartmentFilter}
+                    onChange={(event) => setDesignationDepartmentFilter(event.target.value)}
+                  >
+                    <option value="">All departments</option>
+                    <option value="UNASSIGNED">No department recorded</option>
+                    {departments.map((department) => (
+                      <option key={department.id} value={String(department.id)}>
+                        {department.name}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-muted">
+                    {visibleDesignations.length} of {designations.length} shown
+                  </span>
+                </FilterToolbar>
+                {visibleDesignations.length === 0 ? (
+                  <EmptyState
+                    title="No designations in this department"
+                    description="Choose another department, or add a designation to this one."
+                  />
+                ) : (
+                  <DataTable className="table-quiet">
+                    <thead>
+                      <tr>
+                        <th>Designation</th>
+                        <th>Department</th>
+                        <th className="text-right">Staff</th>
+                        <th>Status</th>
+                        <th aria-label="Actions" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleDesignations.map((designation) => (
+                        <tr key={designation.id}>
+                          <td>
+                            <div className="min-w-0">
+                              <p className="truncate">{designation.title}</p>
+                              {designation.description ? (
+                                <p className="truncate text-xs text-muted">
+                                  {designation.description}
+                                </p>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td>
+                            {designation.departmentName ?? (
+                              <span className="text-amber-700">No department</span>
+                            )}
+                            {designation.grade ? (
+                              <span className="ml-1 text-xs text-muted">· {designation.grade}</span>
+                            ) : null}
+                          </td>
+                          <td className="text-right tabular-nums">
+                            {designation.activeEmployees ?? 0}
+                          </td>
+                          <td>
+                            <EmployeeStatus status={designation.isActive ? 'ACTIVE' : 'INACTIVE'} />
+                          </td>
+                          <td className="text-right">
+                            {canManage && (
+                              <SecondaryButton
+                                aria-label={`Edit ${designation.title}`}
+                                onClick={() => setDesignationModal(designation)}
+                              >
+                                <Pencil size={14} />
+                              </SecondaryButton>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </DataTable>
+                )}
+              </>
             )}
           </section>
         </div>
@@ -833,35 +959,32 @@ export const WorkforceModule: React.FC = () => {
       )}
 
       {designationModal && (
-        <SimpleFormDialog
-          title="New designation"
+        <DesignationDialog
+          designation={designationModal === 'new' ? null : designationModal}
+          departments={departments}
+          departmentsLoading={departmentsLoading}
+          departmentsError={departmentsError}
           saving={saving}
-          onClose={() => setDesignationModal(false)}
+          onReloadDepartments={() => void loadDepartments()}
+          onCreateDepartment={() => {
+            setDesignationModal(null);
+            setDepartmentModal('new');
+          }}
+          onClose={() => setDesignationModal(null)}
           onSubmit={(payload) =>
             run(async () => {
-              await api.createHrDesignation(facilityId, payload);
-              showToast('Designation created.', { tone: 'success' });
-              setDesignationModal(false);
+              const editing = designationModal === 'new' ? null : designationModal;
+              if (editing) {
+                await api.updateHrDesignation(facilityId, editing.id, payload);
+                showToast('Designation updated.', { tone: 'success' });
+              } else {
+                await api.createHrDesignation(facilityId, payload);
+                showToast('Designation created.', { tone: 'success' });
+              }
+              setDesignationModal(null);
               await loadCore();
             })
           }
-          fields={[
-            { name: 'title', label: 'Job title', required: true },
-            {
-              name: 'departmentId',
-              label: 'Department',
-              type: 'select',
-              placeholder: 'Unassigned',
-              options: departments.map((department) => ({
-                value: String(department.id),
-                label: department.isActive ? department.name : `${department.name} (inactive)`,
-              })),
-              hint: departments.length
-                ? undefined
-                : 'No departments recorded yet. Create one under Departments to attach this designation to a department.',
-            },
-            { name: 'grade', label: 'Grade' },
-          ]}
         />
       )}
 
@@ -1050,6 +1173,42 @@ function EmployeeDialog({
     (key: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm((current) => ({ ...current, [key]: event.target.value }));
 
+  /*
+   * A designation only makes sense inside the department that owns it, so the
+   * list is scoped to the chosen department. An inactive designation already on
+   * this employee stays visible (marked) so an unrelated edit does not silently
+   * clear it; choosing a different one still has to be active.
+   */
+  const eligibleDesignations = useMemo(
+    () =>
+      form.departmentId
+        ? designations.filter(
+            (designation) =>
+              String(designation.departmentId ?? '') === form.departmentId &&
+              (designation.isActive || String(designation.id) === form.designationId),
+          )
+        : [],
+    [designations, form.departmentId, form.designationId],
+  );
+
+  const onDepartmentChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const departmentId = event.target.value;
+    setForm((current) => {
+      const keepsDesignation =
+        current.designationId !== '' &&
+        designations.some(
+          (designation) =>
+            String(designation.id) === current.designationId &&
+            String(designation.departmentId ?? '') === departmentId,
+        );
+      return {
+        ...current,
+        departmentId,
+        designationId: keepsDesignation ? current.designationId : '',
+      };
+    });
+  };
+
   const salaryCents = useMemo(() => {
     const value = Number(form.baseSalary);
     return Number.isFinite(value) && value >= 0 ? Math.round(value * 100) : null;
@@ -1095,30 +1254,49 @@ function EmployeeDialog({
           <FormInput label="Email" type="email" value={form.email} onChange={set('email')} />
           <label className="ui-field">
             <span>Department</span>
-            <select className="ui-select" value={form.departmentId} onChange={set('departmentId')}>
+            <select
+              className="ui-select"
+              value={form.departmentId}
+              onChange={onDepartmentChange}
+              aria-describedby="employee-designation-hint"
+            >
               <option value="">Unassigned</option>
               {departments.map((department) => (
                 <option key={department.id} value={department.id}>
-                  {department.name}
+                  {department.isActive ? department.name : `${department.name} (inactive)`}
                 </option>
               ))}
             </select>
           </label>
-          <label className="ui-field">
-            <span>Designation</span>
+          <div className="ui-field">
+            {/* The hint sits beside the label, not inside it, so the select's
+                accessible name stays "Designation". */}
+            <label htmlFor="employee-designation">Designation</label>
             <select
+              id="employee-designation"
               className="ui-select"
               value={form.designationId}
               onChange={set('designationId')}
+              disabled={!form.departmentId}
+              aria-describedby="employee-designation-hint"
             >
-              <option value="">Unassigned</option>
-              {designations.map((designation) => (
+              <option value="">
+                {form.departmentId ? 'Unassigned' : 'Choose a department first'}
+              </option>
+              {eligibleDesignations.map((designation) => (
                 <option key={designation.id} value={designation.id}>
-                  {designation.title}
+                  {designation.isActive ? designation.title : `${designation.title} (inactive)`}
                 </option>
               ))}
             </select>
-          </label>
+            <small id="employee-designation-hint" className="ui-field-hint">
+              {!form.departmentId
+                ? 'The designation list is limited to the employee’s department.'
+                : eligibleDesignations.length === 0
+                  ? 'No designations are recorded for this department yet.'
+                  : 'Only designations belonging to this department are listed.'}
+            </small>
+          </div>
           <label className="ui-field">
             <span>Employment type</span>
             <select
@@ -1174,31 +1352,289 @@ function DepartmentDialog({
 }) {
   const [code, setCode] = useState(department?.code ?? '');
   const [name, setName] = useState(department?.name ?? '');
+  const [description, setDescription] = useState(department?.description ?? '');
+  const [isActive, setIsActive] = useState(department?.isActive ?? true);
+  const idPrefix = useId().replace(/[:]/g, '');
+
   return (
     <Modal open onClose={onClose} title={department ? 'Edit department' : 'New department'}>
       <form
         className="space-y-3"
         onSubmit={(event) => {
           event.preventDefault();
-          onSubmit({ code: code.toUpperCase(), name, isActive: true });
+          onSubmit({
+            code: code.toUpperCase(),
+            name: name.trim(),
+            description: description.trim() || null,
+            /*
+             * The previous form hard-coded isActive: true, so saving an edit
+             * silently reactivated a department that had been switched off.
+             */
+            isActive,
+          });
         }}
       >
-        <FormInput
-          label="Code"
-          required
-          value={code}
-          disabled={Boolean(department)}
-          onChange={(event) => setCode(event.target.value)}
-        />
-        <FormInput
-          label="Name"
-          required
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-        />
+        <FormField label="Code" htmlFor={`dept-code-${idPrefix}`} hint="2–24 characters: A–Z, 0–9, dash or underscore. Fixed once created.">
+          <input
+            id={`dept-code-${idPrefix}`}
+            className="ui-input"
+            required
+            value={code}
+            disabled={Boolean(department)}
+            onChange={(event) => setCode(event.target.value)}
+          />
+        </FormField>
+        <FormField label="Name" htmlFor={`dept-name-${idPrefix}`}>
+          <input
+            id={`dept-name-${idPrefix}`}
+            className="ui-input"
+            required
+            maxLength={120}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+        </FormField>
+        <FormField
+          label="Description"
+          htmlFor={`dept-description-${idPrefix}`}
+          hint="Optional. Shown beside the department in the HR module."
+        >
+          <textarea
+            id={`dept-description-${idPrefix}`}
+            className="ui-input"
+            rows={3}
+            maxLength={500}
+            value={description ?? ''}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </FormField>
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            checked={isActive}
+            onChange={(event) => setIsActive(event.target.checked)}
+          />
+          Active — offered when recording staff and designations
+        </label>
         <div className="flex justify-end gap-2">
           <SecondaryButton onClick={onClose}>Cancel</SecondaryButton>
-          <PrimaryButton type="submit" disabled={saving}>
+          <PrimaryButton type="submit" disabled={saving || !name.trim() || !code.trim()}>
+            {saving ? 'Saving…' : 'Save'}
+          </PrimaryButton>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+/**
+ * Create or edit a designation. The department is a required, searchable list of
+ * departments that already exist for this facility; the value stored is the
+ * department's database id. When there are no departments, when they are still
+ * loading and when they fail to load, the field says which of those it is and
+ * offers the next step, rather than showing an empty box.
+ */
+function DesignationDialog({
+  designation,
+  departments,
+  departmentsLoading,
+  departmentsError,
+  saving,
+  onReloadDepartments,
+  onCreateDepartment,
+  onClose,
+  onSubmit,
+}: {
+  designation: Designation | null;
+  departments: Department[];
+  departmentsLoading: boolean;
+  departmentsError: string | null;
+  saving: boolean;
+  onReloadDepartments: () => void;
+  onCreateDepartment: () => void;
+  onClose: () => void;
+  onSubmit: (payload: Record<string, unknown>) => void;
+}) {
+  const [title, setTitle] = useState(designation?.title ?? '');
+  const [departmentId, setDepartmentId] = useState(
+    designation?.departmentId ? String(designation.departmentId) : '',
+  );
+  const [description, setDescription] = useState(designation?.description ?? '');
+  const [grade, setGrade] = useState(designation?.grade ?? '');
+  const [isActive, setIsActive] = useState(designation?.isActive ?? true);
+  const [touched, setTouched] = useState(false);
+  const idPrefix = useId().replace(/[:]/g, '');
+
+  /*
+   * Only active departments are offered, plus the one already recorded on this
+   * designation so an edit never has to change it just to save.
+   */
+  const departmentOptions = useMemo(
+    () =>
+      departments
+        .filter((department) => department.isActive || String(department.id) === departmentId)
+        .map((department) => ({
+          value: String(department.id),
+          label: department.name,
+          description: [
+            department.code,
+            department.isActive ? null : 'inactive',
+            department.designations === undefined ? null : `${department.designations} designation${department.designations === 1 ? '' : 's'}`,
+          ]
+            .filter(Boolean)
+            .join(' · '),
+        })),
+    [departments, departmentId],
+  );
+
+  const departmentMissing = !departmentsLoading && !departmentsError && departments.length === 0;
+  const activeCount = departments.filter((department) => department.isActive).length;
+  const titleMissing = title.trim().length === 0;
+  const departmentUnset = departmentId === '';
+  const blocked = departmentMissing || activeCount === 0;
+
+  return (
+    <Modal open onClose={onClose} title={designation ? 'Edit designation' : 'New designation'}>
+      <form
+        className="space-y-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          setTouched(true);
+          if (titleMissing || departmentUnset || blocked) return;
+          onSubmit({
+            title: title.trim(),
+            departmentId: Number(departmentId),
+            description: description.trim() || null,
+            grade: grade.trim() || null,
+            isActive,
+          });
+        }}
+      >
+        <FormField
+          label="Designation name"
+          htmlFor={`desig-title-${idPrefix}`}
+          error={touched && titleMissing ? 'Enter the designation name.' : undefined}
+        >
+          <input
+            id={`desig-title-${idPrefix}`}
+            className="ui-input"
+            required
+            maxLength={120}
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            onBlur={() => setTouched(true)}
+          />
+        </FormField>
+
+        <FormField
+          label="Department"
+          htmlFor={`desig-department-${idPrefix}`}
+          error={
+            !departmentsError && touched && departmentUnset && !blocked
+              ? 'Choose the department this designation belongs to.'
+              : undefined
+          }
+          hint={
+            departmentsError || blocked
+              ? undefined
+              : 'Only active departments are listed. The department’s database id is saved, not its name.'
+          }
+        >
+          <SearchableSelect
+            id={`desig-department-${idPrefix}`}
+            value={departmentId}
+            onChange={setDepartmentId}
+            options={departmentOptions}
+            required
+            disabled={blocked}
+            loading={departmentsLoading}
+            error={null}
+            describedBy={departmentsError ? `${idPrefix}-department-error` : undefined}
+            placeholder={blocked ? 'No active departments' : 'Select a department…'}
+            searchPlaceholder="Search departments…"
+            emptyMessage="No active departments"
+          />
+        </FormField>
+
+        {/*
+         * One error surface, not two: the message lives in this alert and the
+         * combobox points at it, so a screen reader reads the reason once.
+         */}
+        {departmentsError ? (
+          <div
+            id={`${idPrefix}-department-error`}
+            className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-800"
+            role="alert"
+          >
+            <p className="font-semibold">Departments could not be loaded.</p>
+            {departmentsError !== 'Departments could not be loaded.' ? (
+              <p className="mt-1">{departmentsError}</p>
+            ) : null}
+            <SecondaryButton className="mt-2" onClick={onReloadDepartments}>
+              Try again
+            </SecondaryButton>
+          </div>
+        ) : null}
+
+        {departmentMissing ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            <p className="font-semibold">No departments recorded yet.</p>
+            <p className="mt-1">
+              A designation belongs to a department, so create the department first — for example
+              Nursing, Finance, Laboratory, Pharmacy or Administration.
+            </p>
+            <PrimaryButton className="mt-2" onClick={onCreateDepartment}>
+              Create a department
+            </PrimaryButton>
+          </div>
+        ) : null}
+
+        {!departmentMissing && !departmentsError && activeCount === 0 ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+            <p className="font-semibold">Every department is inactive.</p>
+            <p className="mt-1">
+              Reactivate a department under Departments before adding a designation to it.
+            </p>
+          </div>
+        ) : null}
+
+        <FormField
+          label="Description"
+          htmlFor={`desig-description-${idPrefix}`}
+          hint="Optional. What the role covers, in one or two sentences."
+        >
+          <textarea
+            id={`desig-description-${idPrefix}`}
+            className="ui-input"
+            rows={3}
+            maxLength={500}
+            value={description ?? ''}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </FormField>
+
+        <FormField label="Grade" htmlFor={`desig-grade-${idPrefix}`} hint="Optional, e.g. JG-6.">
+          <input
+            id={`desig-grade-${idPrefix}`}
+            className="ui-input"
+            maxLength={40}
+            value={grade ?? ''}
+            onChange={(event) => setGrade(event.target.value)}
+          />
+        </FormField>
+
+        <label className="flex items-center gap-2 text-sm text-ink">
+          <input
+            type="checkbox"
+            checked={isActive}
+            onChange={(event) => setIsActive(event.target.checked)}
+          />
+          Active — offered when recording staff
+        </label>
+
+        <div className="flex justify-end gap-2">
+          <SecondaryButton onClick={onClose}>Cancel</SecondaryButton>
+          <PrimaryButton type="submit" disabled={saving || blocked}>
             {saving ? 'Saving…' : 'Save'}
           </PrimaryButton>
         </div>
