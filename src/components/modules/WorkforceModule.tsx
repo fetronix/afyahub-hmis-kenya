@@ -27,6 +27,7 @@ import {
 } from '../ui/feedback.tsx';
 import { Modal } from '../ui/overlays.tsx';
 import { DataTable, FilterToolbar, PageHeader, StatCard } from '../ui/layout.tsx';
+import { AttendanceRosterTab } from './hr/AttendanceRoster.tsx';
 import { formatCents } from '../../billing/settlement.ts';
 
 type Overview = {
@@ -82,21 +83,6 @@ type Employee = {
   nssfNumber: string | null;
   shifNumber: string | null;
 };
-type AttendanceRow = {
-  employeeId: number;
-  employeeNumber: string;
-  name: string;
-  departmentName: string | null;
-  status: string | null;
-  checkIn: string | null;
-  checkOut: string | null;
-  hours: string | null;
-};
-type AttendanceDay = {
-  date: string;
-  summary: { expected: number; recorded: number; present: number; absent: number };
-  rows: AttendanceRow[];
-};
 type LeaveType = {
   id: number;
   code: string;
@@ -116,16 +102,6 @@ type LeaveRequest = {
   reason: string | null;
   status: string;
   decisionNote: string | null;
-};
-type Shift = { id: number; name: string; startTime: string; endTime: string; isActive: boolean };
-type RosterEntry = {
-  id: number;
-  employeeId: number;
-  employeeName: string;
-  workDate: string;
-  shiftName: string;
-  startTime: string;
-  endTime: string;
 };
 
 /** Cents arrive from the API as strings; format them without losing precision. */
@@ -169,12 +145,8 @@ export const WorkforceModule: React.FC = () => {
   const [departmentsLoading, setDepartmentsLoading] = useState(true);
   const [departmentsError, setDepartmentsError] = useState<string | null>(null);
   const [designations, setDesignations] = useState<Designation[]>([]);
-  const [attendance, setAttendance] = useState<AttendanceDay | null>(null);
-  const [attendanceDate, setAttendanceDate] = useState(today());
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
-  const [shifts, setShifts] = useState<Shift[]>([]);
-  const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -189,7 +161,6 @@ export const WorkforceModule: React.FC = () => {
   const [designationModal, setDesignationModal] = useState<Designation | 'new' | null>(null);
   const [leaveModal, setLeaveModal] = useState(false);
   const [leaveTypeModal, setLeaveTypeModal] = useState(false);
-  const [shiftModal, setShiftModal] = useState(false);
   const [detail, setDetail] = useState<Record<string, unknown> | null>(null);
 
   const loadDepartments = useCallback(async () => {
@@ -230,29 +201,14 @@ export const WorkforceModule: React.FC = () => {
     await loadDepartments();
   }, [facilityId, loadDepartments]);
 
-  const loadAttendance = useCallback(
-    async (date: string) => {
-      try {
-        setAttendance((await api.getHrAttendance(facilityId, date)) as AttendanceDay);
-      } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Attendance could not be loaded.');
-      }
-    },
-    [facilityId],
-  );
-
   const loadLeave = useCallback(async () => {
     try {
-      const [types, requests, shiftRows, rosterRows] = await Promise.all([
+      const [types, requests] = await Promise.all([
         api.getHrLeaveTypes(facilityId),
         api.getHrLeaveRequests(facilityId),
-        api.getHrShifts(facilityId),
-        api.getHrRoster(facilityId, today(), today()),
       ]);
       setLeaveTypes(types as unknown as LeaveType[]);
       setLeaveRequests(requests as unknown as LeaveRequest[]);
-      setShifts(shiftRows as unknown as Shift[]);
-      setRoster(rosterRows as unknown as RosterEntry[]);
     } catch (err) {
       setError(
         err instanceof ApiError ? err.message : 'Leave and roster records could not be loaded.',
@@ -263,10 +219,6 @@ export const WorkforceModule: React.FC = () => {
   useEffect(() => {
     void loadCore();
   }, [loadCore, refreshKey]);
-
-  useEffect(() => {
-    if (tab === 'attendance') void loadAttendance(attendanceDate);
-  }, [tab, attendanceDate, loadAttendance, refreshKey]);
 
   useEffect(() => {
     if (tab === 'leave') void loadLeave();
@@ -679,128 +631,12 @@ export const WorkforceModule: React.FC = () => {
       )}
 
       {tab === 'attendance' && (
-        <div className="grid gap-5 lg:grid-cols-[2fr_1fr]">
-          <section className="space-y-3">
-            <FilterToolbar>
-              <label className="text-xs font-medium text-muted" htmlFor="attendance-date">
-                Work date
-              </label>
-              <input
-                id="attendance-date"
-                type="date"
-                className="ui-input"
-                value={attendanceDate}
-                onChange={(event) => setAttendanceDate(event.target.value)}
-              />
-              <span className="text-xs text-muted">
-                {attendance?.summary.present ?? 0} present · {attendance?.summary.absent ?? 0}{' '}
-                absent · {attendance?.summary.recorded ?? 0}/{attendance?.summary.expected ?? 0}{' '}
-                recorded
-              </span>
-            </FilterToolbar>
-            {!attendance?.rows.length ? (
-              <EmptyState
-                title="No employees to show"
-                description="Register staff to record attendance."
-              />
-            ) : (
-              <DataTable className="table-quiet">
-                <thead>
-                  <tr>
-                    <th>Employee</th>
-                    <th>Department</th>
-                    <th>Status</th>
-                    <th>In</th>
-                    <th>Out</th>
-                    {canManage && <th aria-label="Record" />}
-                  </tr>
-                </thead>
-                <tbody>
-                  {attendance.rows.map((row) => (
-                    <tr key={row.employeeId}>
-                      <td>
-                        {row.name}
-                        <div className="text-xs text-muted">{row.employeeNumber}</div>
-                      </td>
-                      <td>{row.departmentName ?? '—'}</td>
-                      <td>
-                        {row.status ? (
-                          <EmployeeStatus status={row.status} />
-                        ) : (
-                          <span className="text-xs text-muted">Not recorded</span>
-                        )}
-                      </td>
-                      <td className="tabular-nums">{row.checkIn ?? '—'}</td>
-                      <td className="tabular-nums">{row.checkOut ?? '—'}</td>
-                      {canManage && (
-                        <td className="text-right">
-                          <AttendanceEditor
-                            facilityId={facilityId}
-                            employeeId={row.employeeId}
-                            date={attendanceDate}
-                            onSaved={() => {
-                              void loadAttendance(attendanceDate);
-                              triggerRefresh();
-                            }}
-                            onError={(message) => showToast(message, { tone: 'error' })}
-                          />
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </DataTable>
-            )}
-          </section>
-
-          <section className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Shifts & today&apos;s roster</h2>
-              {canManage && (
-                <SecondaryButton onClick={() => setShiftModal(true)}>
-                  <Clock size={15} /> New shift
-                </SecondaryButton>
-              )}
-            </div>
-            {shifts.length === 0 ? (
-              <EmptyState
-                title="No shifts defined"
-                description="Define shift times before building a roster."
-              />
-            ) : (
-              <ul className="space-y-2 text-sm">
-                {shifts.map((shift) => (
-                  <li
-                    key={shift.id}
-                    className="flex items-center justify-between rounded-lg border border-hair px-3 py-2"
-                  >
-                    <span className="font-medium">{shift.name}</span>
-                    <span className="tabular-nums text-muted">
-                      {shift.startTime}–{shift.endTime}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <div className="rounded-lg border border-hair p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-                Rostered today
-              </p>
-              {roster.length === 0 ? (
-                <p className="mt-2 text-sm text-muted">Nobody is rostered for today.</p>
-              ) : (
-                <ul className="mt-2 space-y-1 text-sm">
-                  {roster.map((entry) => (
-                    <li key={entry.id} className="flex justify-between">
-                      <span>{entry.employeeName}</span>
-                      <span className="text-muted">{entry.shiftName}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </section>
-        </div>
+        <AttendanceRosterTab
+          facilityId={facilityId}
+          canManage={canManage}
+          employees={employees}
+          departments={departments}
+        />
       )}
 
       {tab === 'leave' && (
@@ -1053,27 +889,6 @@ export const WorkforceModule: React.FC = () => {
         />
       )}
 
-      {shiftModal && (
-        <SimpleFormDialog
-          title="New shift"
-          saving={saving}
-          onClose={() => setShiftModal(false)}
-          onSubmit={(payload) =>
-            run(async () => {
-              await api.createHrShift(facilityId, payload);
-              showToast('Shift created.', { tone: 'success' });
-              setShiftModal(false);
-              await loadLeave();
-            })
-          }
-          fields={[
-            { name: 'name', label: 'Shift name', required: true },
-            { name: 'startTime', label: 'Start time', type: 'time', required: true },
-            { name: 'endTime', label: 'End time', type: 'time', required: true },
-          ]}
-        />
-      )}
-
       {detail && (
         <Modal open onClose={() => setDetail(null)} title="Employee record">
           <EmployeeDetail detail={detail} onClose={() => setDetail(null)} />
@@ -1086,55 +901,6 @@ export const WorkforceModule: React.FC = () => {
 /* ============================================================
    SUB-COMPONENTS
    ============================================================ */
-
-function AttendanceEditor({
-  facilityId,
-  employeeId,
-  date,
-  onSaved,
-  onError,
-}: {
-  facilityId: number;
-  employeeId: number;
-  date: string;
-  onSaved: () => void;
-  onError: (message: string) => void;
-}) {
-  const [status, setStatus] = useState('PRESENT');
-  const [busy, setBusy] = useState(false);
-  return (
-    <div className="flex items-center justify-end gap-1">
-      <select
-        aria-label="Attendance status"
-        className="ui-select text-xs"
-        value={status}
-        onChange={(event) => setStatus(event.target.value)}
-      >
-        {['PRESENT', 'ABSENT', 'LEAVE', 'HOLIDAY', 'OFF_DUTY', 'TRAINING'].map((value) => (
-          <option key={value} value={value}>
-            {value.replace('_', ' ')}
-          </option>
-        ))}
-      </select>
-      <SecondaryButton
-        disabled={busy}
-        onClick={async () => {
-          setBusy(true);
-          try {
-            await api.recordHrAttendance(facilityId, { employeeId, workDate: date, status });
-            onSaved();
-          } catch (err) {
-            onError(err instanceof ApiError ? err.message : 'Attendance could not be recorded.');
-          } finally {
-            setBusy(false);
-          }
-        }}
-      >
-        Save
-      </SecondaryButton>
-    </div>
-  );
-}
 
 function EmployeeDialog({
   employee,

@@ -27,7 +27,7 @@ import {
  */
 
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { and, asc, desc, eq, gte, inArray, lte, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
 
 import { db, pool } from '../db/index.ts';
 import * as schema from '../db/schema.ts';
@@ -167,11 +167,13 @@ const EMPLOYMENT_TYPES = ['PERMANENT', 'CONTRACT', 'CASUAL', 'INTERN', 'LOCUM'] 
 const EMPLOYMENT_STATUSES = ['ACTIVE', 'ON_LEAVE', 'SUSPENDED', 'EXITED'] as const;
 const ATTENDANCE_STATUSES = [
   'PRESENT',
+  'LATE',
   'ABSENT',
   'LEAVE',
   'HOLIDAY',
   'OFF_DUTY',
   'TRAINING',
+  'INCOMPLETE',
 ] as const;
 const STATUTES = ['PAYE', 'NSSF', 'SHIF', 'AHL'] as const;
 const STATUTORY_STATUSES = ['DRAFT', 'ACTIVE', 'RETIRED'] as const;
@@ -983,67 +985,1619 @@ export async function addEmployeeDocument(
    ATTENDANCE, ROSTER AND SHIFTS
    ============================================================ */
 
-export async function listShifts(scope: WorkforceScope) {
+/*
+ * A shift is a reusable template. A roster entry is an employee assigned to a
+ * shift on one date. Attendance is what actually happened. They are three
+ * different records and this module keeps them separate:
+ *
+ *   hr_shifts          → 07:00–18:00, 60 minutes of break
+ *   hr_roster_entries  → employee 12 is on the Day shift on 2026-11-20
+ *   hr_attendance      → employee 12 clocked in at 07:04:11 and out at 18:02:40
+ *
+ * Creating a shift therefore creates no roster entry and no attendance row.
+ * Rostering does not create attendance either: only the employee clocking in
+ * (or an authorised correction) does.
+ */
+
+const DEFAULT_TIME_ZONE = 'Africa/Nairobi';
+const DEFAULT_GRACE_MINUTES = 10;
+const DEFAULT_ABSENCE_CUTOFF_MINUTES = 240;
+const MAX_ROSTER_WINDOW_DAYS = 366;
+
+export type AttendancePolicy = {
+  graceMinutes: number;
+  absenceCutoffMinutes: number;
+  timeZone: string;
+  allowRosterConflicts: boolean;
+};
+
+type LocalClock = { date: string; minutes: number };
+
+/** Local wall clock for an instant. Never derived from the UTC date. */
+export function localClock(instant: Date, timeZone: string): LocalClock {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(instant);
+  const get = (type: string) => parts.find((part) => part.type === type)?.value ?? '00';
+  /* Some ICU builds render midnight as 24 rather than 00. */
+  const hour = get('hour') === '24' ? '00' : get('hour');
+  return {
+    date: `${get('year')}-${get('month')}-${get('day')}`,
+    minutes: Number(hour) * 60 + Number(get('minute')),
+  };
+}
+
+function assertTimeZone(value: unknown): string {
+  const timeZone = typeof value === 'string' && value.trim() ? value.trim() : DEFAULT_TIME_ZONE;
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone });
+  } catch {
+    fail(400, 'INVALID_TIME_ZONE', 'Time zone must be a valid IANA name such as Africa/Nairobi.');
+  }
+  return timeZone;
+}
+
+function clockMinutes(value: string): number {
+  const [hours, minutes] = value.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
+type ShiftTiming = {
+  startMinutes: number;
+  endMinutes: number;
+  /** True when the shift ends on the following calendar day. */
+  overnight: boolean;
+  /** Minutes on the clock, before breaks. */
+  grossMinutes: number;
+  /** Expected working minutes, after the configured break. */
+  scheduledMinutes: number;
+};
+
+export function shiftTiming(shift: {
+  startTime: string;
+  endTime: string;
+  breakMinutes: number;
+}): ShiftTiming {
+  const startMinutes = clockMinutes(shift.startTime);
+  const endMinutes = clockMinutes(shift.endTime);
+  const overnight = endMinutes <= startMinutes;
+  const grossMinutes = overnight ? endMinutes + 1440 - startMinutes : endMinutes - startMinutes;
+  return {
+    startMinutes,
+    endMinutes,
+    overnight,
+    grossMinutes,
+    scheduledMinutes: Math.max(0, grossMinutes - shift.breakMinutes),
+  };
+}
+
+/**
+ * Minutes late, relative to a shift start. `offsetDays` is 1 when the shift
+ * began yesterday and is still running (a night shift clocked in after
+ * midnight), so the comparison stays on the shift's own clock rather than the
+ * calendar's.
+ */
+export function lateMinutesFor(
+  clockMinutes: number,
+  startMinutes: number,
+  offsetDays: number,
+  graceMinutes: number,
+): number {
+  const late = clockMinutes + offsetDays * 1440 - startMinutes;
+  return late > graceMinutes ? late - graceMinutes : 0;
+}
+
+function addDays(date: string, days: number): string {
+  const parsed = new Date(`${date}T00:00:00Z`);
+  parsed.setUTCDate(parsed.getUTCDate() + days);
+  return parsed.toISOString().slice(0, 10);
+}
+
+function daysBetween(from: string, to: string): number {
+  return Math.round(
+    (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000,
+  );
+}
+
+async function readPolicy(scope: WorkforceScope): Promise<AttendancePolicy> {
+  const [row] = await db
+    .select()
+    .from(schema.hrAttendancePolicies)
+    .where(eq(schema.hrAttendancePolicies.facilityId, scope.facilityId))
+    .limit(1);
+  return {
+    graceMinutes: row?.graceMinutes ?? DEFAULT_GRACE_MINUTES,
+    absenceCutoffMinutes: row?.absenceCutoffMinutes ?? DEFAULT_ABSENCE_CUTOFF_MINUTES,
+    timeZone: row?.timeZone ?? DEFAULT_TIME_ZONE,
+    allowRosterConflicts: row?.allowRosterConflicts ?? false,
+  };
+}
+
+export async function getAttendancePolicy(scope: WorkforceScope) {
+  const policy = await readPolicy(scope);
+  return { ...policy, configured: await hasPolicyRow(scope) };
+}
+
+async function hasPolicyRow(scope: WorkforceScope): Promise<boolean> {
+  const [row] = await db
+    .select({ id: schema.hrAttendancePolicies.id })
+    .from(schema.hrAttendancePolicies)
+    .where(eq(schema.hrAttendancePolicies.facilityId, scope.facilityId))
+    .limit(1);
+  return Boolean(row);
+}
+
+export async function saveAttendancePolicy(scope: WorkforceScope, input: Record<string, unknown>) {
+  const graceMinutes = integerInRange(
+    input.graceMinutes ?? DEFAULT_GRACE_MINUTES,
+    'Grace period',
+    0,
+    240,
+  );
+  const absenceCutoffMinutes = integerInRange(
+    input.absenceCutoffMinutes ?? DEFAULT_ABSENCE_CUTOFF_MINUTES,
+    'Absence cutoff',
+    0,
+    1440,
+  );
+  const timeZone = assertTimeZone(input.timeZone);
+  const allowRosterConflicts =
+    input.allowRosterConflicts === undefined ? false : Boolean(input.allowRosterConflicts);
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .insert(schema.hrAttendancePolicies)
+      .values({
+        tenantId: scope.tenantId,
+        facilityId: scope.facilityId,
+        graceMinutes,
+        absenceCutoffMinutes,
+        timeZone,
+        allowRosterConflicts,
+        updatedBy: scope.actorId,
+        updatedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: [schema.hrAttendancePolicies.facilityId],
+        set: {
+          graceMinutes,
+          absenceCutoffMinutes,
+          timeZone,
+          allowRosterConflicts,
+          updatedBy: scope.actorId,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    await audit(
+      tx,
+      scope,
+      'hr_attendance_policy',
+      row.id,
+      'UPDATE',
+      `Grace ${graceMinutes}m, absence cutoff ${absenceCutoffMinutes}m, ${timeZone}`,
+    );
+    return row;
+  });
+}
+
+function integerInRange(value: unknown, label: string, min: number, max: number): number {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < min || parsed > max)
+    fail(400, 'INVALID_INPUT', `${label} must be a whole number between ${min} and ${max}.`);
+  return parsed;
+}
+
+/* ------------------------------------------------------------
+   HOLIDAYS
+   ------------------------------------------------------------ */
+
+export async function listHolidays(scope: WorkforceScope, from?: string, to?: string) {
+  const start = from ? isoDate(from, 'From date') : `${new Date().getUTCFullYear()}-01-01`;
+  const end = to ? isoDate(to, 'To date') : `${new Date().getUTCFullYear()}-12-31`;
   return db
     .select()
+    .from(schema.hrHolidays)
+    .where(
+      and(
+        eq(schema.hrHolidays.tenantId, scope.tenantId),
+        eq(schema.hrHolidays.facilityId, scope.facilityId),
+        gte(schema.hrHolidays.holidayDate, start),
+        lte(schema.hrHolidays.holidayDate, end),
+      ),
+    )
+    .orderBy(asc(schema.hrHolidays.holidayDate));
+}
+
+export async function createHoliday(scope: WorkforceScope, input: Record<string, unknown>) {
+  const holidayDate = isoDate(input.holidayDate ?? input.date, 'Holiday date');
+  const name = requiredText(input.name, 'Holiday name', 120);
+  return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select({ id: schema.hrHolidays.id })
+      .from(schema.hrHolidays)
+      .where(
+        and(
+          eq(schema.hrHolidays.facilityId, scope.facilityId),
+          eq(schema.hrHolidays.holidayDate, holidayDate),
+        ),
+      )
+      .limit(1);
+    if (existing) fail(409, 'HOLIDAY_EXISTS', 'A holiday is already recorded on that date.');
+    const [row] = await tx
+      .insert(schema.hrHolidays)
+      .values({
+        tenantId: scope.tenantId,
+        facilityId: scope.facilityId,
+        holidayDate,
+        name,
+        createdBy: scope.actorId,
+      })
+      .returning();
+    await audit(tx, scope, 'hr_holiday', row.id, 'CREATE', `Holiday ${name} on ${holidayDate}`);
+    return row;
+  });
+}
+
+export async function deleteHoliday(scope: WorkforceScope, id: number) {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(schema.hrHolidays)
+      .where(
+        and(
+          eq(schema.hrHolidays.id, id),
+          eq(schema.hrHolidays.tenantId, scope.tenantId),
+          eq(schema.hrHolidays.facilityId, scope.facilityId),
+        ),
+      )
+      .limit(1);
+    if (!row) fail(404, 'HOLIDAY_NOT_FOUND', 'Holiday not found in this facility.');
+    await tx.delete(schema.hrHolidays).where(eq(schema.hrHolidays.id, id));
+    await audit(tx, scope, 'hr_holiday', id, 'DELETE', `Removed holiday ${row.name}`);
+    return { id };
+  });
+}
+
+/* ------------------------------------------------------------
+   SHIFTS — reusable definitions of expected working hours
+   ------------------------------------------------------------ */
+
+export type ShiftRow = {
+  id: number;
+  name: string;
+  description: string | null;
+  startTime: string;
+  endTime: string;
+  breakMinutes: number;
+  departmentId: number | null;
+  departmentName: string | null;
+  isActive: boolean;
+  overnight: boolean;
+  expectedHours: number;
+  scheduledMinutes: number;
+  assignedToday: number;
+};
+
+export async function listShifts(scope: WorkforceScope, date?: string): Promise<ShiftRow[]> {
+  const policy = await readPolicy(scope);
+  const workDate = date ? isoDate(date, 'Work date') : localClock(new Date(), policy.timeZone).date;
+  const rows = await db
+    .select({
+      id: schema.hrShifts.id,
+      name: schema.hrShifts.name,
+      description: schema.hrShifts.description,
+      startTime: schema.hrShifts.startTime,
+      endTime: schema.hrShifts.endTime,
+      breakMinutes: schema.hrShifts.breakMinutes,
+      departmentId: schema.hrShifts.departmentId,
+      departmentName: schema.hrDepartments.name,
+      isActive: schema.hrShifts.isActive,
+      assignedToday: sql<number>`(
+        SELECT COUNT(*) FROM ${schema.hrRosterEntries} roster
+        WHERE roster.shift_id = ${schema.hrShifts.id}
+          AND roster.work_date = ${workDate}
+          AND roster.status = 'ASSIGNED'
+      )`,
+    })
     .from(schema.hrShifts)
+    .leftJoin(schema.hrDepartments, eq(schema.hrShifts.departmentId, schema.hrDepartments.id))
     .where(
       and(
         eq(schema.hrShifts.tenantId, scope.tenantId),
         eq(schema.hrShifts.facilityId, scope.facilityId),
       ),
     )
-    .orderBy(asc(schema.hrShifts.startTime));
+    .orderBy(asc(schema.hrShifts.startTime), asc(schema.hrShifts.name));
+  return rows.map((row) => {
+    const timing = shiftTiming(row);
+    return {
+      ...row,
+      assignedToday: Number(row.assignedToday ?? 0),
+      overnight: timing.overnight,
+      scheduledMinutes: timing.scheduledMinutes,
+      expectedHours: Math.round((timing.scheduledMinutes / 60) * 100) / 100,
+    };
+  });
 }
 
-export async function createShift(scope: WorkforceScope, input: Record<string, unknown>) {
+type ShiftInput = {
+  name: string;
+  description: string | null;
+  startTime: string;
+  endTime: string;
+  breakMinutes: number;
+  departmentId: number | null;
+  isActive: boolean;
+};
+
+async function validateShiftInput(
+  tx: Tx,
+  scope: WorkforceScope,
+  input: Record<string, unknown>,
+  existingId: number | null,
+): Promise<ShiftInput> {
   const name = requiredText(input.name, 'Shift name', 60);
+  const description = optionalText(input.description, 'Description', 200);
   const startTime = optionalTime(input.startTime, 'Start time');
   const endTime = optionalTime(input.endTime, 'End time');
   if (!startTime || !endTime) fail(400, 'INVALID_TIME', 'Start and end times are required.');
+  if (startTime === endTime)
+    fail(400, 'INVALID_TIME', 'Start and end times cannot be identical.');
+  const breakMinutes =
+    input.breakMinutes === undefined || input.breakMinutes === null || input.breakMinutes === ''
+      ? 0
+      : integerInRange(input.breakMinutes, 'Break duration', 0, 480);
+  const departmentId = optionalPositiveId(input.departmentId, 'department');
+  if (departmentId) {
+    const [department] = await tx
+      .select({ id: schema.hrDepartments.id })
+      .from(schema.hrDepartments)
+      .where(
+        and(
+          eq(schema.hrDepartments.id, departmentId),
+          eq(schema.hrDepartments.tenantId, scope.tenantId),
+          eq(schema.hrDepartments.facilityId, scope.facilityId),
+        ),
+      )
+      .limit(1);
+    if (!department) fail(404, 'DEPARTMENT_NOT_FOUND', 'Department not found in this facility.');
+  }
+  /* Names are unique per facility; compare case-insensitively so "Day" and
+     "day" cannot both exist and confuse the roster. */
+  const [duplicate] = await tx
+    .select({ id: schema.hrShifts.id })
+    .from(schema.hrShifts)
+    .where(
+      and(
+        eq(schema.hrShifts.facilityId, scope.facilityId),
+        sql`lower(${schema.hrShifts.name}) = lower(${name})`,
+      ),
+    )
+    .limit(1);
+  if (duplicate && duplicate.id !== existingId)
+    fail(409, 'SHIFT_EXISTS', `A shift named ${name} already exists in this facility.`);
+  const isActive = input.isActive === undefined ? true : Boolean(input.isActive);
+  return { name, description, startTime, endTime, breakMinutes, departmentId, isActive };
+}
+
+export async function createShift(scope: WorkforceScope, input: Record<string, unknown>) {
   return db.transaction(async (tx) => {
+    const values = await validateShiftInput(tx, scope, input, null);
     const [row] = await tx
       .insert(schema.hrShifts)
       .values({
         tenantId: scope.tenantId,
         facilityId: scope.facilityId,
-        name,
-        startTime,
-        endTime,
+        ...values,
         createdBy: scope.actorId,
       })
       .returning();
-    await audit(tx, scope, 'hr_shift', row.id, 'CREATE', `Created shift ${name}`);
+    const timing = shiftTiming(row);
+    await audit(
+      tx,
+      scope,
+      'hr_shift',
+      row.id,
+      'CREATE',
+      `Created shift ${row.name} ${row.startTime}–${row.endTime}` +
+        `${timing.overnight ? ' (overnight)' : ''}, ${row.breakMinutes}m break`,
+    );
+    return {
+      ...row,
+      overnight: timing.overnight,
+      scheduledMinutes: timing.scheduledMinutes,
+      expectedHours: Math.round((timing.scheduledMinutes / 60) * 100) / 100,
+      assignedToday: 0,
+    };
+  });
+}
+
+export async function updateShift(
+  scope: WorkforceScope,
+  id: number,
+  input: Record<string, unknown>,
+) {
+  return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(schema.hrShifts)
+      .where(
+        and(
+          eq(schema.hrShifts.id, id),
+          eq(schema.hrShifts.tenantId, scope.tenantId),
+          eq(schema.hrShifts.facilityId, scope.facilityId),
+        ),
+      )
+      .limit(1);
+    if (!existing) fail(404, 'SHIFT_NOT_FOUND', 'Shift not found in this facility.');
+    const values = await validateShiftInput(tx, scope, input, id);
+    const [row] = await tx
+      .update(schema.hrShifts)
+      .set({ ...values, updatedAt: new Date() })
+      .where(eq(schema.hrShifts.id, id))
+      .returning();
+    await audit(
+      tx,
+      scope,
+      'hr_shift',
+      id,
+      'UPDATE',
+      `Updated shift ${row.name} ${row.startTime}–${row.endTime}` +
+        `${row.isActive ? '' : ' (inactive)'}`,
+    );
+    const timing = shiftTiming(row);
+    return {
+      ...row,
+      overnight: timing.overnight,
+      scheduledMinutes: timing.scheduledMinutes,
+      expectedHours: Math.round((timing.scheduledMinutes / 60) * 100) / 100,
+      assignedToday: 0,
+    };
+  });
+}
+
+/* ------------------------------------------------------------
+   ROSTER — an employee assigned to a shift on a date
+   ------------------------------------------------------------ */
+
+export type RosterRow = {
+  id: number;
+  employeeId: number;
+  employeeNumber: string;
+  employeeName: string;
+  departmentId: number | null;
+  departmentName: string | null;
+  designationTitle: string | null;
+  workDate: string;
+  shiftId: number;
+  shiftName: string;
+  startTime: string;
+  endTime: string;
+  overnight: boolean;
+  scheduledMinutes: number;
+  status: string;
+  notes: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  clockInAt: string | null;
+  clockOutAt: string | null;
+  lateMinutes: number | null;
+};
+
+export async function listRoster(
+  scope: WorkforceScope,
+  query: {
+    from?: string;
+    to?: string;
+    departmentId?: number | null;
+    employeeId?: number | null;
+    shiftId?: number | null;
+    includeCancelled?: boolean;
+  },
+): Promise<RosterRow[]> {
+  const policy = await readPolicy(scope);
+  const today = localClock(new Date(), policy.timeZone).date;
+  const from = query.from ? isoDate(query.from, 'From date') : today;
+  const to = query.to ? isoDate(query.to, 'To date') : from;
+  if (to < from) fail(400, 'INVALID_RANGE', 'The end date cannot be before the start date.');
+  const conditions = [
+    eq(schema.hrRosterEntries.tenantId, scope.tenantId),
+    eq(schema.hrRosterEntries.facilityId, scope.facilityId),
+    gte(schema.hrRosterEntries.workDate, from),
+    lte(schema.hrRosterEntries.workDate, to),
+  ];
+  if (!query.includeCancelled) conditions.push(eq(schema.hrRosterEntries.status, 'ASSIGNED'));
+  if (query.departmentId) conditions.push(eq(schema.hrRosterEntries.departmentId, query.departmentId));
+  if (query.employeeId) conditions.push(eq(schema.hrRosterEntries.employeeId, query.employeeId));
+  if (query.shiftId) conditions.push(eq(schema.hrRosterEntries.shiftId, query.shiftId));
+
+  const rows = await db
+    .select({
+      id: schema.hrRosterEntries.id,
+      employeeId: schema.hrRosterEntries.employeeId,
+      employeeNumber: schema.hrEmployees.employeeNumber,
+      firstName: schema.hrEmployees.firstName,
+      lastName: schema.hrEmployees.lastName,
+      departmentId: schema.hrRosterEntries.departmentId,
+      departmentName: schema.hrDepartments.name,
+      designationTitle: schema.hrDesignations.title,
+      workDate: schema.hrRosterEntries.workDate,
+      shiftId: schema.hrShifts.id,
+      shiftName: schema.hrShifts.name,
+      startTime: schema.hrShifts.startTime,
+      endTime: schema.hrShifts.endTime,
+      breakMinutes: schema.hrShifts.breakMinutes,
+      status: schema.hrRosterEntries.status,
+      notes: schema.hrRosterEntries.notes,
+      cancelledAt: schema.hrRosterEntries.cancelledAt,
+      cancelReason: schema.hrRosterEntries.cancelReason,
+      clockInAt: schema.hrAttendance.clockInAt,
+      clockOutAt: schema.hrAttendance.clockOutAt,
+      lateMinutes: schema.hrAttendance.lateMinutes,
+    })
+    .from(schema.hrRosterEntries)
+    .innerJoin(schema.hrEmployees, eq(schema.hrRosterEntries.employeeId, schema.hrEmployees.id))
+    .innerJoin(schema.hrShifts, eq(schema.hrRosterEntries.shiftId, schema.hrShifts.id))
+    .leftJoin(schema.hrDepartments, eq(schema.hrRosterEntries.departmentId, schema.hrDepartments.id))
+    .leftJoin(schema.hrDesignations, eq(schema.hrEmployees.designationId, schema.hrDesignations.id))
+    .leftJoin(
+      schema.hrAttendance,
+      and(
+        eq(schema.hrAttendance.employeeId, schema.hrRosterEntries.employeeId),
+        eq(schema.hrAttendance.workDate, schema.hrRosterEntries.workDate),
+      ),
+    )
+    .where(and(...conditions))
+    .orderBy(
+      asc(schema.hrRosterEntries.workDate),
+      asc(schema.hrShifts.startTime),
+      asc(schema.hrEmployees.lastName),
+      asc(schema.hrEmployees.firstName),
+    );
+
+  return rows.map((row) => {
+    const timing = shiftTiming(row);
+    return {
+      id: row.id,
+      employeeId: row.employeeId,
+      employeeNumber: row.employeeNumber,
+      employeeName: `${row.firstName} ${row.lastName}`,
+      departmentId: row.departmentId,
+      departmentName: row.departmentName,
+      designationTitle: row.designationTitle,
+      workDate: row.workDate,
+      shiftId: row.shiftId,
+      shiftName: row.shiftName,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      overnight: timing.overnight,
+      scheduledMinutes: timing.scheduledMinutes,
+      status: row.status,
+      notes: row.notes,
+      cancelledAt: row.cancelledAt ? row.cancelledAt.toISOString() : null,
+      cancelReason: row.cancelReason,
+      clockInAt: row.clockInAt ? row.clockInAt.toISOString() : null,
+      clockOutAt: row.clockOutAt ? row.clockOutAt.toISOString() : null,
+      lateMinutes: row.lateMinutes,
+    };
+  });
+}
+
+export async function assignRoster(scope: WorkforceScope, input: Record<string, unknown>) {
+  const shiftId = positiveId(input.shiftId, 'shift');
+  const workDate = isoDate(input.workDate, 'Work date');
+  const notes = optionalText(input.notes, 'Notes', 300);
+  const rawIds = Array.isArray(input.employeeIds) ? input.employeeIds : [input.employeeId];
+  if (!rawIds.length) fail(400, 'INVALID_ID', 'Select at least one employee.');
+  const employeeIds = [...new Set(rawIds.map((value) => positiveId(value, 'employee')))];
+  const policy = await readPolicy(scope);
+  const today = localClock(new Date(), policy.timeZone).date;
+  const offset = daysBetween(today, workDate);
+  if (offset < -MAX_ROSTER_WINDOW_DAYS || offset > MAX_ROSTER_WINDOW_DAYS)
+    fail(400, 'INVALID_DATE', 'A roster can only be built within one year of today.');
+
+  return db.transaction(async (tx) => {
+    const [shift] = await tx
+      .select()
+      .from(schema.hrShifts)
+      .where(
+        and(
+          eq(schema.hrShifts.id, shiftId),
+          eq(schema.hrShifts.tenantId, scope.tenantId),
+          eq(schema.hrShifts.facilityId, scope.facilityId),
+        ),
+      )
+      .limit(1);
+    if (!shift) fail(404, 'SHIFT_NOT_FOUND', 'Shift not found in this facility.');
+    if (!shift.isActive)
+      fail(409, 'SHIFT_INACTIVE', `Shift ${shift.name} is inactive and cannot be assigned.`);
+
+    const saved: Array<{ id: number; employeeId: number; employeeName: string }> = [];
+    const skipped: Array<{ employeeId: number; employeeName: string; reason: string }> = [];
+
+    for (const employeeId of employeeIds) {
+      const [employee] = await tx
+        .select({
+          id: schema.hrEmployees.id,
+          employeeNumber: schema.hrEmployees.employeeNumber,
+          firstName: schema.hrEmployees.firstName,
+          lastName: schema.hrEmployees.lastName,
+          departmentId: schema.hrEmployees.departmentId,
+          employmentStatus: schema.hrEmployees.employmentStatus,
+          hireDate: schema.hrEmployees.hireDate,
+        })
+        .from(schema.hrEmployees)
+        .where(
+          and(
+            eq(schema.hrEmployees.id, employeeId),
+            eq(schema.hrEmployees.tenantId, scope.tenantId),
+            eq(schema.hrEmployees.facilityId, scope.facilityId),
+          ),
+        )
+        .limit(1);
+      if (!employee) fail(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found in this facility.');
+      const employeeName = `${employee.firstName} ${employee.lastName}`;
+      if (employee.employmentStatus === 'EXITED') {
+        /* A bulk assignment reports the refusal instead of failing the batch. */
+        if (employeeIds.length === 1)
+          fail(409, 'EMPLOYEE_EXITED', `${employeeName} has left; they cannot be rostered.`);
+        skipped.push({ employeeId, employeeName, reason: 'Employee has left the facility.' });
+        continue;
+      }
+      if (employee.hireDate > workDate) {
+        if (employeeIds.length === 1)
+          fail(
+            400,
+            'EMPLOYEE_NOT_HIRED',
+            `${employeeName} was not yet employed on ${workDate}.`,
+          );
+        skipped.push({ employeeId, employeeName, reason: `Not employed on ${workDate}.` });
+        continue;
+      }
+      if (shift.departmentId && employee.departmentId !== shift.departmentId) {
+        const message = `${employeeName} is not in the department this shift belongs to.`;
+        if (employeeIds.length === 1) fail(409, 'SHIFT_DEPARTMENT_MISMATCH', message);
+        skipped.push({ employeeId, employeeName, reason: message });
+        continue;
+      }
+
+      const [existing] = await tx
+        .select({
+          id: schema.hrRosterEntries.id,
+          shiftId: schema.hrRosterEntries.shiftId,
+          status: schema.hrRosterEntries.status,
+          shiftName: schema.hrShifts.name,
+        })
+        .from(schema.hrRosterEntries)
+        .innerJoin(schema.hrShifts, eq(schema.hrRosterEntries.shiftId, schema.hrShifts.id))
+        .where(
+          and(
+            eq(schema.hrRosterEntries.employeeId, employeeId),
+            eq(schema.hrRosterEntries.workDate, workDate),
+          ),
+        )
+        .limit(1);
+
+      if (existing && existing.status === 'ASSIGNED' && existing.shiftId !== shiftId) {
+        if (!policy.allowRosterConflicts) {
+          const message = `${employeeName} is already rostered on ${existing.shiftName} that day.`;
+          if (employeeIds.length === 1) fail(409, 'ROSTER_CONFLICT', message);
+          skipped.push({ employeeId, employeeName, reason: message });
+          continue;
+        }
+      } else if (existing && existing.status === 'ASSIGNED' && existing.shiftId === shiftId) {
+        const message = `${employeeName} is already rostered on ${shift.name} that day.`;
+        if (employeeIds.length === 1) fail(409, 'ROSTER_DUPLICATE', message);
+        skipped.push({ employeeId, employeeName, reason: message });
+        continue;
+      }
+
+      let row;
+      if (existing) {
+        [row] = await tx
+          .update(schema.hrRosterEntries)
+          .set({
+            shiftId,
+            departmentId: employee.departmentId,
+            status: 'ASSIGNED',
+            notes,
+            cancelledAt: null,
+            cancelledBy: null,
+            cancelReason: null,
+            createdBy: scope.actorId,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.hrRosterEntries.id, existing.id))
+          .returning();
+        await audit(
+          tx,
+          scope,
+          'hr_roster',
+          row.id,
+          existing.status === 'CANCELLED' ? 'REASSIGN' : 'REPLACE',
+          `${employeeName} (${employee.employeeNumber}) ${existing.status === 'CANCELLED' ? 're-rostered' : `moved from ${existing.shiftName}`} to ${shift.name} on ${workDate}`,
+        );
+      } else {
+        [row] = await tx
+          .insert(schema.hrRosterEntries)
+          .values({
+            tenantId: scope.tenantId,
+            facilityId: scope.facilityId,
+            employeeId,
+            shiftId,
+            departmentId: employee.departmentId,
+            workDate,
+            status: 'ASSIGNED',
+            notes,
+            createdBy: scope.actorId,
+          })
+          .returning();
+        await audit(
+          tx,
+          scope,
+          'hr_roster',
+          row.id,
+          'ASSIGN',
+          `${employeeName} (${employee.employeeNumber}) rostered on ${shift.name} for ${workDate}`,
+        );
+      }
+      saved.push({ id: row.id, employeeId, employeeName });
+    }
+
+    return { saved, skipped, workDate, shiftId };
+  });
+}
+
+export async function cancelRosterEntry(
+  scope: WorkforceScope,
+  id: number,
+  input: Record<string, unknown>,
+) {
+  const reason = optionalText(input.reason, 'Cancellation reason', 300);
+  return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(schema.hrRosterEntries)
+      .where(
+        and(
+          eq(schema.hrRosterEntries.id, id),
+          eq(schema.hrRosterEntries.tenantId, scope.tenantId),
+          eq(schema.hrRosterEntries.facilityId, scope.facilityId),
+        ),
+      )
+      .limit(1);
+    if (!existing) fail(404, 'ROSTER_NOT_FOUND', 'Roster assignment not found in this facility.');
+    if (existing.status === 'CANCELLED')
+      fail(409, 'ROSTER_ALREADY_CANCELLED', 'This assignment is already cancelled.');
+    const [row] = await tx
+      .update(schema.hrRosterEntries)
+      .set({
+        status: 'CANCELLED',
+        cancelledAt: new Date(),
+        cancelledBy: scope.actorId,
+        cancelReason: reason,
+        updatedAt: new Date(),
+      })
+      .where(eq(schema.hrRosterEntries.id, id))
+      .returning();
+    await audit(
+      tx,
+      scope,
+      'hr_roster',
+      id,
+      'CANCEL',
+      `Cancelled roster for employee ${existing.employeeId} on ${existing.workDate}` +
+        `${reason ? `: ${reason}` : ''}`,
+    );
     return row;
   });
 }
 
+/* ------------------------------------------------------------
+   ATTENDANCE — what actually happened
+   ------------------------------------------------------------ */
+
+type EmployeeForAttendance = {
+  id: number;
+  employeeNumber: string;
+  firstName: string;
+  lastName: string;
+  departmentId: number | null;
+  departmentName: string | null;
+  designationTitle: string | null;
+  employmentStatus: string;
+  hireDate: string;
+  userId: number | null;
+};
+
+type RosterContext = {
+  rosterEntryId: number;
+  shiftId: number;
+  shiftName: string;
+  startTime: string;
+  endTime: string;
+  breakMinutes: number;
+  timing: ShiftTiming;
+};
+
+export type AttendanceState =
+  | 'CLOCKED_IN'
+  | 'CLOCKED_OUT'
+  | 'NOT_STARTED'
+  | 'ABSENT'
+  | 'EXCUSED'
+  | 'UNROSTERED';
+
+export type AttendanceRow = {
+  employeeId: number;
+  attendanceId: number | null;
+  employeeNumber: string;
+  name: string;
+  departmentId: number | null;
+  departmentName: string | null;
+  designationTitle: string | null;
+  rosterEntryId: number | null;
+  shiftId: number | null;
+  shiftName: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  overnight: boolean;
+  scheduledMinutes: number | null;
+  expectedHours: number | null;
+  clockInAt: string | null;
+  clockOutAt: string | null;
+  clockInLocal: string | null;
+  clockOutLocal: string | null;
+  status: string | null;
+  attendanceState: AttendanceState;
+  lateMinutes: number | null;
+  workedMinutes: number | null;
+  overtimeMinutes: number | null;
+  hoursWorked: number | null;
+  canClockIn: boolean;
+  canClockOut: boolean;
+  excusedReason: string | null;
+  notes: string | null;
+};
+
+function timeLabel(instant: Date | null, timeZone: string): string | null {
+  if (!instant) return null;
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(instant);
+}
+
+/**
+ * The attendance day. One row per active employee, combining four sources:
+ * the roster (what was expected), the attendance record (what happened), the
+ * leave book (why it did not) and the holiday calendar.
+ *
+ * A roster assignment is never treated as attendance, and a manual status is
+ * never treated as a clock-in.
+ */
+export async function attendanceForDate(
+  scope: WorkforceScope,
+  date?: string,
+  filters: {
+    departmentId?: number | null;
+    employeeId?: number | null;
+    shiftId?: number | null;
+    status?: string | null;
+  } = {},
+) {
+  const policy = await readPolicy(scope);
+  const now = new Date();
+  const todayLocal = localClock(now, policy.timeZone);
+  const workDate = date ? isoDate(date, 'Work date') : todayLocal.date;
+  const isToday = workDate === todayLocal.date;
+  const isPast = workDate < todayLocal.date;
+
+  const employeeConditions = [
+    eq(schema.hrEmployees.tenantId, scope.tenantId),
+    eq(schema.hrEmployees.facilityId, scope.facilityId),
+    lte(schema.hrEmployees.hireDate, workDate),
+  ];
+  if (filters.employeeId) employeeConditions.push(eq(schema.hrEmployees.id, filters.employeeId));
+
+  const [employees, rosterRows, records, leaveRows, holidayRows] = await Promise.all([
+    db
+      .select({
+        id: schema.hrEmployees.id,
+        employeeNumber: schema.hrEmployees.employeeNumber,
+        firstName: schema.hrEmployees.firstName,
+        lastName: schema.hrEmployees.lastName,
+        departmentId: schema.hrEmployees.departmentId,
+        departmentName: schema.hrDepartments.name,
+        designationTitle: schema.hrDesignations.title,
+        employmentStatus: schema.hrEmployees.employmentStatus,
+        hireDate: schema.hrEmployees.hireDate,
+        userId: schema.hrEmployees.userId,
+      })
+      .from(schema.hrEmployees)
+      .leftJoin(schema.hrDepartments, eq(schema.hrEmployees.departmentId, schema.hrDepartments.id))
+      .leftJoin(schema.hrDesignations, eq(schema.hrEmployees.designationId, schema.hrDesignations.id))
+      .where(and(...employeeConditions))
+      .orderBy(asc(schema.hrEmployees.lastName), asc(schema.hrEmployees.firstName)),
+    db
+      .select({
+        id: schema.hrRosterEntries.id,
+        employeeId: schema.hrRosterEntries.employeeId,
+        shiftId: schema.hrShifts.id,
+        shiftName: schema.hrShifts.name,
+        startTime: schema.hrShifts.startTime,
+        endTime: schema.hrShifts.endTime,
+        breakMinutes: schema.hrShifts.breakMinutes,
+      })
+      .from(schema.hrRosterEntries)
+      .innerJoin(schema.hrShifts, eq(schema.hrRosterEntries.shiftId, schema.hrShifts.id))
+      .where(
+        and(
+          eq(schema.hrRosterEntries.tenantId, scope.tenantId),
+          eq(schema.hrRosterEntries.facilityId, scope.facilityId),
+          eq(schema.hrRosterEntries.workDate, workDate),
+          eq(schema.hrRosterEntries.status, 'ASSIGNED'),
+        ),
+      ),
+    db
+      .select()
+      .from(schema.hrAttendance)
+      .where(
+        and(
+          eq(schema.hrAttendance.tenantId, scope.tenantId),
+          eq(schema.hrAttendance.facilityId, scope.facilityId),
+          eq(schema.hrAttendance.workDate, workDate),
+        ),
+      ),
+    db
+      .select({
+        employeeId: schema.hrLeaveRequests.employeeId,
+        leaveTypeName: schema.hrLeaveTypes.name,
+      })
+      .from(schema.hrLeaveRequests)
+      .innerJoin(schema.hrLeaveTypes, eq(schema.hrLeaveRequests.leaveTypeId, schema.hrLeaveTypes.id))
+      .where(
+        and(
+          eq(schema.hrLeaveRequests.tenantId, scope.tenantId),
+          eq(schema.hrLeaveRequests.facilityId, scope.facilityId),
+          eq(schema.hrLeaveRequests.status, 'APPROVED'),
+          lte(schema.hrLeaveRequests.startDate, workDate),
+          gte(schema.hrLeaveRequests.endDate, workDate),
+        ),
+      ),
+    db
+      .select({ name: schema.hrHolidays.name })
+      .from(schema.hrHolidays)
+      .where(
+        and(
+          eq(schema.hrHolidays.tenantId, scope.tenantId),
+          eq(schema.hrHolidays.facilityId, scope.facilityId),
+          eq(schema.hrHolidays.holidayDate, workDate),
+        ),
+      )
+      .limit(1),
+  ]);
+
+  const rosterByEmployee = new Map<number, RosterContext>();
+  for (const row of rosterRows) {
+    rosterByEmployee.set(row.employeeId, {
+      rosterEntryId: row.id,
+      shiftId: row.shiftId,
+      shiftName: row.shiftName,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      breakMinutes: row.breakMinutes,
+      timing: shiftTiming(row),
+    });
+  }
+  const recordByEmployee = new Map(records.map((record) => [record.employeeId, record]));
+  const leaveByEmployee = new Map(leaveRows.map((leave) => [leave.employeeId, leave]));
+  const holiday = holidayRows[0] ?? null;
+
+  const active = employees.filter((employee) => employee.employmentStatus !== 'EXITED');
+  const rows: AttendanceRow[] = active.map((employee) => {
+    const roster = rosterByEmployee.get(employee.id) ?? null;
+    const record = recordByEmployee.get(employee.id) ?? null;
+    const leave = leaveByEmployee.get(employee.id) ?? null;
+    const timing = roster?.timing ?? null;
+
+    let status: string | null = null;
+    let attendanceState: AttendanceState = 'UNROSTERED';
+    let excusedReason: string | null = null;
+
+    if (record?.clockInAt) {
+      status = record.status;
+      attendanceState = record.clockOutAt ? 'CLOCKED_OUT' : 'CLOCKED_IN';
+    } else if (leave) {
+      status = 'LEAVE';
+      attendanceState = 'EXCUSED';
+      excusedReason = `Approved ${leave.leaveTypeName}`;
+    } else if (holiday) {
+      status = 'HOLIDAY';
+      attendanceState = 'EXCUSED';
+      excusedReason = holiday.name;
+    } else if (record?.status) {
+      status = record.status;
+      attendanceState =
+        record.status === 'ABSENT'
+          ? 'ABSENT'
+          : ['LEAVE', 'HOLIDAY', 'OFF_DUTY', 'TRAINING'].includes(record.status)
+            ? 'EXCUSED'
+            : 'EXCUSED';
+      if (record.notes) excusedReason = record.notes;
+    } else if (roster) {
+      const startMinutes = timing!.startMinutes;
+      const minutesSinceStart = isToday
+        ? todayLocal.minutes - startMinutes
+        : isPast
+          ? Number.POSITIVE_INFINITY
+          : -1;
+      if (minutesSinceStart > policy.absenceCutoffMinutes) {
+        status = 'ABSENT';
+        attendanceState = 'ABSENT';
+      } else {
+        status = null;
+        attendanceState = 'NOT_STARTED';
+      }
+    }
+
+    /* A previous day that was started but never finished is incomplete, not present. */
+    if (
+      isPast &&
+      record?.clockInAt &&
+      !record.clockOutAt &&
+      status !== 'LEAVE' &&
+      status !== 'HOLIDAY' &&
+      status !== 'OFF_DUTY'
+    ) {
+      status = 'INCOMPLETE';
+      attendanceState = 'CLOCKED_IN';
+    }
+
+    const clockIn = record?.clockInAt ?? null;
+    const clockOut = record?.clockOutAt ?? null;
+    return {
+      employeeId: employee.id,
+      attendanceId: record?.id ?? null,
+      employeeNumber: employee.employeeNumber,
+      name: `${employee.firstName} ${employee.lastName}`,
+      departmentId: employee.departmentId,
+      departmentName: employee.departmentName,
+      designationTitle: employee.designationTitle,
+      rosterEntryId: roster?.rosterEntryId ?? null,
+      shiftId: roster?.shiftId ?? null,
+      shiftName: roster?.shiftName ?? null,
+      startTime: roster?.startTime ?? null,
+      endTime: roster?.endTime ?? null,
+      overnight: timing?.overnight ?? false,
+      scheduledMinutes: timing?.scheduledMinutes ?? null,
+      expectedHours:
+        timing === null ? null : Math.round((timing.scheduledMinutes / 60) * 100) / 100,
+      clockInAt: clockIn ? clockIn.toISOString() : null,
+      clockOutAt: clockOut ? clockOut.toISOString() : null,
+      clockInLocal: timeLabel(clockIn, policy.timeZone),
+      clockOutLocal: timeLabel(clockOut, policy.timeZone),
+      status,
+      attendanceState,
+      lateMinutes: record?.lateMinutes ?? null,
+      workedMinutes: record?.workedMinutes ?? null,
+      overtimeMinutes: record?.overtimeMinutes ?? null,
+      hoursWorked:
+        record?.workedMinutes === null || record?.workedMinutes === undefined
+          ? null
+          : Math.round((record.workedMinutes / 60) * 100) / 100,
+      canClockIn: Boolean(roster) && !clockIn && !leave && !holiday && isToday,
+      canClockOut: Boolean(clockIn) && !clockOut,
+      excusedReason,
+      notes: record?.notes ?? null,
+    };
+  });
+
+  const filtered = rows.filter((row) => {
+    if (filters.departmentId && row.departmentId !== filters.departmentId) return false;
+    if (filters.shiftId && row.shiftId !== filters.shiftId) return false;
+    if (filters.status) {
+      if (filters.status === 'NOT_CLOCKED_IN') return row.attendanceState === 'NOT_STARTED';
+      if (filters.status === 'CLOCKED_IN') return row.attendanceState === 'CLOCKED_IN';
+      if (filters.status === 'UNROSTERED') return row.attendanceState === 'UNROSTERED';
+      return row.status === filters.status;
+    }
+    return true;
+  });
+
+  const count = (predicate: (row: AttendanceRow) => boolean) => filtered.filter(predicate).length;
+  const summary = {
+    expected: count((row) => row.rosterEntryId !== null || row.clockInAt !== null),
+    present: count((row) => row.clockInAt !== null),
+    late: count((row) => row.status === 'LATE'),
+    absent: count((row) => row.status === 'ABSENT'),
+    onLeave: count((row) => row.status === 'LEAVE'),
+    offDuty: count((row) => row.status === 'OFF_DUTY'),
+    holiday: count((row) => row.status === 'HOLIDAY'),
+    training: count((row) => row.status === 'TRAINING'),
+    incomplete: count((row) => row.status === 'INCOMPLETE'),
+    notClockedIn: count((row) => row.attendanceState === 'NOT_STARTED'),
+    clockedInNotOut: count((row) => row.attendanceState === 'CLOCKED_IN' && row.status !== 'INCOMPLETE'),
+    unrostered: count((row) => row.attendanceState === 'UNROSTERED'),
+  };
+
+  return {
+    date: workDate,
+    timeZone: policy.timeZone,
+    policy: {
+      graceMinutes: policy.graceMinutes,
+      absenceCutoffMinutes: policy.absenceCutoffMinutes,
+    },
+    holiday: holiday?.name ?? null,
+    summary,
+    rows: filtered,
+  };
+}
+
+async function employeeForClock(
+  tx: Tx,
+  scope: WorkforceScope,
+  employeeId: number,
+): Promise<EmployeeForAttendance> {
+  const [employee] = await tx
+    .select({
+      id: schema.hrEmployees.id,
+      employeeNumber: schema.hrEmployees.employeeNumber,
+      firstName: schema.hrEmployees.firstName,
+      lastName: schema.hrEmployees.lastName,
+      departmentId: schema.hrEmployees.departmentId,
+      departmentName: schema.hrDepartments.name,
+      designationTitle: schema.hrDesignations.title,
+      employmentStatus: schema.hrEmployees.employmentStatus,
+      hireDate: schema.hrEmployees.hireDate,
+      userId: schema.hrEmployees.userId,
+    })
+    .from(schema.hrEmployees)
+    .leftJoin(schema.hrDepartments, eq(schema.hrEmployees.departmentId, schema.hrDepartments.id))
+    .leftJoin(schema.hrDesignations, eq(schema.hrEmployees.designationId, schema.hrDesignations.id))
+    .where(
+      and(
+        eq(schema.hrEmployees.id, employeeId),
+        eq(schema.hrEmployees.tenantId, scope.tenantId),
+        eq(schema.hrEmployees.facilityId, scope.facilityId),
+      ),
+    )
+    .limit(1);
+  if (!employee) fail(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found in this facility.');
+  return employee;
+}
+
+/** The employee record linked to a login, if any. Used for self-service. */
+export async function employeeIdForUser(
+  scope: WorkforceScope,
+  userId: number,
+): Promise<number | null> {
+  const [row] = await db
+    .select({ id: schema.hrEmployees.id })
+    .from(schema.hrEmployees)
+    .where(
+      and(
+        eq(schema.hrEmployees.userId, userId),
+        eq(schema.hrEmployees.tenantId, scope.tenantId),
+        eq(schema.hrEmployees.facilityId, scope.facilityId),
+      ),
+    )
+    .limit(1);
+  return row?.id ?? null;
+}
+
+/**
+ * The roster entry that justifies attendance right now. Today's assignment is
+ * preferred; a night shift assigned yesterday still counts while it runs.
+ */
+async function rosterForMoment(
+  tx: Tx,
+  scope: WorkforceScope,
+  employeeId: number,
+  timeZone: string,
+  now: Date,
+): Promise<{ roster: RosterContext; workDate: string; lateMinutes: number } | null> {
+  const clock = localClock(now, timeZone);
+  const candidates = [
+    { workDate: clock.date, offset: 0 },
+    { workDate: addDays(clock.date, -1), offset: 1 },
+  ];
+  for (const candidate of candidates) {
+    const [row] = await tx
+      .select({
+        id: schema.hrRosterEntries.id,
+        workDate: schema.hrRosterEntries.workDate,
+        shiftId: schema.hrShifts.id,
+        shiftName: schema.hrShifts.name,
+        startTime: schema.hrShifts.startTime,
+        endTime: schema.hrShifts.endTime,
+        breakMinutes: schema.hrShifts.breakMinutes,
+      })
+      .from(schema.hrRosterEntries)
+      .innerJoin(schema.hrShifts, eq(schema.hrRosterEntries.shiftId, schema.hrShifts.id))
+      .where(
+        and(
+          eq(schema.hrRosterEntries.tenantId, scope.tenantId),
+          eq(schema.hrRosterEntries.facilityId, scope.facilityId),
+          eq(schema.hrRosterEntries.employeeId, employeeId),
+          eq(schema.hrRosterEntries.workDate, candidate.workDate),
+          eq(schema.hrRosterEntries.status, 'ASSIGNED'),
+        ),
+      )
+      .limit(1);
+    if (!row) continue;
+    const timing = shiftTiming(row);
+    /* Yesterday's entry only covers now when its shift crosses midnight. */
+    if (candidate.offset === 1) {
+      if (!timing.overnight) continue;
+      if (clock.minutes > timing.endMinutes) continue;
+    }
+    return {
+      roster: {
+        rosterEntryId: row.id,
+        shiftId: row.shiftId,
+        shiftName: row.shiftName,
+        startTime: row.startTime,
+        endTime: row.endTime,
+        breakMinutes: row.breakMinutes,
+        timing,
+      },
+      workDate: candidate.workDate,
+      /* Raw minutes past the start; the policy's grace is applied at clock-in. */
+      lateMinutes: Math.max(0, clock.minutes + candidate.offset * 1440 - timing.startMinutes),
+    };
+  }
+  return null;
+}
+
+export async function clockIn(scope: WorkforceScope, input: Record<string, unknown>) {
+  const employeeId = positiveId(input.employeeId, 'employee');
+  return db.transaction(async (tx) => {
+    const policy = await readPolicy(scope);
+    const now = new Date();
+    const employee = await employeeForClock(tx, scope, employeeId);
+    if (employee.employmentStatus === 'EXITED')
+      fail(409, 'EMPLOYEE_EXITED', 'Attendance cannot be recorded for an employee who has left.');
+
+    const match = await rosterForMoment(tx, scope, employeeId, policy.timeZone, now);
+    if (!match) {
+      fail(
+        409,
+        'NO_ROSTER_ASSIGNMENT',
+        'No roster assignment covers this moment. Ask HR to add you to the roster before clocking in.',
+      );
+    }
+
+    const [existing] = await tx
+      .select()
+      .from(schema.hrAttendance)
+      .where(
+        and(
+          eq(schema.hrAttendance.employeeId, employeeId),
+          eq(schema.hrAttendance.workDate, match.workDate),
+          eq(schema.hrAttendance.facilityId, scope.facilityId),
+        ),
+      )
+      .limit(1);
+    if (existing?.clockInAt)
+      fail(409, 'ALREADY_CLOCKED_IN', 'This employee has already clocked in for that shift.');
+    if (existing?.clockOutAt)
+      fail(409, 'ALREADY_CLOCKED_OUT', 'This employee has already completed that shift.');
+
+    const lateMinutes = lateMinutesFor(
+      localClock(now, policy.timeZone).minutes,
+      match.roster.timing.startMinutes,
+      0,
+      policy.graceMinutes,
+    );
+    const status = lateMinutes > 0 ? 'LATE' : 'PRESENT';
+    const values = {
+      tenantId: scope.tenantId,
+      facilityId: scope.facilityId,
+      employeeId,
+      workDate: match.workDate,
+      status,
+      rosterEntryId: match.roster.rosterEntryId,
+      shiftId: match.roster.shiftId,
+      clockInAt: now,
+      scheduledMinutes: match.roster.timing.scheduledMinutes,
+      lateMinutes,
+      recordedBy: scope.actorId,
+      updatedAt: now,
+    };
+    const [row] = await tx
+      .insert(schema.hrAttendance)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [schema.hrAttendance.employeeId, schema.hrAttendance.workDate],
+        set: {
+          status,
+          rosterEntryId: values.rosterEntryId,
+          shiftId: values.shiftId,
+          clockInAt: now,
+          scheduledMinutes: values.scheduledMinutes,
+          lateMinutes,
+          recordedBy: scope.actorId,
+          updatedAt: now,
+        },
+      })
+      .returning();
+    await audit(
+      tx,
+      scope,
+      'hr_attendance',
+      row.id,
+      'CLOCK_IN',
+      `${employee.firstName} ${employee.lastName} clocked in at ${now.toISOString()} for ${match.workDate}` +
+        `${lateMinutes ? ` (${lateMinutes}m late)` : ''}`,
+    );
+    return {
+      attendance: row,
+      workDate: match.workDate,
+      shiftName: match.roster.shiftName,
+      lateMinutes,
+      status,
+    };
+  });
+}
+
+export async function clockOut(scope: WorkforceScope, input: Record<string, unknown>) {
+  const employeeId = positiveId(input.employeeId, 'employee');
+  return db.transaction(async (tx) => {
+    const employee = await employeeForClock(tx, scope, employeeId);
+    const [open] = await tx
+      .select()
+      .from(schema.hrAttendance)
+      .where(
+        and(
+          eq(schema.hrAttendance.employeeId, employeeId),
+          eq(schema.hrAttendance.facilityId, scope.facilityId),
+          isNotNull(schema.hrAttendance.clockInAt),
+          isNull(schema.hrAttendance.clockOutAt),
+        ),
+      )
+      .orderBy(desc(schema.hrAttendance.clockInAt))
+      .limit(1);
+    if (!open)
+      fail(409, 'NOT_CLOCKED_IN', 'There is no open clock-in to close for this employee.');
+
+    const now = new Date();
+    const elapsed = Math.max(
+      0,
+      Math.round((now.getTime() - (open.clockInAt as Date).getTime()) / 60_000),
+    );
+    /* The break is already netted out of scheduledMinutes when the shift's
+       expected hours are derived; subtracting it again from the elapsed time
+       would report a one-minute shift as zero minutes worked. */
+    const workedMinutes = elapsed;
+    const scheduled = open.scheduledMinutes ?? null;
+    const overtimeMinutes = scheduled === null ? 0 : Math.max(0, workedMinutes - scheduled);
+    const status = open.status === 'LATE' ? 'LATE' : 'PRESENT';
+    const [row] = await tx
+      .update(schema.hrAttendance)
+      .set({
+        clockOutAt: now,
+        workedMinutes,
+        overtimeMinutes,
+        status,
+        recordedBy: scope.actorId,
+        updatedAt: now,
+      })
+      .where(eq(schema.hrAttendance.id, open.id))
+      .returning();
+    await audit(
+      tx,
+      scope,
+      'hr_attendance',
+      row.id,
+      'CLOCK_OUT',
+      `${employee.firstName} ${employee.lastName} clocked out at ${now.toISOString()} after ${workedMinutes}m` +
+        `${overtimeMinutes ? ` (${overtimeMinutes}m over the ${scheduled}m scheduled)` : ''}`,
+    );
+    return { attendance: row, workedMinutes, overtimeMinutes };
+  });
+}
+
+/**
+ * Authorised correction. Adds a missing record or rewrites clock instants, and
+ * always stores who changed what, why, and the values before the change.
+ */
+export async function correctAttendance(scope: WorkforceScope, input: Record<string, unknown>) {
+  const reason = requiredText(input.reason, 'Correction reason', 500);
+  if (reason.trim().length < 5)
+    fail(400, 'INVALID_INPUT', 'Explain the correction in at least five characters.');
+  const attendanceId = optionalPositiveId(input.attendanceId, 'attendance record');
+  const employeeId = optionalPositiveId(input.employeeId, 'employee');
+  const workDate = input.workDate ? isoDate(input.workDate, 'Work date') : null;
+  if (!attendanceId && (!employeeId || !workDate))
+    fail(400, 'INVALID_ID', 'Provide the attendance record, or the employee and work date.');
+
+  return db.transaction(async (tx) => {
+    let existing = null as typeof schema.hrAttendance.$inferSelect | null;
+    if (attendanceId) {
+      [existing] = await tx
+        .select()
+        .from(schema.hrAttendance)
+        .where(
+          and(
+            eq(schema.hrAttendance.id, attendanceId),
+            eq(schema.hrAttendance.tenantId, scope.tenantId),
+            eq(schema.hrAttendance.facilityId, scope.facilityId),
+          ),
+        )
+        .limit(1);
+      if (!existing)
+        fail(404, 'ATTENDANCE_NOT_FOUND', 'Attendance record not found in this facility.');
+    } else if (employeeId && workDate) {
+      [existing] = await tx
+        .select()
+        .from(schema.hrAttendance)
+        .where(
+          and(
+            eq(schema.hrAttendance.employeeId, employeeId),
+            eq(schema.hrAttendance.workDate, workDate),
+            eq(schema.hrAttendance.facilityId, scope.facilityId),
+          ),
+        )
+        .limit(1);
+    }
+
+    const status = input.status ? enumValue(input.status, ATTENDANCE_STATUSES, 'Status') : null;
+    const clockInAt = parseInstant(input.clockInAt, 'Clock-in');
+    const clockOutAt = parseInstant(input.clockOutAt, 'Clock-out');
+
+    const resolvedEmployeeId = existing?.employeeId ?? (employeeId as number);
+    const resolvedDate = existing?.workDate ?? (workDate as string);
+    const employee = await employeeForClock(tx, scope, resolvedEmployeeId);
+
+    const nextIn = clockInAt ?? existing?.clockInAt ?? null;
+    const nextOut = clockOutAt ?? existing?.clockOutAt ?? null;
+    if (nextIn && nextOut && nextOut.getTime() < nextIn.getTime())
+      fail(400, 'INVALID_TIME', 'Clock-out cannot be before clock-in.');
+
+    const nextStatus =
+      status ?? existing?.status ?? (nextIn ? 'PRESENT' : 'ABSENT');
+    let workedMinutes = existing?.workedMinutes ?? null;
+    let overtimeMinutes = existing?.overtimeMinutes ?? null;
+    if (nextIn && nextOut) {
+      const elapsed = Math.round((nextOut.getTime() - nextIn.getTime()) / 60_000);
+      workedMinutes = Math.max(0, elapsed);
+      const scheduled = existing?.scheduledMinutes ?? null;
+      overtimeMinutes = scheduled === null ? 0 : Math.max(0, workedMinutes - scheduled);
+    }
+
+    let row;
+    if (existing) {
+      [row] = await tx
+        .update(schema.hrAttendance)
+        .set({
+          status: nextStatus,
+          clockInAt: nextIn,
+          clockOutAt: nextOut,
+          workedMinutes,
+          overtimeMinutes,
+          notes: input.notes === undefined ? existing.notes : optionalText(input.notes, 'Notes', 500),
+          recordedBy: scope.actorId,
+          correctedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.hrAttendance.id, existing.id))
+        .returning();
+    } else {
+      [row] = await tx
+        .insert(schema.hrAttendance)
+        .values({
+          tenantId: scope.tenantId,
+          facilityId: scope.facilityId,
+          employeeId: resolvedEmployeeId,
+          workDate: resolvedDate,
+          status: nextStatus,
+          clockInAt: nextIn,
+          clockOutAt: nextOut,
+          workedMinutes,
+          overtimeMinutes,
+          notes: optionalText(input.notes, 'Notes', 500),
+          recordedBy: scope.actorId,
+          correctedAt: new Date(),
+        })
+        .returning();
+    }
+
+    await tx.insert(schema.hrAttendanceCorrections).values({
+      tenantId: scope.tenantId,
+      facilityId: scope.facilityId,
+      attendanceId: row.id,
+      employeeId: resolvedEmployeeId,
+      reason,
+      previousStatus: existing?.status ?? null,
+      newStatus: nextStatus,
+      previousClockInAt: existing?.clockInAt ?? null,
+      newClockInAt: nextIn,
+      previousClockOutAt: existing?.clockOutAt ?? null,
+      newClockOutAt: nextOut,
+      correctedBy: scope.actorId,
+      correctedByName: scope.actorName,
+    });
+    await audit(
+      tx,
+      scope,
+      'hr_attendance',
+      row.id,
+      'CORRECT',
+      `Corrected attendance for ${employee.firstName} ${employee.lastName} on ${resolvedDate}: ${reason}`,
+    );
+    return row;
+  });
+}
+
+function parseInstant(value: unknown, label: string): Date | null {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime()))
+    fail(400, 'INVALID_TIME', `${label} must be a date and time.`);
+  return parsed;
+}
+
+export async function attendanceHistory(scope: WorkforceScope, attendanceId: number) {
+  return db
+    .select()
+    .from(schema.hrAttendanceCorrections)
+    .where(
+      and(
+        eq(schema.hrAttendanceCorrections.attendanceId, attendanceId),
+        eq(schema.hrAttendanceCorrections.tenantId, scope.tenantId),
+        eq(schema.hrAttendanceCorrections.facilityId, scope.facilityId),
+      ),
+    )
+    .orderBy(desc(schema.hrAttendanceCorrections.createdAt));
+}
+
+/**
+ * HR recording an excused day (leave, holiday, off duty, training) or an
+ * absence. Refuses to overwrite a clocked record: the correction endpoint is
+ * the only path that may change what the clock recorded, and it demands a
+ * reason.
+ */
 export async function recordAttendance(scope: WorkforceScope, input: Record<string, unknown>) {
   const employeeId = positiveId(input.employeeId, 'employee');
   const workDate = isoDate(input.workDate, 'Work date');
   const status = enumValue(input.status, ATTENDANCE_STATUSES, 'Attendance status');
-  const checkIn = optionalTime(input.checkIn, 'Check-in time');
-  const checkOut = optionalTime(input.checkOut, 'Check-out time');
-  const hours =
-    input.hours === undefined || input.hours === null || input.hours === ''
-      ? null
-      : decimalDays(input.hours, 'Hours worked');
+  if (['PRESENT', 'LATE', 'INCOMPLETE'].includes(status))
+    fail(
+      400,
+      'INVALID_STATUS',
+      'Present, late and incomplete are produced by clock-in and clock-out, not recorded by hand.',
+    );
   const notes = optionalText(input.notes, 'Notes', 500);
   return db.transaction(async (tx) => {
-    const [employee] = await tx
-      .select({ id: schema.hrEmployees.id, status: schema.hrEmployees.employmentStatus })
-      .from(schema.hrEmployees)
+    const employee = await employeeForClock(tx, scope, employeeId);
+    if (employee.employmentStatus === 'EXITED')
+      fail(409, 'EMPLOYEE_EXITED', 'Attendance cannot be recorded for an employee who has left.');
+    const [existing] = await tx
+      .select()
+      .from(schema.hrAttendance)
       .where(
         and(
-          eq(schema.hrEmployees.id, employeeId),
-          eq(schema.hrEmployees.tenantId, scope.tenantId),
-          eq(schema.hrEmployees.facilityId, scope.facilityId),
+          eq(schema.hrAttendance.employeeId, employeeId),
+          eq(schema.hrAttendance.workDate, workDate),
+          eq(schema.hrAttendance.facilityId, scope.facilityId),
         ),
       )
       .limit(1);
-    if (!employee) fail(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found in this facility.');
-    if (employee.status === 'EXITED')
-      fail(409, 'EMPLOYEE_EXITED', 'Attendance cannot be recorded for an exited employee.');
+    if (existing?.clockInAt)
+      fail(
+        409,
+        'ATTENDANCE_HAS_CLOCK',
+        'This day has clock times. Use a correction with a reason to change it.',
+      );
     const [row] = await tx
       .insert(schema.hrAttendance)
       .values({
@@ -1052,23 +2606,12 @@ export async function recordAttendance(scope: WorkforceScope, input: Record<stri
         employeeId,
         workDate,
         status,
-        checkIn,
-        checkOut,
-        hours,
         notes,
         recordedBy: scope.actorId,
       })
       .onConflictDoUpdate({
         target: [schema.hrAttendance.employeeId, schema.hrAttendance.workDate],
-        set: {
-          status,
-          checkIn,
-          checkOut,
-          hours,
-          notes,
-          recordedBy: scope.actorId,
-          updatedAt: new Date(),
-        },
+        set: { status, notes, recordedBy: scope.actorId, updatedAt: new Date() },
       })
       .returning();
     await audit(
@@ -1078,134 +2621,6 @@ export async function recordAttendance(scope: WorkforceScope, input: Record<stri
       row.id,
       'RECORD',
       `Attendance ${status} for employee ${employeeId} on ${workDate}`,
-    );
-    return row;
-  });
-}
-
-export async function attendanceForDate(scope: WorkforceScope, date: string) {
-  const workDate = isoDate(date, 'Work date');
-  const [records, employees] = await Promise.all([
-    db
-      .select({
-        id: schema.hrAttendance.id,
-        employeeId: schema.hrAttendance.employeeId,
-        status: schema.hrAttendance.status,
-        checkIn: schema.hrAttendance.checkIn,
-        checkOut: schema.hrAttendance.checkOut,
-        hours: schema.hrAttendance.hours,
-        notes: schema.hrAttendance.notes,
-      })
-      .from(schema.hrAttendance)
-      .where(
-        and(
-          eq(schema.hrAttendance.tenantId, scope.tenantId),
-          eq(schema.hrAttendance.facilityId, scope.facilityId),
-          eq(schema.hrAttendance.workDate, workDate),
-        ),
-      ),
-    listEmployees(scope, { status: undefined }),
-  ]);
-  const byEmployee = new Map(records.map((record) => [record.employeeId, record]));
-  const active = employees.filter((employee) => employee.employmentStatus !== 'EXITED');
-  return {
-    date: workDate,
-    summary: {
-      expected: active.length,
-      recorded: records.length,
-      present: records.filter((record) => record.status === 'PRESENT').length,
-      absent: records.filter((record) => record.status === 'ABSENT').length,
-    },
-    rows: active.map((employee) => ({
-      employeeId: employee.id,
-      employeeNumber: employee.employeeNumber,
-      name: `${employee.firstName} ${employee.lastName}`,
-      departmentName: employee.departmentName,
-      status: byEmployee.get(employee.id)?.status ?? null,
-      checkIn: byEmployee.get(employee.id)?.checkIn ?? null,
-      checkOut: byEmployee.get(employee.id)?.checkOut ?? null,
-      hours: byEmployee.get(employee.id)?.hours ?? null,
-    })),
-  };
-}
-
-export async function listRoster(scope: WorkforceScope, from: string, to: string) {
-  const start = isoDate(from, 'From date');
-  const end = isoDate(to, 'To date');
-  if (end < start) fail(400, 'INVALID_RANGE', 'The end date cannot be before the start date.');
-  return db
-    .select({
-      id: schema.hrRosterEntries.id,
-      employeeId: schema.hrRosterEntries.employeeId,
-      employeeName: sql<string>`${schema.hrEmployees.firstName} || ' ' || ${schema.hrEmployees.lastName}`,
-      workDate: schema.hrRosterEntries.workDate,
-      shiftId: schema.hrRosterEntries.shiftId,
-      shiftName: schema.hrShifts.name,
-      startTime: schema.hrShifts.startTime,
-      endTime: schema.hrShifts.endTime,
-      notes: schema.hrRosterEntries.notes,
-    })
-    .from(schema.hrRosterEntries)
-    .innerJoin(schema.hrEmployees, eq(schema.hrRosterEntries.employeeId, schema.hrEmployees.id))
-    .innerJoin(schema.hrShifts, eq(schema.hrRosterEntries.shiftId, schema.hrShifts.id))
-    .where(
-      and(
-        eq(schema.hrRosterEntries.tenantId, scope.tenantId),
-        eq(schema.hrRosterEntries.facilityId, scope.facilityId),
-        gte(schema.hrRosterEntries.workDate, start),
-        lte(schema.hrRosterEntries.workDate, end),
-      ),
-    )
-    .orderBy(asc(schema.hrRosterEntries.workDate), asc(schema.hrShifts.startTime));
-}
-
-export async function saveRosterEntry(scope: WorkforceScope, input: Record<string, unknown>) {
-  const employeeId = positiveId(input.employeeId, 'employee');
-  const shiftId = positiveId(input.shiftId, 'shift');
-  const workDate = isoDate(input.workDate, 'Work date');
-  const notes = optionalText(input.notes, 'Notes', 300);
-  return db.transaction(async (tx) => {
-    const [employee] = await tx
-      .select({ id: schema.hrEmployees.id })
-      .from(schema.hrEmployees)
-      .where(
-        and(
-          eq(schema.hrEmployees.id, employeeId),
-          eq(schema.hrEmployees.tenantId, scope.tenantId),
-          eq(schema.hrEmployees.facilityId, scope.facilityId),
-        ),
-      )
-      .limit(1);
-    if (!employee) fail(404, 'EMPLOYEE_NOT_FOUND', 'Employee not found in this facility.');
-    const [shift] = await tx
-      .select({ id: schema.hrShifts.id })
-      .from(schema.hrShifts)
-      .where(and(eq(schema.hrShifts.id, shiftId), eq(schema.hrShifts.facilityId, scope.facilityId)))
-      .limit(1);
-    if (!shift) fail(404, 'SHIFT_NOT_FOUND', 'Shift not found in this facility.');
-    const [row] = await tx
-      .insert(schema.hrRosterEntries)
-      .values({
-        tenantId: scope.tenantId,
-        facilityId: scope.facilityId,
-        employeeId,
-        shiftId,
-        workDate,
-        notes,
-        createdBy: scope.actorId,
-      })
-      .onConflictDoUpdate({
-        target: [schema.hrRosterEntries.employeeId, schema.hrRosterEntries.workDate],
-        set: { shiftId, notes, createdBy: scope.actorId },
-      })
-      .returning();
-    await audit(
-      tx,
-      scope,
-      'hr_roster',
-      row.id,
-      'SAVE',
-      `Roster set for employee ${employeeId} on ${workDate}`,
     );
     return row;
   });

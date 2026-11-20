@@ -67,19 +67,81 @@ export type HrEmployeeRow = {
   shifNumber: string | null;
 };
 
+export type HrAttendanceState =
+  | 'CLOCKED_IN'
+  | 'CLOCKED_OUT'
+  | 'NOT_STARTED'
+  | 'ABSENT'
+  | 'EXCUSED'
+  | 'UNROSTERED';
+
+export type HrAttendanceRow = {
+  employeeId: number;
+  attendanceId: number | null;
+  employeeNumber: string;
+  name: string;
+  departmentId: number | null;
+  departmentName: string | null;
+  designationTitle: string | null;
+  rosterEntryId: number | null;
+  shiftId: number | null;
+  shiftName: string | null;
+  startTime: string | null;
+  endTime: string | null;
+  overnight: boolean;
+  scheduledMinutes: number | null;
+  expectedHours: number | null;
+  clockInAt: string | null;
+  clockOutAt: string | null;
+  clockInLocal: string | null;
+  clockOutLocal: string | null;
+  status: string | null;
+  attendanceState: HrAttendanceState;
+  lateMinutes: number | null;
+  workedMinutes: number | null;
+  overtimeMinutes: number | null;
+  hoursWorked: number | null;
+  canClockIn: boolean;
+  canClockOut: boolean;
+  excusedReason: string | null;
+  notes: string | null;
+};
+
 export type HrAttendanceDay = {
   date: string;
-  summary: { expected: number; recorded: number; present: number; absent: number };
-  rows: Array<{
-    employeeId: number;
-    employeeNumber: string;
-    name: string;
-    departmentName: string | null;
-    status: string | null;
-    checkIn: string | null;
-    checkOut: string | null;
-    hours: string | null;
-  }>;
+  timeZone: string;
+  policy: { graceMinutes: number; absenceCutoffMinutes: number };
+  holiday: string | null;
+  summary: {
+    expected: number;
+    present: number;
+    late: number;
+    absent: number;
+    onLeave: number;
+    offDuty: number;
+    holiday: number;
+    training: number;
+    incomplete: number;
+    notClockedIn: number;
+    clockedInNotOut: number;
+    unrostered: number;
+  };
+  rows: HrAttendanceRow[];
+};
+
+export type HrAttendancePolicy = {
+  graceMinutes: number;
+  absenceCutoffMinutes: number;
+  timeZone: string;
+  allowRosterConflicts: boolean;
+  configured?: boolean;
+};
+
+export type HrHoliday = {
+  id: number;
+  holidayDate: string;
+  name: string;
+  createdAt: string;
 };
 
 export type HrLeaveType = {
@@ -112,21 +174,48 @@ export type HrLeaveRequest = {
 export type HrShift = {
   id: number;
   name: string;
+  description: string | null;
   startTime: string;
   endTime: string;
+  breakMinutes: number;
+  departmentId: number | null;
+  departmentName: string | null;
   isActive: boolean;
+  overnight: boolean;
+  expectedHours: number;
+  scheduledMinutes: number;
+  assignedToday: number;
 };
 
 export type HrRosterEntry = {
   id: number;
   employeeId: number;
+  employeeNumber: string;
   employeeName: string;
+  departmentId: number | null;
+  departmentName: string | null;
+  designationTitle: string | null;
   workDate: string;
   shiftId: number;
   shiftName: string;
   startTime: string;
   endTime: string;
+  overnight: boolean;
+  scheduledMinutes: number;
+  status: string;
   notes: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  clockInAt: string | null;
+  clockOutAt: string | null;
+  lateMinutes: number | null;
+};
+
+export type HrRosterAssignmentResult = {
+  saved: Array<{ id: number; employeeId: number; employeeName: string }>;
+  skipped: Array<{ employeeId: number; employeeName: string; reason: string }>;
+  workDate: string;
+  shiftId: number;
 };
 
 export type PayrollBand = {
@@ -449,32 +538,103 @@ export const workforceClient = {
       body: JSON.stringify({ ...body, facilityId }),
     }),
 
-  getHrShifts: (facilityId: number) => fetchJson<HrShift[]>(withFacility('/hr/shifts', facilityId)),
+  getHrShifts: (facilityId: number, date?: string) =>
+    fetchJson<HrShift[]>(
+      withFacility(`/hr/shifts${date ? `?date=${encodeURIComponent(date)}` : ''}`, facilityId),
+    ),
   createHrShift: (facilityId: number, body: Record<string, unknown>) =>
     fetchJson<HrShift>(`${API_BASE}/hr/shifts`, {
       method: 'POST',
       body: JSON.stringify({ ...body, facilityId }),
     }),
-  getHrAttendance: (facilityId: number, date: string) =>
-    fetchJson<HrAttendanceDay>(
-      withFacility(`/hr/attendance?date=${encodeURIComponent(date)}`, facilityId),
-    ),
+  updateHrShift: (facilityId: number, id: number, body: Record<string, unknown>) =>
+    fetchJson<HrShift>(`${API_BASE}/hr/shifts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ ...body, facilityId }),
+    }),
+  getHrAttendance: (
+    facilityId: number,
+    date: string,
+    filters: { departmentId?: string; status?: string } = {},
+  ) => {
+    const params = new URLSearchParams({ date });
+    if (filters.departmentId) params.set('departmentId', filters.departmentId);
+    if (filters.status) params.set('status', filters.status);
+    return fetchJson<HrAttendanceDay>(
+      withFacility(`/hr/attendance?${params.toString()}`, facilityId),
+    );
+  },
   recordHrAttendance: (facilityId: number, body: Record<string, unknown>) =>
     fetchJson<Record<string, unknown>>(`${API_BASE}/hr/attendance`, {
       method: 'POST',
       body: JSON.stringify({ ...body, facilityId }),
     }),
-  getHrRoster: (facilityId: number, from: string, to: string) =>
-    fetchJson<HrRosterEntry[]>(
-      withFacility(
-        `/hr/roster?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
-        facilityId,
-      ),
-    ),
-  saveHrRoster: (facilityId: number, body: Record<string, unknown>) =>
-    fetchJson<HrRosterEntry>(`${API_BASE}/hr/roster`, {
+  clockInHrAttendance: (facilityId: number, employeeId?: number) =>
+    fetchJson<Record<string, unknown>>(`${API_BASE}/hr/attendance/clock-in`, {
+      method: 'POST',
+      body: JSON.stringify({ facilityId, ...(employeeId ? { employeeId } : {}) }),
+    }),
+  clockOutHrAttendance: (facilityId: number, employeeId?: number) =>
+    fetchJson<Record<string, unknown>>(`${API_BASE}/hr/attendance/clock-out`, {
+      method: 'POST',
+      body: JSON.stringify({ facilityId, ...(employeeId ? { employeeId } : {}) }),
+    }),
+  correctHrAttendance: (facilityId: number, body: Record<string, unknown>) =>
+    fetchJson<Record<string, unknown>>(`${API_BASE}/hr/attendance/correction`, {
       method: 'POST',
       body: JSON.stringify({ ...body, facilityId }),
+    }),
+  getHrAttendanceHistory: (facilityId: number, id: number) =>
+    fetchJson<Array<Record<string, unknown>>>(
+      withFacility(`/hr/attendance/${id}/history`, facilityId),
+    ),
+  getHrAttendancePolicy: (facilityId: number) =>
+    fetchJson<HrAttendancePolicy>(withFacility('/hr/attendance/policy', facilityId)),
+  saveHrAttendancePolicy: (facilityId: number, body: Record<string, unknown>) =>
+    fetchJson<HrAttendancePolicy>(`${API_BASE}/hr/attendance/policy`, {
+      method: 'PUT',
+      body: JSON.stringify({ ...body, facilityId }),
+    }),
+  getHrHolidays: (facilityId: number, from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    return fetchJson<HrHoliday[]>(
+      withFacility(`/hr/holidays${params.size ? `?${params.toString()}` : ''}`, facilityId),
+    );
+  },
+  createHrHoliday: (facilityId: number, body: Record<string, unknown>) =>
+    fetchJson<HrHoliday>(`${API_BASE}/hr/holidays`, {
+      method: 'POST',
+      body: JSON.stringify({ ...body, facilityId }),
+    }),
+  deleteHrHoliday: (facilityId: number, id: number) =>
+    fetchJson<{ id: number }>(withFacility(`/hr/holidays/${id}`, facilityId), {
+      method: 'DELETE',
+    }),
+  getHrRoster: (
+    facilityId: number,
+    from: string,
+    to: string,
+    filters: { departmentId?: string; employeeId?: string; shiftId?: string } = {},
+  ) => {
+    const params = new URLSearchParams({ from, to });
+    if (filters.departmentId) params.set('departmentId', filters.departmentId);
+    if (filters.employeeId) params.set('employeeId', filters.employeeId);
+    if (filters.shiftId) params.set('shiftId', filters.shiftId);
+    return fetchJson<HrRosterEntry[]>(
+      withFacility(`/hr/roster?${params.toString()}`, facilityId),
+    );
+  },
+  assignHrRoster: (facilityId: number, body: Record<string, unknown>) =>
+    fetchJson<HrRosterAssignmentResult>(`${API_BASE}/hr/roster`, {
+      method: 'POST',
+      body: JSON.stringify({ ...body, facilityId }),
+    }),
+  cancelHrRoster: (facilityId: number, id: number, reason: string) =>
+    fetchJson<HrRosterEntry>(`${API_BASE}/hr/roster/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ facilityId, reason }),
     }),
 
   getHrLeaveTypes: (facilityId: number) =>

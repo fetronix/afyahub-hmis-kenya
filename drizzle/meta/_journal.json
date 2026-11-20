@@ -757,6 +757,13 @@
       "when": 1796870400000,
       "tag": "0108_hr_designation_department",
       "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1796956800000,
+      "tag": "0109_hr_roster_attendance",
+      "breakpoints": true
     }
   ]
 }

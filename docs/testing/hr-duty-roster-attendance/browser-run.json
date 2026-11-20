@@ -1,0 +1,127 @@
+{
+  "startedAt": "2026-11-20T15:50:21.513Z",
+  "baseUrl": "http://127.0.0.1:3000",
+  "checks": [
+    {
+      "label": "Signed in as the synthetic HR officer",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "label": "Captured the session token the application itself sent",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "label": "An employee with no roster assignment is refused, with an explanation",
+      "passed": true,
+      "detail": "409 NO_ROSTER_ASSIGNMENT: No roster assignment covers this moment. Ask HR to add you to the roster before clocking in."
+    },
+    {
+      "label": "An ordinary employee cannot clock a colleague",
+      "passed": true,
+      "detail": "403 NOT_YOUR_ATTENDANCE"
+    },
+    {
+      "label": "1. The created shift appears in the shift templates",
+      "passed": true,
+      "detail": "Evidence Day 821513"
+    },
+    {
+      "label": "The shift reports its expected hours and overnight flag from its own times",
+      "passed": true,
+      "detail": "18:45–02:45 +1, 30m break, 7.5h"
+    },
+    {
+      "label": "2. Two employees assigned through the roster dialog",
+      "passed": true,
+      "detail": null
+    },
+    {
+      "label": "3. The roster persists both assignments for today",
+      "passed": true,
+      "detail": "SYNTH-HR-0002:Evidence Day 821513, SYNTH-HR-0001:Evidence Day 821513"
+    },
+    {
+      "label": "4. Before any clock, the row offers Clock in and has no time",
+      "passed": true,
+      "detail": "Evidence Day 821513 18:45–02:45"
+    },
+    {
+      "label": "5. Clock in is replaced by Clock out and the timestamp survives a re-read",
+      "passed": true,
+      "detail": "18:51 · PRESENT"
+    },
+    {
+      "label": "6. Both clock instants are stored",
+      "passed": true,
+      "detail": "18:51 → 18:52"
+    },
+    {
+      "label": "11a. A duplicate clock-in is refused",
+      "passed": true,
+      "detail": "409 ALREADY_CLOCKED_IN"
+    },
+    {
+      "label": "11b. A clock-out with nothing open is refused",
+      "passed": true,
+      "detail": "409 NOT_CLOCKED_IN"
+    },
+    {
+      "label": "7. The summary counts the expected employees and the one who attended",
+      "passed": true,
+      "detail": "expected 2, present 1, late 0, not clocked in 1"
+    },
+    {
+      "label": "The correction recomputes hours worked from the corrected instants",
+      "passed": true,
+      "detail": "480 minutes, 8h"
+    },
+    {
+      "label": "13. The correction is stored with its reason and author",
+      "passed": true,
+      "detail": "Synthetic HR Officer — Synthetic evidence: clock times checked against the ward reg"
+    },
+    {
+      "label": "12a. Department filtering returns only that department",
+      "passed": true,
+      "detail": "1 row(s)"
+    },
+    {
+      "label": "12b. The roster filters by department as well",
+      "passed": true,
+      "detail": "1 assignment(s)"
+    },
+    {
+      "label": "10a. A holiday is reported as HOLIDAY, not as an absence",
+      "passed": true,
+      "detail": "HOLIDAY"
+    },
+    {
+      "label": "10b. Off duty can be recorded by HR for an excused day",
+      "passed": true,
+      "detail": "201 OFF_DUTY"
+    },
+    {
+      "label": "15. Attendance policy is stored per facility (payroll consumes none of it)",
+      "passed": true,
+      "detail": "10m grace, 240m cutoff, Africa/Nairobi"
+    }
+  ],
+  "screenshots": [
+    "01-shift-creation.png",
+    "02-roster-assignment.png",
+    "03-todays-roster.png",
+    "04-attendance-before-clock-in.png",
+    "05-attendance-after-clock-in.png",
+    "06-attendance-after-clock-out.png",
+    "07-attendance-summary.png",
+    "08-attendance-history.png"
+  ],
+  "summary": {
+    "total": 21,
+    "passed": 21,
+    "failed": 0
+  },
+  "finishedAt": "2026-11-20T15:52:14.134Z"
+}

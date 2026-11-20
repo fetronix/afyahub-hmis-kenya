@@ -223,18 +223,31 @@ export const hrShifts = pgTable(
       .references(() => facilities.id)
       .notNull(),
     name: text('name').notNull(),
+    description: text('description'),
+    /** Local wall-clock times, HH:MM. An end before the start is an overnight shift. */
     startTime: text('start_time').notNull(),
     endTime: text('end_time').notNull(),
+    breakMinutes: integer('break_minutes').notNull().default(0),
+    /**
+     * Optional department this shift belongs to. NULL means the shift is
+     * available to every department in the facility.
+     */
+    departmentId: integer('department_id').references(() => hrDepartments.id),
     isActive: boolean('is_active').notNull().default(true),
     createdBy: integer('created_by').references(() => users.id),
     createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex('hr_shifts_facility_name_idx').on(table.facilityId, table.name),
+    index('hr_shifts_facility_active_idx').on(table.facilityId, table.isActive),
     check(
       'hr_shifts_time_check',
       sql`${table.startTime} ~ '^[0-2][0-9]:[0-5][0-9]$' AND ${table.endTime} ~ '^[0-2][0-9]:[0-5][0-9]$'`,
     ),
+    check('hr_shifts_break_check', sql`${table.breakMinutes} BETWEEN 0 AND 480`),
+    /* A shift with identical start and end has no hours at all; refuse it. */
+    check('hr_shifts_span_check', sql`${table.startTime} <> ${table.endTime}`),
   ],
 );
 
@@ -254,14 +267,27 @@ export const hrRosterEntries = pgTable(
     shiftId: integer('shift_id')
       .references(() => hrShifts.id)
       .notNull(),
+    /**
+     * Department at the time of assignment. Kept beside the employee so a
+     * later transfer does not silently rewrite history.
+     */
+    departmentId: integer('department_id').references(() => hrDepartments.id),
     workDate: date('work_date').notNull(),
+    /** ASSIGNED or CANCELLED. A cancelled row is kept for the audit trail. */
+    status: text('status').notNull().default('ASSIGNED'),
     notes: text('notes'),
+    cancelledAt: timestamp('cancelled_at'),
+    cancelledBy: integer('cancelled_by').references(() => users.id),
+    cancelReason: text('cancel_reason'),
     createdBy: integer('created_by').references(() => users.id),
     createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex('hr_roster_employee_date_idx').on(table.employeeId, table.workDate),
     index('hr_roster_facility_date_idx').on(table.facilityId, table.workDate),
+    index('hr_roster_shift_date_idx').on(table.facilityId, table.shiftId, table.workDate),
+    check('hr_roster_status_check', sql`${table.status} IN ('ASSIGNED','CANCELLED')`),
   ],
 );
 
@@ -279,12 +305,28 @@ export const hrAttendance = pgTable(
       .references(() => hrEmployees.id)
       .notNull(),
     workDate: date('work_date').notNull(),
+    /** PRESENT, LATE, ABSENT, LEAVE, HOLIDAY, OFF_DUTY, TRAINING or INCOMPLETE. */
     status: text('status').notNull(),
+    /**
+     * The roster entry and shift the employee actually worked. Snapshotted so
+     * a later roster edit or shift rename cannot rewrite an attendance record.
+     */
+    rosterEntryId: integer('roster_entry_id').references(() => hrRosterEntries.id),
+    shiftId: integer('shift_id').references(() => hrShifts.id),
+    /** Server-generated instants. Never taken from the browser. */
+    clockInAt: timestamp('clock_in_at', { withTimezone: true }),
+    clockOutAt: timestamp('clock_out_at', { withTimezone: true }),
+    scheduledMinutes: integer('scheduled_minutes'),
+    lateMinutes: integer('late_minutes'),
+    workedMinutes: integer('worked_minutes'),
+    overtimeMinutes: integer('overtime_minutes'),
+    /* Legacy manual entry fields, kept for reports written before clock-in existed. */
     checkIn: text('check_in'),
     checkOut: text('check_out'),
     hours: numeric('hours', { precision: 6, scale: 2 }),
     notes: text('notes'),
     recordedBy: integer('recorded_by').references(() => users.id),
+    correctedAt: timestamp('corrected_at'),
     createdAt: timestamp('created_at').notNull().defaultNow(),
     updatedAt: timestamp('updated_at').notNull().defaultNow(),
   },
@@ -293,7 +335,105 @@ export const hrAttendance = pgTable(
     index('hr_attendance_facility_date_idx').on(table.facilityId, table.workDate),
     check(
       'hr_attendance_status_check',
-      sql`${table.status} IN ('PRESENT','ABSENT','LEAVE','HOLIDAY','OFF_DUTY','TRAINING')`,
+      sql`${table.status} IN ('PRESENT','LATE','ABSENT','LEAVE','HOLIDAY','OFF_DUTY','TRAINING','INCOMPLETE')`,
+    ),
+    check(
+      'hr_attendance_clock_check',
+      sql`${table.clockOutAt} IS NULL OR ${table.clockInAt} IS NULL OR ${table.clockOutAt} >= ${table.clockInAt}`,
+    ),
+  ],
+);
+
+/**
+ * Attendance rules for one facility. One row per facility; a missing row means
+ * the documented defaults apply (10 minutes of grace, 4 hours before a roster
+ * assignment is called an absence).
+ */
+export const hrAttendancePolicies = pgTable(
+  'hr_attendance_policies',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+    graceMinutes: integer('grace_minutes').notNull().default(10),
+    absenceCutoffMinutes: integer('absence_cutoff_minutes').notNull().default(240),
+    timeZone: text('time_zone').notNull().default('Africa/Nairobi'),
+    /** When true, a second shift on the same date replaces the first. */
+    allowRosterConflicts: boolean('allow_roster_conflicts').notNull().default(false),
+    updatedBy: integer('updated_by').references(() => users.id),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('hr_attendance_policies_facility_idx').on(table.facilityId),
+    check('hr_attendance_policies_grace_check', sql`${table.graceMinutes} BETWEEN 0 AND 240`),
+    check(
+      'hr_attendance_policies_cutoff_check',
+      sql`${table.absenceCutoffMinutes} BETWEEN 0 AND 1440`,
+    ),
+  ],
+);
+
+/** Facility holidays. A holiday is not an absence. */
+export const hrHolidays = pgTable(
+  'hr_holidays',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+    holidayDate: date('holiday_date').notNull(),
+    name: text('name').notNull(),
+    createdBy: integer('created_by').references(() => users.id),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('hr_holidays_facility_date_idx').on(table.facilityId, table.holidayDate),
+  ],
+);
+
+/**
+ * Every manual change to an attendance record. The correction is the reason
+ * the record no longer matches the clock; identity is taken from the session.
+ */
+export const hrAttendanceCorrections = pgTable(
+  'hr_attendance_corrections',
+  {
+    id: serial('id').primaryKey(),
+    tenantId: integer('tenant_id')
+      .references(() => tenants.id)
+      .notNull(),
+    facilityId: integer('facility_id')
+      .references(() => facilities.id)
+      .notNull(),
+    attendanceId: integer('attendance_id')
+      .references(() => hrAttendance.id)
+      .notNull(),
+    employeeId: integer('employee_id')
+      .references(() => hrEmployees.id)
+      .notNull(),
+    reason: text('reason').notNull(),
+    previousStatus: text('previous_status'),
+    newStatus: text('new_status'),
+    previousClockInAt: timestamp('previous_clock_in_at', { withTimezone: true }),
+    newClockInAt: timestamp('new_clock_in_at', { withTimezone: true }),
+    previousClockOutAt: timestamp('previous_clock_out_at', { withTimezone: true }),
+    newClockOutAt: timestamp('new_clock_out_at', { withTimezone: true }),
+    correctedBy: integer('corrected_by').references(() => users.id),
+    correctedByName: text('corrected_by_name'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (table) => [
+    index('hr_attendance_corrections_attendance_idx').on(table.attendanceId),
+    check(
+      'hr_attendance_corrections_reason_check',
+      sql`length(trim(${table.reason})) BETWEEN 5 AND 500`,
     ),
   ],
 );

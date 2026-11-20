@@ -388,6 +388,59 @@ router.post(
    ATTENDANCE, ROSTER AND SHIFTS
    ============================================================ */
 
+/** A manager may act for anyone in the facility; everyone else only for themselves. */
+function canManageAttendance(req: AuthRequest): boolean {
+  return Boolean(req.authContext?.permissions.includes('hr.manage'));
+}
+
+/**
+ * Resolves whose attendance a clock action is for. An ordinary employee may
+ * only clock themselves: the linked employee record decides identity, never a
+ * name typed into the request.
+ */
+async function clockingEmployee(
+  req: AuthRequest,
+  res: Response,
+  access: Access,
+): Promise<number | null> {
+  const selfId = await workforce.employeeIdForUser(access, access.actorId);
+  const requested = body(req).employeeId;
+  const employeeId = requested === undefined || requested === null || requested === ''
+    ? selfId
+    : Number(requested);
+  if (!employeeId || !Number.isSafeInteger(employeeId) || employeeId <= 0) {
+    res.status(400).json({
+      success: false,
+      error: 'EMPLOYEE_REQUIRED',
+      message: 'This account is not linked to an employee record. Ask HR to link it.',
+    });
+    return null;
+  }
+  if (employeeId !== selfId && !canManageAttendance(req)) {
+    res.status(403).json({
+      success: false,
+      error: 'NOT_YOUR_ATTENDANCE',
+      message: 'You can only record your own attendance. Ask HR to correct someone else.',
+    });
+    return null;
+  }
+  return employeeId;
+}
+
+router.get(
+  '/api/hr/me/employee',
+  requirePermission('hr.read'),
+  async (req: AuthRequest, res: Response) => {
+    const access = await scope(req, res, req.query.facilityId);
+    if (!access) return;
+    try {
+      res.json({ employeeId: await workforce.employeeIdForUser(access, access.actorId) });
+    } catch (err) {
+      handleError(res, err, 'GET /api/hr/me/employee');
+    }
+  },
+);
+
 router.get(
   '/api/hr/shifts',
   requirePermission('hr.read'),
@@ -395,7 +448,8 @@ router.get(
     const access = await scope(req, res, req.query.facilityId);
     if (!access) return;
     try {
-      res.json(await workforce.listShifts(access));
+      const date = typeof req.query.date === 'string' ? req.query.date : undefined;
+      res.json(await workforce.listShifts(access, date));
     } catch (err) {
       handleError(res, err, 'GET /api/hr/shifts');
     }
@@ -416,18 +470,110 @@ router.post(
   },
 );
 
+router.put(
+  '/api/hr/shifts/:id',
+  requirePermission('hr.manage'),
+  async (req: AuthRequest, res: Response) => {
+    const access = await scope(req, res, body(req).facilityId ?? req.query.facilityId);
+    if (!access) return;
+    try {
+      res.json(await workforce.updateShift(access, Number(req.params.id), body(req)));
+    } catch (err) {
+      handleError(res, err, 'PUT /api/hr/shifts/:id');
+    }
+  },
+);
+
+router.get(
+  '/api/hr/attendance/policy',
+  requirePermission('hr.read'),
+  async (req: AuthRequest, res: Response) => {
+    const access = await scope(req, res, req.query.facilityId);
+    if (!access) return;
+    try {
+      res.json(await workforce.getAttendancePolicy(access));
+    } catch (err) {
+      handleError(res, err, 'GET /api/hr/attendance/policy');
+    }
+  },
+);
+
+router.put(
+  '/api/hr/attendance/policy',
+  requirePermission('hr.manage'),
+  async (req: AuthRequest, res: Response) => {
+    const access = await scope(req, res, body(req).facilityId ?? req.query.facilityId);
+    if (!access) return;
+    try {
+      res.json(await workforce.saveAttendancePolicy(access, body(req)));
+    } catch (err) {
+      handleError(res, err, 'PUT /api/hr/attendance/policy');
+    }
+  },
+);
+
+router.get(
+  '/api/hr/holidays',
+  requirePermission('hr.read'),
+  async (req: AuthRequest, res: Response) => {
+    const access = await scope(req, res, req.query.facilityId);
+    if (!access) return;
+    try {
+      const from = typeof req.query.from === 'string' ? req.query.from : undefined;
+      const to = typeof req.query.to === 'string' ? req.query.to : undefined;
+      res.json(await workforce.listHolidays(access, from, to));
+    } catch (err) {
+      handleError(res, err, 'GET /api/hr/holidays');
+    }
+  },
+);
+
+router.post(
+  '/api/hr/holidays',
+  requirePermission('hr.manage'),
+  async (req: AuthRequest, res: Response) => {
+    const access = await scope(req, res, body(req).facilityId ?? req.query.facilityId);
+    if (!access) return;
+    try {
+      res.status(201).json(await workforce.createHoliday(access, body(req)));
+    } catch (err) {
+      handleError(res, err, 'POST /api/hr/holidays');
+    }
+  },
+);
+
+router.delete(
+  '/api/hr/holidays/:id',
+  requirePermission('hr.manage'),
+  async (req: AuthRequest, res: Response) => {
+    const access = await scope(req, res, req.query.facilityId);
+    if (!access) return;
+    try {
+      res.json(await workforce.deleteHoliday(access, Number(req.params.id)));
+    } catch (err) {
+      handleError(res, err, 'DELETE /api/hr/holidays/:id');
+    }
+  },
+);
+
 router.get(
   '/api/hr/attendance',
   requirePermission('hr.read'),
   async (req: AuthRequest, res: Response) => {
     const access = await scope(req, res, req.query.facilityId);
     if (!access) return;
-    const date =
-      typeof req.query.date === 'string' && req.query.date
-        ? req.query.date
-        : new Date().toISOString().slice(0, 10);
     try {
-      res.json(await workforce.attendanceForDate(access, date));
+      const date = typeof req.query.date === 'string' && req.query.date ? req.query.date : undefined;
+      const number = (value: unknown) =>
+        typeof value === 'string' && value && Number.isFinite(Number(value)) ? Number(value) : null;
+      res.json(
+        await workforce.attendanceForDate(access, date, {
+          departmentId: number(req.query.departmentId),
+          employeeId: number(req.query.employeeId),
+          shiftId: number(req.query.shiftId),
+          status: typeof req.query.status === 'string' && req.query.status ? req.query.status : null,
+        }),
+      );
     } catch (err) {
       handleError(res, err, 'GET /api/hr/attendance');
     }
@@ -448,17 +594,86 @@ router.post(
   },
 );
 
+router.post(
+  '/api/hr/attendance/clock-in',
+  async (req: AuthRequest, res: Response) => {
+    const access = await scope(req, res, body(req).facilityId ?? req.query.facilityId);
+    if (!access) return;
+    const employeeId = await clockingEmployee(req, res, access);
+    if (!employeeId) return;
+    try {
+      res
+        .status(201)
+        .json(await workforce.clockIn(access, { ...body(req), employeeId }));
+    } catch (err) {
+      handleError(res, err, 'POST /api/hr/attendance/clock-in');
+    }
+  },
+);
+
+router.post(
+  '/api/hr/attendance/clock-out',
+  async (req: AuthRequest, res: Response) => {
+    const access = await scope(req, res, body(req).facilityId ?? req.query.facilityId);
+    if (!access) return;
+    const employeeId = await clockingEmployee(req, res, access);
+    if (!employeeId) return;
+    try {
+      res.json(await workforce.clockOut(access, { ...body(req), employeeId }));
+    } catch (err) {
+      handleError(res, err, 'POST /api/hr/attendance/clock-out');
+    }
+  },
+);
+
+router.get(
+  '/api/hr/attendance/:id/history',
+  requirePermission('hr.read'),
+  async (req: AuthRequest, res: Response) => {
+    const access = await scope(req, res, req.query.facilityId);
+    if (!access) return;
+    try {
+      res.json(await workforce.attendanceHistory(access, Number(req.params.id)));
+    } catch (err) {
+      handleError(res, err, 'GET /api/hr/attendance/:id/history');
+    }
+  },
+);
+
+router.post(
+  '/api/hr/attendance/correction',
+  requirePermission('hr.manage'),
+  async (req: AuthRequest, res: Response) => {
+    const access = await scope(req, res, body(req).facilityId ?? req.query.facilityId);
+    if (!access) return;
+    try {
+      res.json(await workforce.correctAttendance(access, body(req)));
+    } catch (err) {
+      handleError(res, err, 'POST /api/hr/attendance/correction');
+    }
+  },
+);
+
 router.get(
   '/api/hr/roster',
   requirePermission('hr.read'),
   async (req: AuthRequest, res: Response) => {
     const access = await scope(req, res, req.query.facilityId);
     if (!access) return;
-    const today = new Date().toISOString().slice(0, 10);
-    const from = typeof req.query.from === 'string' && req.query.from ? req.query.from : today;
-    const to = typeof req.query.to === 'string' && req.query.to ? req.query.to : today;
     try {
-      res.json(await workforce.listRoster(access, from, to));
+      const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
+      const number = (value: unknown) =>
+        typeof value === 'string' && value && Number.isFinite(Number(value)) ? Number(value) : null;
+      res.json(
+        await workforce.listRoster(access, {
+          from: text(req.query.from),
+          to: text(req.query.to),
+          departmentId: number(req.query.departmentId),
+          employeeId: number(req.query.employeeId),
+          shiftId: number(req.query.shiftId),
+          includeCancelled: req.query.includeCancelled === '1' || req.query.includeCancelled === 'true',
+        }),
+      );
     } catch (err) {
       handleError(res, err, 'GET /api/hr/roster');
     }
@@ -472,9 +687,23 @@ router.post(
     const access = await scope(req, res, body(req).facilityId ?? req.query.facilityId);
     if (!access) return;
     try {
-      res.status(201).json(await workforce.saveRosterEntry(access, body(req)));
+      res.status(201).json(await workforce.assignRoster(access, body(req)));
     } catch (err) {
       handleError(res, err, 'POST /api/hr/roster');
+    }
+  },
+);
+
+router.post(
+  '/api/hr/roster/:id/cancel',
+  requirePermission('hr.manage'),
+  async (req: AuthRequest, res: Response) => {
+    const access = await scope(req, res, body(req).facilityId ?? req.query.facilityId);
+    if (!access) return;
+    try {
+      res.json(await workforce.cancelRosterEntry(access, Number(req.params.id), body(req)));
+    } catch (err) {
+      handleError(res, err, 'POST /api/hr/roster/:id/cancel');
     }
   },
 );

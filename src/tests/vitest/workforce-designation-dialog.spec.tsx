@@ -180,7 +180,7 @@ describe('New designation form', () => {
   });
 
   it('reports a department load failure and offers a retry', async () => {
-    api.getHrDepartments.mockRejectedValue(new ApiError('Network unreachable'));
+    api.getHrDepartments.mockRejectedValue(new ApiError('Network unreachable', 0));
     const { dialog } = await openNewDesignation();
 
     const alert = await within(dialog).findByRole('alert');
